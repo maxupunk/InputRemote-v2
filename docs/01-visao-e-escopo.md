@@ -21,6 +21,32 @@ de aplicação com integridade elevada. Isso não é um detalhe de implementaç�
 torna este requisito difícil e o que elimina o desenho ingênuo. Ver
 [05, §4.4](05-windows.md).
 
+#### Níveis de capacidade — o requisito é escalonado, não tudo ou nada
+
+O requisito R1 não é uma caixa que marca ou não marca. São quatro níveis, medidos por
+plataforma, e o produto **declara qual alcançou** — na interface, no diagnóstico e no
+README.
+
+| Nível | O que aceita entrada | Status |
+|---|---|---|
+| **N3** | tela de **login**, antes de qualquer usuário logado (após o boot) | alvo |
+| **N2** | tela de **bloqueio** de uma sessão existente, e diálogos de elevação | **mínimo aceitável** |
+| **N1** | apenas sessão desbloqueada | é um KVM comum; R1 não foi atendido |
+| **N0** | nenhuma entrada privilegiada | falha de instalação |
+
+**A regra de aceitação: N2 é o piso.** Se a tela de login não for alcançável numa
+plataforma, entrega-se N2 naquela plataforma, com a limitação escrita, e segue-se. O
+produto não é bloqueado por causa de N3.
+
+O que **não** é aceitável é N1 silencioso: o usuário descobrir na hora que precisa que o
+teclado não funciona. Se o nível cair, a interface diz qual é o nível, em qual plataforma
+e por quê.
+
+Os níveis são medidos separadamente em cada plataforma, e podem ser diferentes entre elas.
+Um cliente Linux em N3 e um cliente Windows em N2 é um resultado válido e declarado.
+Detalhes de como cada nível é alcançado e o que pode impedi-lo: [05, §3.6](05-windows.md)
+e [06, §4.1](06-linux.md).
+
 Consequências inevitáveis:
 
 - existe um processo privilegiado, permanente, que não pertence a nenhum usuário;

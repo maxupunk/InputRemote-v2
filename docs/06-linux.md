@@ -142,6 +142,35 @@ interface e o diagnóstico, e habilita a política de tela de bloqueio de
 Isso é uma simplificação deliberada em relação ao v1, que mantinha dois caminhos de
 injeção vivos (portal e `uinput`) com regras de escolha entre eles.
 
+### 4.1. Níveis N3 e N2 no Linux
+
+Os níveis estão definidos em [01, §2](01-visao-e-escopo.md). No Linux a situação é mais
+favorável que no Windows, e por um motivo estrutural: `uinput` entra **abaixo** do
+compositor, então tela de bloqueio e greeter não são casos diferentes de injeção — são o
+mesmo caso.
+
+| | N2 — tela de bloqueio | N3 — greeter (GDM/SDDM) |
+|---|---|---|
+| Onde roda | dentro da sessão do usuário (o GNOME desbloqueia na própria sessão) | sessão separada, do usuário `gdm`, com compositor próprio |
+| Caminho de injeção | `uinput` | `uinput`, idêntico |
+| O que pode falhar | nada específico | ver abaixo |
+
+Riscos específicos de N3, e as respostas:
+
+| Risco | Resposta |
+|---|---|
+| Serviço ainda não subiu quando o greeter aparece | `After=bluetooth.target network.target`, `WantedBy=multi-user.target` — anterior ao `graphical.target`; `Type=notify` só sinaliza pronto com os dispositivos confirmados |
+| Módulo `uinput` não carregado tão cedo no boot | `OPTIONS+="static_node=uinput"` na regra `udev` (§2.4) |
+| Dispositivos virtuais não atribuídos ao `seat0` do greeter | dispositivo `uinput` sem marca de assento cai no `seat0` por padrão; conferido na PoC-3 |
+| Rede sem endereço e rádio ainda inicializando | mesmo tratamento do Windows: pronto só com portador disponível, e último endereço conhecido tentado primeiro |
+| Tela apagada por DPMS | a primeira tecla acorda o monitor; contabilizar isso na medição, não confundir com falha |
+
+**Se N3 não for alcançável no Linux**, vale a mesma regra do Windows: entrega-se N2, com a
+limitação declarada, e o lançamento não é bloqueado. Mas a expectativa honesta é que o
+Linux alcance N3 com mais facilidade que o Windows, porque não há nada equivalente ao
+endurecimento de credencial de janeiro de 2026 nem ao desktop seguro — a barreira do
+Wayland é do compositor, e `uinput` está abaixo dela.
+
 ## 5. Agente de sessão
 
 O agente Linux é bem menor que o do Windows. Ele roda como unidade `systemd --user` e

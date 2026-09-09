@@ -85,16 +85,24 @@ dois portadores. Cada uma percorre:
 3. atravessar a borda nas quatro direções, com dois monitores de escalas diferentes;
 4. digitar em campo de texto com acento, `AltGr` e teclas mortas;
 5. copiar texto, imagem e uma pasta, nos dois sentidos;
-6. **bloquear o cliente e digitar a senha pelo teclado do servidor**;
-7. **provocar um prompt de UAC no cliente e operá-lo**;
-8. **reiniciar o cliente e digitar a senha na tela de login, antes de qualquer sessão**;
+6. **bloquear o cliente e digitar a senha pelo teclado do servidor** — N2, obrigatório;
+7. **provocar um prompt de UAC no cliente e operá-lo** — N2, obrigatório;
+8. **reiniciar o cliente e digitar a senha na tela de login, antes de qualquer sessão** —
+   N3; se falhar, registra-se o nível N2 para aquela plataforma e o roteiro **continua**;
 9. Ctrl+Alt+Del pelo teclado do servidor, com a política habilitada;
 10. desligar o rádio no meio do uso e observar a degradação anunciada;
 11. suspender e retomar as duas máquinas;
 12. usar o atalho de emergência com o controle no par;
 13. desinstalar dos dois lados e confirmar que não sobrou resíduo.
 
-Os passos 6, 7 e 8 são o produto. Se qualquer um deles falhar, não há versão.
+Os passos 6 e 7 são o produto: se falharem, não há versão. O passo 8 é o alvo: se falhar,
+a plataforma é declarada N2 e a versão sai assim, com a limitação no README e na interface
+([01, §2](01-visao-e-escopo.md)).
+
+O nível alcançado por plataforma é registrado junto com o resultado, e uma versão nunca
+sai com um nível **menor** que o da versão anterior sem que isso esteja escrito nas notas
+de lançamento. Regressão silenciosa de capacidade é a pior coisa que pode acontecer com
+este produto.
 
 ## 7. Como a latência é medida
 

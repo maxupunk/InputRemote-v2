@@ -62,7 +62,11 @@ com `Ctrl` pressionado deixa a máquina inutilizável até o próximo reinício.
 
 ## 3. Ciclo de vida do agente
 
-### 3.1. Lançar um processo `SYSTEM` num desktop específico
+É **um agente por sessão de console**, com uma thread por desktop dentro dele.
+Ver [ADR-0008](adr/0008-agente-com-thread-por-desktop.md) para por que não é um processo
+por desktop.
+
+### 3.1. Lançar o agente
 
 ```text
 1. WTSGetActiveConsoleSessionId()            → sessão de console (existe antes do login)
@@ -70,58 +74,120 @@ com `Ctrl` pressionado deixa a máquina inutilizável até o próximo reinício.
 3. DuplicateTokenEx(..., TokenPrimary)       → token primário duplicado
 4. SetTokenInformation(TokenSessionId, id)   → move o token para a sessão de console
                                                (é aqui que SeTcbPrivilege é exigido)
-5. SetTokenInformation(TokenUIAccess, 1)     → marca UIAccess; ver §4.4 — sem isto o
-                                               agente depende de uma leitura só da regra
-6. STARTUPINFO.lpDesktop = "WinSta0\\Winlogon"   (ou "WinSta0\\Default")
+5. SetTokenInformation(TokenUIAccess, 1)     → marca UIAccess; ver §4.4 — também exige
+                                               SeTcbPrivilege
+6. STARTUPINFO.lpDesktop = "WinSta0\\Default"    → sempre Default; o desktop seguro é
+                                                   alcançado de dentro, por thread
 7. CreateProcessAsUser(token, ..., CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW)
 ```
 
 O passo 5 só tem efeito se o executável do agente estiver assinado e instalado em local
 gravável apenas por administradores (§4.4).
 
-O agente nasce sabendo três coisas por linha de comando e variável de ambiente: o desktop
-a que pertence, o nome do pipe de agente e um segredo de uma via para se autenticar no
-serviço ([04, §5](04-seguranca.md)). Ele **NÃO DEVE** aceitar comando de mais ninguém.
+O agente nasce sabendo duas coisas, por linha de comando e variável de ambiente: o nome do
+pipe de agente e um segredo de uma via para se autenticar no serviço
+([04, §5](04-seguranca.md)). Ele **NÃO DEVE** aceitar comando de mais ninguém.
 
-### 3.2. Quem observa a troca de desktop
+### 3.2. As threads do agente
+
+Criadas na subida, todas, antes de qualquer desktop ser necessário:
+
+| Thread | Desktop | Papel |
+|---|---|---|
+| `desk-default` | `Default` | injeta **e** captura |
+| `desk-winlogon` | `Winlogon` | **só injeta** — nunca instala gancho |
+| `desk-screensaver` | `Screen-saver` | só injeta |
+| `desk-watch` | nenhum | vigia qual desktop está recebendo entrada |
+
+Cada thread de desktop faz, **como primeira ação**:
+
+```text
+h = OpenDesktop("Winlogon", 0, FALSE, GENERIC_ALL)
+SetThreadDesktop(h)
+// só a partir daqui: laço de mensagens, ganchos, SendInput
+```
+
+A ordem não é estilo: `SetThreadDesktop` é recusado depois que a thread cria qualquer
+janela ou gancho. Errar isso produz uma thread que roda, não dá erro e injeta no desktop
+errado — falha silenciosa, a pior categoria.
+
+**A thread do `Winlogon` nunca captura.** Instalar gancho de teclado no desktop seguro é
+ler o que se digita na tela de bloqueio da própria máquina — comportamento literal de
+keylogger, sem necessidade nenhuma: quando o servidor bloqueia, o controle volta para
+local de qualquer forma.
+
+### 3.3. Quem observa a troca de desktop
 
 Um serviço na sessão 0 **não consegue** consultar o desktop de entrada da sessão 1:
-`OpenInputDesktop` responde sobre a própria sessão de quem chama. Portanto quem observa
-é o agente, que já está do lado certo.
-
-Todo agente roda uma thread de vigilância:
+`OpenInputDesktop` responde sobre a sessão de quem chama. Quem observa é a thread
+`desk-watch`, que já está do lado certo.
 
 ```text
 loop a cada 200 ms:
     h = OpenInputDesktop(0, FALSE, DESKTOP_READOBJECTS)
     nome = GetUserObjectInformation(h, UOI_NAME)
-    se nome != meu_desktop:
+    se nome != desktop_corrente:
+        roteia a injeção para a thread daquele desktop
         avisa o serviço: DesktopChanged{nome}
 ```
 
-O serviço, ao receber `DesktopChanged`:
+Não existe notificação do sistema para isso — o próprio Deskflow registra em comentário
+que tentou e o Windows não notifica ([00b, §2](00-licoes-do-deskflow.md)). A consulta
+periódica é obrigatória.
 
-1. lança um agente novo amarrado ao desktop informado;
-2. espera o `AgentReady` dele (com prazo de 2 s);
-3. reenvia o `StateSnapshot` — o novo agente começa com o estado real de teclas;
-4. passa a rotear `Inject` para ele;
-5. concede 500 ms de carência ao agente antigo e o encerra.
+O serviço, ao receber `DesktopChanged`, reenvia o `StateSnapshot`. Como as threads já
+existem, isso é confirmação barata, não reconstrução: a troca custa o tempo de trocar um
+ponteiro, e a tela de bloqueio já aceita a primeira tecla.
 
-Como o estado vive no serviço ([02, §1.1](02-arquitetura.md)), a troca é invisível: nada
-fica preso, nada se perde.
+### 3.4. Caminho rápido
 
-### 3.3. Caminho rápido
+`WTS_SESSION_LOCK` e `WTS_SESSION_UNLOCK` chegam ao serviço direto e antecipam o
+`StateSnapshot` sem esperar os 200 ms. São otimização, **não** substituem a vigilância: o
+desktop seguro do UAC não gera notificação de sessão nenhuma.
 
-`WTS_SESSION_LOCK` e `WTS_SESSION_UNLOCK` chegam ao serviço direto e permitem antecipar a
-troca sem esperar os 200 ms da vigilância. Eles são otimização, **não** substituem a
-vigilância: o desktop seguro do UAC não gera notificação de sessão.
+### 3.5. Se o agente morrer
 
-### 3.4. Se não houver agente vivo
+O serviço detecta a queda do pipe e ressobe o agente em menos de 500 ms, reenviando o
+`StateSnapshot` após o `AgentReady`. Enquanto não houver agente pronto, a entrada é
+**enfileirada por no máximo 300 ms**; passado isso, é descartada e um `ReleaseAll` é
+emitido. Melhor perder eventos do que injetá-los tarde, fora de contexto, num campo de
+senha.
 
-Se o último agente morrer e nenhum `DesktopChanged` chegar, o serviço tenta, em ordem:
-`Default`, depois `Winlogon`. Enquanto não houver agente pronto, a entrada é **enfileirada
-por no máximo 300 ms**; passado isso, é descartada e um `ReleaseAll` é emitido. Melhor
-perder eventos do que injetá-los tarde, fora de contexto, num campo de senha.
+### 3.6. Níveis N3 e N2 no Windows
+
+Os níveis de capacidade estão definidos em [01, §2](01-visao-e-escopo.md). No Windows, a
+diferença entre N3 (tela de login) e N2 (tela de bloqueio) **não é o mecanismo de
+injeção** — os dois são o mesmo desktop `Winlogon`, com a mesma thread e a mesma chamada.
+
+A diferença é o que precisa estar pronto antes:
+
+| Precisa estar pronto | N2 (bloqueio) | N3 (login) |
+|---|---|---|
+| Serviço rodando | sim, já está há tempo | **tem de ganhar a corrida com o LogonUI** |
+| Sessão de console existente | sim | `WTSGetActiveConsoleSessionId` pode responder `0xFFFFFFFF` nos primeiros instantes |
+| Pilha de rede com endereço | sim | DHCP pode levar segundos |
+| Rádio Bluetooth inicializado e par conhecido | sim | inicialização do rádio leva tempo; as chaves são da máquina, então o par é conhecido |
+| Servidor sabendo o endereço do cliente | sim, sessão anterior | descoberta precisa acontecer do zero |
+
+Ou seja: **N3 é N2 mais uma corrida de inicialização.** As respostas de projeto:
+
+- início do serviço **automático**, nunca "automático (atraso)";
+- `WTSGetActiveConsoleSessionId` é consultado em laço com espera curta até responder uma
+  sessão válida, em vez de uma vez só na subida;
+- o serviço só se declara pronto depois de agente vivo **e** ao menos um portador
+  disponível, e registra quanto tempo levou — o número aparece no diagnóstico;
+- o servidor mantém o último endereço conhecido do par e tenta por ele antes de descobrir.
+
+Existe uma segunda diferença possível, e ela não está sob nosso controle: a Microsoft pode
+tratar a tela de login e a tela de bloqueio de forma diferente no endurecimento da §4.4. A
+documentação não separa as duas. Por isso a PoC-1 mede as duas **separadamente**, e o
+resultado pode ser N2 no Windows e N3 no Linux — o que é um resultado válido, desde que
+declarado ([01, §2](01-visao-e-escopo.md)).
+
+**Se N3 não for alcançável no Windows**, o produto entrega N2 ali: teclado e mouse
+funcionam na tela de bloqueio e em prompts de UAC, e a tela de login logo após o boot exige
+o teclado físico daquela máquina uma vez. A limitação vai para o README e para a interface.
+Isso **não** bloqueia o lançamento.
 
 ## 4. Injeção
 
@@ -308,8 +374,11 @@ requisito viável, e é o objeto da **PoC-2** ([08](08-plano-de-implementacao.md
 | Troca rápida de usuário deixa agente órfão | `WTS_CONSOLE_CONNECT` derruba todos e resubir |
 | Windows Defender marcando o produto como *keylogger* | assinatura do binário e submissão para análise antes do lançamento |
 | Retorno de suspensão com enlace morto e teclas presas | `PBT_APMSUSPEND` → `ReleaseAll` antes de dormir |
+| `SetThreadDesktop` recusado por a thread já ter criado janela ou gancho | é a **primeira** instrução da thread; teste garante a ordem (§3.2) |
+| Injetar no desktop errado sem erro nenhum | a thread de vigilância roteia; falha silenciosa é a pior categoria |
+| Gancho de captura no desktop seguro | proibido por regra — seria ler a senha da própria máquina ([04, §4.1](04-seguranca.md)) |
 
-A última linha da tabela não é hipotética: um produto que instala ganchos globais, injeta
+A linha do Defender não é hipotética: um produto que instala ganchos globais, injeta
 entrada e roda como serviço tem exatamente o perfil comportamental de um *keylogger*.
 Assinar o binário e submeter à análise antes do lançamento é parte do trabalho, não
 burocracia opcional.

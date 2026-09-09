@@ -143,6 +143,17 @@ exatamente o perfil de uma ferramenta de ataque. A defesa não é o produto ser 
 ele não é — e sim ser auditável, assinado, de código aberto, com o controle de acesso do
 §5 funcionando.
 
+Daí uma regra que limita o próprio produto:
+
+> **O agente NÃO DEVE instalar gancho de captura no desktop `Winlogon`.**
+> Injetar ali é o requisito; **ler** dali seria registrar o que se digita na tela de
+> bloqueio da própria máquina — a definição de keylogger, e sem finalidade nenhuma, já que
+> quando o servidor bloqueia o controle volta para local de qualquer forma.
+
+A regra é verificável: o código que instala `WH_KEYBOARD_LL` fica num módulo usado apenas
+pela thread do desktop `Default`, e um teste falha se ele for alcançável das outras
+([ADR-0008](adr/0008-agente-com-thread-por-desktop.md)).
+
 No Windows, o serviço declara `RequiredPrivileges` mínimo — `SeTcbPrivilege`,
 `SeAssignPrimaryTokenPrivilege`, `SeIncreaseQuotaPrivilege` — e nada além.
 

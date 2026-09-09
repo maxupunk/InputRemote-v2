@@ -5,6 +5,7 @@ A ordem abaixo é a ordem de leitura. Cada documento pressupõe o anterior.
 | # | Documento | O que decide |
 |---|---|---|
 | 00 | [Lições do v1](00-licoes-do-v1.md) | o que não repetir, com evidência |
+| 00b | [Lições do Deskflow](00-licoes-do-deskflow.md) | o que aprender de quem já resolveu isto |
 | 01 | [Visão e escopo](01-visao-e-escopo.md) | o que o produto é, o que ele não é |
 | 02 | [Arquitetura](02-arquitetura.md) | processos, crates, fronteiras |
 | 03 | [Protocolo](03-protocolo.md) | camadas, canais, formato dos quadros |
@@ -15,6 +16,7 @@ A ordem abaixo é a ordem de leitura. Cada documento pressupõe o anterior.
 | 08 | [Plano de implementação](08-plano-de-implementacao.md) | etapas, provas de conceito, ordem |
 | 09 | [Padrões de código](09-padroes-de-codigo.md) | regras que o CI faz cumprir |
 | 10 | [Testes e validação](10-testes-e-validacao.md) | como se prova que funciona |
+| 11 | [Nada de legado](11-nao-legado.md) | o que está proibido, e o que é antigo mas correto |
 
 ## Decisões arquiteturais (ADR)
 
@@ -30,6 +32,7 @@ Uma decisão só muda por um ADR novo que substitua o anterior — não por edi�
 | [0005](adr/0005-bluetooth-rfcomm-winsock.md) | RFCOMM via Winsock, e pareamento do SO manual |
 | [0006](adr/0006-entrada-linux-evdev-uinput.md) | evdev + uinput como caminho primário no Linux |
 | [0007](adr/0007-ui-slint-processo-separado.md) | Interface em Slint, em processo separado |
+| [0008](adr/0008-agente-com-thread-por-desktop.md) | Um agente por sessão, com uma thread por desktop |
 
 ## Convenções
 

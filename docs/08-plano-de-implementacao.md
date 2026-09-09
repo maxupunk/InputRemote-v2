@@ -22,10 +22,10 @@ perguntas, não construir. Duração estimada: 2 a 3 semanas.
 
 ### PoC-1 — Digitar na tela de bloqueio do Windows ⚠ bloqueante do produto inteiro
 
-**Pergunta.** Um serviço `LocalSystem` consegue lançar um processo no desktop
-`WinSta0\Winlogon` da sessão de console e, dele, injetar teclas que cheguem ao campo de
-senha — **em um build com o endurecimento de janeiro de 2026**? E consegue detectar a
-troca de desktop a tempo?
+**Pergunta.** Um serviço `LocalSystem` consegue lançar um agente na sessão de console e,
+de uma thread dele amarrada ao desktop `Winlogon`, injetar teclas que cheguem ao campo de
+senha — **em um build com o endurecimento de janeiro de 2026**? E detecta a troca de
+desktop a tempo?
 
 A segunda metade da pergunta é nova e é a mais perigosa. Desde a KB5073455, as interfaces
 de credencial só aceitam entrada de teclado físico, de aplicação com UIAccess ou de
@@ -33,7 +33,9 @@ aplicação com integridade elevada ([05, §4.4](05-windows.md)). O agente `SYST
 se enquadrar, mas "deve" não é "se enquadra".
 
 **Como.** Serviço mínimo em Rust + agente mínimo, com o fluxo de
-[05, §3.1](05-windows.md), incluindo `TokenUIAccess`. O binário do agente é assinado com
+[05, §3.1](05-windows.md), incluindo `TokenUIAccess`, e com a estrutura de threads de
+[ADR-0008](adr/0008-agente-com-thread-por-desktop.md) — thread do `Winlogon` criada na
+subida, com `SetThreadDesktop` como primeira instrução. O binário do agente é assinado com
 certificado de teste e instalado em `%ProgramFiles%`. Um temporizador que, 20 segundos
 após o `Win+L`, digita uma sequência conhecida.
 
@@ -57,15 +59,28 @@ Os itens 1, 3 e 4 são superfícies diferentes e a documentação da Microsoft n
 Uma delas falhar não invalida as outras — mas muda o produto, e o que muda precisa estar
 escrito antes de qualquer código de produção.
 
-**Se reprovar.** Duas leituras, com respostas diferentes:
+**Resultado.** A PoC **não** devolve "passou" ou "falhou". Ela devolve o **nível de
+capacidade alcançado no Windows** ([01, §2](01-visao-e-escopo.md)), com o número do build:
 
-- *Reprovou só a configuração (b), (c) ou (d).* Nada muda: é a confirmação de que a
-  configuração (a) é obrigatória, e ela já é a do projeto.
-- *Reprovou também a configuração (a).* O requisito R1 é inviável por `SendInput` e o
-  produto precisa ser redefinido antes de qualquer outra coisa. Alternativa a investigar:
-  driver HID virtual, que entra como teclado físico e é a origem confiável número 1 — ao
-  custo de assinatura WHQL com certificado EV, submissão a cada versão, e um projeto
-  diferente do que está aqui documentado.
+| Itens 1, 2 e 4 | Item 3 | Nível |
+|---|---|---|
+| passam | passa | **N3** — alvo alcançado |
+| passam | falha | **N2** — aceitável; a tela de login exige teclado físico uma vez |
+| falham | — | **N1** — o requisito R1 não foi atendido no Windows |
+
+**Se o resultado for N2.** Nada é bloqueado. Registra-se a limitação no README e na
+interface, e o desenvolvimento segue. Era a decisão tomada de antemão, e não se
+renegocia depois com o resultado na mão.
+
+**Se o resultado for N1.** Aí sim o produto precisa ser redefinido antes de qualquer outra
+coisa, porque nem a tela de bloqueio funciona e o serviço privilegiado perde a razão de
+existir. Alternativa a investigar nesse caso: driver HID virtual, que entra como teclado
+físico — a origem confiável número 1 da lista da Microsoft — ao custo de assinatura WHQL
+com certificado EV, submissão a cada versão, e um projeto diferente do que está aqui
+documentado.
+
+**Se reprovar só (b), (c) ou (d) da matriz.** Nada muda: é a confirmação de que a
+configuração (a) é obrigatória, e ela já é a do projeto.
 
 **Reexecução.** Esta PoC é reexecutada a cada atualização cumulativa do Windows que toque
 em autenticação, e o resultado é registrado com o número do build. A Microsoft declarou
@@ -88,7 +103,24 @@ Linux com `bluer`.
 4. RTT com carga de 125 mensagens por segundo, por 10 minutos: mediana < 20 ms,
    p99 < 50 ms;
 5. reconexão automática em menos de 5 s após desligar e religar o rádio;
-6. MTU efetiva de RFCOMM medida e registrada nas duas pilhas.
+6. MTU efetiva de RFCOMM medida e registrada nas duas pilhas;
+7. **comparação lado a lado** com UDP em Ethernet cabeada e com UDP em Wi-Fi, na mesma
+   bancada, na mesma sessão de medição.
+
+O item 7 existe porque a premissa "Bluetooth por causa da latência" precisa ser verificada,
+não assumida. A expectativa honesta, antes de medir:
+
+| Portador | Mediana esperada | p99 esperado |
+|---|---|---|
+| UDP em Ethernet cabeada | < 1 ms | < 2 ms |
+| Bluetooth RFCOMM | 10 a 30 ms | pior sob interferência de 2,4 GHz |
+| UDP em Wi-Fi congestionada | 2 a 5 ms | 20 a 50 ms, com picos |
+
+Se isso se confirmar, **Bluetooth perde feio para cabo e ganha do Wi-Fi ruim** — e a
+vantagem real dele passa a ser outra: não depender de rede nenhuma, e não disputar o rádio
+Wi-Fi com o resto da casa. Isso continua sendo um bom motivo, mas é um motivo diferente do
+que está escrito hoje em [01, §5](01-visao-e-escopo.md), e a política de escolha de
+portador precisa refletir o que foi medido.
 
 **Se reprovar (só a sessão 0).** Investigar Bluetooth a partir do agente, com o serviço
 fazendo a ponte — perde-se a tela de bloqueio por Bluetooth, mas ela sobrevive por UDP.
@@ -97,15 +129,26 @@ fazendo a ponte — perde-se a tela de bloqueio por Bluetooth, mas ela sobrevive
 alternativa; UDP passa a ser o principal. É uma mudança de produto, e precisa ser tomada
 aqui, não depois de 4.000 linhas escritas.
 
-### PoC-3 — `uinput` no greeter do Linux
+### PoC-3 — `uinput` no greeter e na tela de bloqueio do Linux
 
-**Pergunta.** O daemon consegue digitar a senha no GDM e na tela de bloqueio do
-GNOME? Qual é o atraso real entre `UI_DEV_CREATE` e o primeiro evento aceito?
+**Pergunta.** O daemon consegue digitar a senha no GDM e na tela de bloqueio do GNOME?
+Qual é o atraso real entre `UI_DEV_CREATE` e o primeiro evento aceito? E o serviço
+consegue rodar sem ser `root`?
 
-**Aprovação.** Digitar a senha no GDM e desbloquear; digitar na tela de bloqueio do
-GNOME e do KDE; medir e registrar o atraso de enumeração; funcionar com SELinux em
-*enforcing* no Fedora; ponteiro absoluto acertando o pixel pedido em telas com escalas
-diferentes.
+**Aprovação.**
+1. digitar a senha na **tela de bloqueio** do GNOME e do KDE e desbloquear (N2);
+2. digitar a senha no **greeter do GDM**, após o boot, e entrar (N3);
+3. atraso de enumeração após `UI_DEV_CREATE` medido e registrado;
+4. funcionar com SELinux em *enforcing* no Fedora;
+5. ponteiro absoluto acertando o pixel pedido em telas com escalas diferentes;
+6. os itens 1 e 2 funcionando com o serviço rodando como usuário de sistema dedicado,
+   **sem** `root` — inclusive o registro do perfil no BlueZ.
+
+**Resultado.** Como a PoC-1, devolve o **nível alcançado no Linux**: itens 1 e 2 passam →
+N3; só o item 1 → N2; nenhum → N1.
+
+**Se o item 6 reprovar.** O serviço sobe como `root` e larga o privilégio depois de abrir
+`/dev/uinput` e o barramento. É a única linha de [04, §4](04-seguranca.md) que muda.
 
 ### PoC-4 — `InputCapture` + `libei` como servidor
 
@@ -176,16 +219,19 @@ artificialmente não produz tecla presa; latência medida dentro da meta de
 Captura, supressão, injeção, ciclo de vida do agente, troca de desktop, tela de bloqueio,
 `SendSAS`.
 
-**Saída.** Windows→Windows completo, incluindo digitar a senha na tela de bloqueio e
-operar um prompt de UAC; teste de estresse de 10.000 travessias sem tecla presa; agente
-morto à força ressobe em menos de 500 ms sem deixar estado sujo.
+**Saída.** Windows→Windows completo, com o **nível de capacidade da PoC-1 confirmado no
+produto** — no mínimo N2: digitar a senha na tela de bloqueio e operar um prompt de UAC;
+troca de desktop instantânea, sem criação de processo; teste de estresse de 10.000
+travessias sem tecla presa; agente morto à força ressobe em menos de 500 ms sem deixar
+estado sujo; nenhum gancho instalado no desktop `Winlogon`, verificado por teste.
 
 ### Etapa 6 — Entrada no Linux
 
 `uinput` para injeção, `InputCapture` + `libei` para captura, integração com `logind`.
 
-**Saída.** As quatro combinações entre as duas plataformas funcionando; senha digitada no
-GDM; mesmo teste de estresse aprovado.
+**Saída.** As quatro combinações entre as duas plataformas funcionando; **nível de
+capacidade da PoC-3 confirmado no produto**, no mínimo N2 (tela de bloqueio do GNOME e do
+KDE); mesmo teste de estresse aprovado.
 
 ### Etapa 7 — Bluetooth
 
@@ -224,7 +270,8 @@ Um risco sem gatilho observável é um desejo. Cada linha diz o que dispara a re
 
 | Risco | Gatilho | Resposta |
 |---|---|---|
-| Injeção na tela de bloqueio inviável | PoC-1 reprova | redefinir o produto antes de escrever qualquer código |
+| Tela de **login** inalcançável (N2 em vez de N3) | PoC-1 item 3, ou PoC-3 item 2 | entrega-se N2 naquela plataforma, com a limitação declarada; **não bloqueia o lançamento** |
+| Tela de **bloqueio** inalcançável (N1) | PoC-1 itens 1/2/4 reprovam | redefinir o produto antes de escrever qualquer código — o serviço privilegiado perde a razão de existir |
 | Bluetooth inacessível da sessão 0 | PoC-2 item 1 reprova | Bluetooth pela ponte do agente; tela de bloqueio só por UDP |
 | Latência do Bluetooth pior que a da rede | PoC-2 item 4 reprova | UDP vira portador preferido; Bluetooth vira alternativa |
 | Compositor sem `InputCapture` | detecção em tempo de execução | sem papel de servidor ali; papel de cliente intacto |

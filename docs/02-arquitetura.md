@@ -41,17 +41,19 @@ Ele é responsável por:
 - os logs e o diagnóstico.
 
 O ponto crítico: **o estado de teclas pressionadas pertence ao serviço, não ao agente.**
-O agente é descartável e será reiniciado várias vezes numa sessão real de uso (a cada
-troca de desktop no Windows). Se o estado morasse nele, cada reinício deixaria teclas
-presas — que é a falha clássica desta classe de software.
+O agente é descartável — morre com o logoff, com a troca rápida de usuário, com uma falha
+de driver gráfico. Se o estado morasse nele, cada morte deixaria teclas presas, que é a
+falha clássica desta classe de software.
 
 ### 1.2. `inputremote-agent` — braço dentro da sessão gráfica
 
-Processo curto, sem estado próprio, lançado pelo serviço. Existe um por *desktop ativo*.
+Processo sem estado próprio, lançado pelo serviço. Existe **um por sessão de console**.
 
-- **Windows:** lançado pelo serviço como SYSTEM na sessão de console, amarrado a um
-  desktop específico (`WinSta0\Default` ou `WinSta0\Winlogon`). Faz `SendInput`,
-  instala `WH_KEYBOARD_LL`/`WH_MOUSE_LL`, lê `WM_INPUT`. Ver [05](05-windows.md).
+- **Windows:** lançado como `SYSTEM` com `TokenUIAccess`, em `WinSta0\Default`. Dentro
+  dele, **uma thread por desktop** (`Default`, `Winlogon`, `Screen-saver`), cada uma
+  amarrada por `SetThreadDesktop` na sua primeira instrução. Só a thread do `Default`
+  captura; as outras apenas injetam. Uma quarta thread vigia qual desktop está recebendo
+  entrada. Ver [05](05-windows.md) e [ADR-0008](adr/0008-agente-com-thread-por-desktop.md).
 - **Linux:** não injeta nunca. O serviço injeta direto por `uinput`, em qualquer situação.
   O agente cuida da captura pelo portal `InputCapture` (papel de servidor), do clipboard e
   do arranjo dos monitores. Ver [06](06-linux.md).
@@ -191,14 +193,15 @@ Servidor Windows, cliente Windows bloqueado, portador Bluetooth:
  ── rádio ──
  6. serviço do cliente decifra, valida sequência, Session::step(FrameReceived)
  7. Session → Command::Inject(KeyDown{scancode})
- 8. o serviço olha o desktop de entrada corrente: "Winlogon"
- 9. já existe agente amarrado a WinSta0\Winlogon? sim → manda para ele
-    não → lança um, espera o "pronto", reenvia o snapshot de estado, e então manda
-10. agente chama SendInput no desktop Winlogon → a senha aparece no campo
+ 8. o agente já sabe, pela thread de vigilância, que o desktop de entrada é "Winlogon"
+ 9. o comando vai para a thread desk-winlogon, que JÁ EXISTE e já está amarrada a ele
+10. essa thread chama SendInput → a senha aparece no campo
 ```
 
-O passo 9 é a resposta ao bug conhecido do Deskflow, em que a tela de bloqueio no
-cliente faz o controle voltar para o servidor.
+Os passos 8 e 9 são a resposta ao bug conhecido do Deskflow, em que a tela de bloqueio no
+cliente faz o controle voltar para o servidor. A thread do desktop seguro existe desde a
+subida do agente justamente para que a troca não custe nada no instante em que a tela
+bloqueia — ver [ADR-0008](adr/0008-agente-com-thread-por-desktop.md).
 
 ## 6. Regras invioláveis no caminho de latência
 
@@ -242,7 +245,8 @@ Um modo degradado só existe se estiver nesta tabela. Qualquer outro comportamen
 | Bluetooth ausente ou não pareado | entrada por UDP; a interface diz o motivo |
 | Rede ausente, Bluetooth ativo | entrada normal; arquivos e imagens marcados como indisponíveis |
 | Agente morre no Windows | serviço ressobe em até 500 ms e reenvia o snapshot; teclas não ficam presas |
-| Desktop troca (bloqueio, UAC) | serviço lança agente no novo desktop e reenvia o snapshot |
+| Desktop troca (bloqueio, UAC) | a thread daquele desktop já existe; troca instantânea, com snapshot de confirmação |
+| Tela de login inalcançável no Windows (nível N2) | tela de bloqueio e UAC funcionam; a tela de login pós-boot exige o teclado físico uma vez, e a interface diz isso |
 | Sem sessão gráfica no Linux (greeter) | nada muda: a injeção já é sempre por `uinput` |
 | Agente Linux morto | máquina segue como cliente, inclusive bloqueada; perde só o papel de servidor e o clipboard |
 | Par sumiu | libera todas as teclas em ≤ 1 s, devolve o controle, tenta reconectar |

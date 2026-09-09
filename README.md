@@ -27,13 +27,30 @@ Duas consequências práticas disso, para quem for compilar:
 - uma build sem assinatura serve para tudo o mais, inclusive uso normal — só não digita na
   tela de bloqueio.
 
+### Níveis de capacidade
+
+O requisito de entrada privilegiada é escalonado, e o produto declara qual nível alcançou
+em cada sistema — na interface e aqui:
+
+| Nível | Aceita entrada em | Situação |
+|---|---|---|
+| **N3** | tela de login, antes de qualquer usuário logado | alvo |
+| **N2** | tela de bloqueio e diálogos de elevação | **piso: abaixo disto o produto não se justifica** |
+| **N1** | apenas sessão desbloqueada | é um KVM comum |
+
+Se a tela de login não for alcançável num sistema, entrega-se N2 ali, com a limitação
+escrita — e não se bloqueia o resto. O que não é aceitável é o usuário descobrir o limite
+na hora em que precisa dele. Ver [docs/01](docs/01-visao-e-escopo.md).
+
 ## O que muda em relação ao InputRemote 1
 
-Este é um projeto novo, não uma refatoração. O v1 chegou a 23.500 linhas com 35% delas
-em dois arquivos, misturando interface, máquina de estados, transporte e plataforma no
-mesmo processo. O que ele fazia bem está preservado aqui como requisito; o que o tornou
-impossível de manter está documentado em [docs/00-licoes-do-v1.md](docs/00-licoes-do-v1.md)
-e proibido por regra em [docs/09-padroes-de-codigo.md](docs/09-padroes-de-codigo.md).
+Este é um projeto novo, não uma refatoração. **Nenhuma linha do v1 é reaproveitada.**
+Ele chegou a 23.500 linhas com 35% delas em dois arquivos, misturando interface, máquina
+de estados, transporte e plataforma no mesmo processo. O que ele fazia bem está preservado
+aqui como requisito; o que o tornou impossível de manter está documentado em
+[docs/00-licoes-do-v1.md](docs/00-licoes-do-v1.md), proibido por regra em
+[docs/09-padroes-de-codigo.md](docs/09-padroes-de-codigo.md) e listado nominalmente em
+[docs/11-nao-legado.md](docs/11-nao-legado.md).
 
 Quatro diferenças estruturais:
 
