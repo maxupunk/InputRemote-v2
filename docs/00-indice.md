@@ -1,0 +1,43 @@
+# Índice da documentação
+
+A ordem abaixo é a ordem de leitura. Cada documento pressupõe o anterior.
+
+| # | Documento | O que decide |
+|---|---|---|
+| 00 | [Lições do v1](00-licoes-do-v1.md) | o que não repetir, com evidência |
+| 01 | [Visão e escopo](01-visao-e-escopo.md) | o que o produto é, o que ele não é |
+| 02 | [Arquitetura](02-arquitetura.md) | processos, crates, fronteiras |
+| 03 | [Protocolo](03-protocolo.md) | camadas, canais, formato dos quadros |
+| 04 | [Segurança](04-seguranca.md) | pareamento, cripto, privilégio, modelo de ameaça |
+| 05 | [Plataforma Windows](05-windows.md) | serviço, agente, desktops, tela de bloqueio |
+| 06 | [Plataforma Linux](06-linux.md) | evdev, uinput, portais, greeter |
+| 07 | [Stack e dependências](07-stack-e-dependencias.md) | linguagem, libs, e por quê |
+| 08 | [Plano de implementação](08-plano-de-implementacao.md) | etapas, provas de conceito, ordem |
+| 09 | [Padrões de código](09-padroes-de-codigo.md) | regras que o CI faz cumprir |
+| 10 | [Testes e validação](10-testes-e-validacao.md) | como se prova que funciona |
+
+## Decisões arquiteturais (ADR)
+
+Cada ADR registra uma decisão, as alternativas descartadas e o custo aceito.
+Uma decisão só muda por um ADR novo que substitua o anterior — não por edição.
+
+| ADR | Decisão |
+|---|---|
+| [0001](adr/0001-tres-processos.md) | Três processos: serviço, agente, interface |
+| [0002](adr/0002-rust.md) | Rust como linguagem do núcleo |
+| [0003](adr/0003-noise-em-vez-de-quic.md) | Noise sobre UDP/TCP/RFCOMM, em vez de QUIC |
+| [0004](adr/0004-nucleo-sans-io.md) | Núcleo de sessão sem E/S |
+| [0005](adr/0005-bluetooth-rfcomm-winsock.md) | RFCOMM via Winsock, e pareamento do SO manual |
+| [0006](adr/0006-entrada-linux-evdev-uinput.md) | evdev + uinput como caminho primário no Linux |
+| [0007](adr/0007-ui-slint-processo-separado.md) | Interface em Slint, em processo separado |
+
+## Convenções
+
+- **Servidor**: o computador que tem o teclado e o mouse físicos.
+- **Cliente**: o computador controlado.
+- **Serviço**: `inputremote-daemon`, privilegiado, sobe com a máquina.
+- **Agente**: `inputremote-agent`, roda dentro de uma sessão/desktop gráfico.
+- **Interface**: `inputremote-ui`, sem privilégio, aberta sob demanda.
+
+Um requisito escrito como **DEVE** é obrigatório; **NÃO DEVE** é proibido; **PODE** é
+opcional. Requisitos sem essas palavras são contexto, não contrato.
