@@ -66,12 +66,20 @@ pub enum InjectEvent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CaptureEvent {
-    /// O ponteiro se moveu, em deltas relativos.
+    /// O ponteiro se moveu, em deltas relativos. Enviado enquanto o controle está no par.
     PointerMotion {
         /// Deslocamento horizontal.
         dx: i32,
         /// Deslocamento vertical.
         dy: i32,
+    },
+    /// O ponteiro está nesta posição absoluta de tela. Enviado enquanto o controle é local, para
+    /// a sessão saber a posição real do cursor e detectar a travessia no ponto certo.
+    PointerAbsolute {
+        /// Posição horizontal, em pixels de tela.
+        x: i32,
+        /// Posição vertical, em pixels de tela.
+        y: i32,
     },
     /// A roda girou.
     Wheel(WheelDelta),

@@ -44,10 +44,6 @@ static SUPPRESS: AtomicBool = AtomicBool::new(false);
 /// O ponto onde o cursor fica preso enquanto o controle está no par.
 static TRAP_X: AtomicI32 = AtomicI32::new(0);
 static TRAP_Y: AtomicI32 = AtomicI32::new(0);
-/// A última posição real conhecida, para o cálculo de delta com o controle local.
-static LAST_X: AtomicI32 = AtomicI32::new(0);
-static LAST_Y: AtomicI32 = AtomicI32::new(0);
-static LAST_VALID: AtomicBool = AtomicBool::new(false);
 
 /// Marcas de evento injetado, para não recapturar a própria injeção.
 /// `HC_ACTION` como `i32`, para comparar com o código do gancho sem conversão que avisa.
@@ -109,8 +105,6 @@ impl Capturer for HookCapturer {
                 TRAP_Y.load(Ordering::Relaxed),
             );
             warp(x, y);
-        } else {
-            LAST_VALID.store(false, Ordering::Relaxed);
         }
     }
 
@@ -251,13 +245,12 @@ fn handle_mouse(msg: u32, info: &MSLLHOOKSTRUCT, injected: bool, suppress: bool)
 /// Trata o movimento do ponteiro, com a lógica de prisão quando suprimindo.
 fn handle_move(info: &MSLLHOOKSTRUCT, injected: bool, suppress: bool) -> bool {
     if injected {
-        // Movimento nosso (a prisão): atualiza a referência e não repassa nem come.
-        LAST_X.store(info.pt.x, Ordering::Relaxed);
-        LAST_Y.store(info.pt.y, Ordering::Relaxed);
-        LAST_VALID.store(true, Ordering::Relaxed);
+        // Movimento nosso (a prisão, ou um warp): não repassa nem come, e não vira evento.
         return false;
     }
     if suppress {
+        // Controle no par: manda o delta a partir do ponto de prisão e reprende o cursor, para
+        // ele não sair da tela local. O evento é comido (o cursor local não se mexe).
         let tx = TRAP_X.load(Ordering::Relaxed);
         let ty = TRAP_Y.load(Ordering::Relaxed);
         let (dx, dy) = (info.pt.x - tx, info.pt.y - ty);
@@ -265,18 +258,15 @@ fn handle_move(info: &MSLLHOOKSTRUCT, injected: bool, suppress: bool) -> bool {
             emit(CaptureEvent::PointerMotion { dx, dy });
             warp(tx, ty);
         }
-        return true; // come o evento: o cursor local não se mexe
+        return true;
     }
-    if LAST_VALID.load(Ordering::Relaxed) {
-        let dx = info.pt.x - LAST_X.load(Ordering::Relaxed);
-        let dy = info.pt.y - LAST_Y.load(Ordering::Relaxed);
-        if dx != 0 || dy != 0 {
-            emit(CaptureEvent::PointerMotion { dx, dy });
-        }
-    }
-    LAST_X.store(info.pt.x, Ordering::Relaxed);
-    LAST_Y.store(info.pt.y, Ordering::Relaxed);
-    LAST_VALID.store(true, Ordering::Relaxed);
+    // Controle local: manda a posição **absoluta** real, para a sessão detectar a travessia no
+    // ponto certo em vez de acumular deltas de um ponto de partida arbitrário. O evento passa,
+    // então o cursor local se move normalmente.
+    emit(CaptureEvent::PointerAbsolute {
+        x: info.pt.x,
+        y: info.pt.y,
+    });
     false
 }
 

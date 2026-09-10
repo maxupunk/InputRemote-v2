@@ -154,6 +154,26 @@ impl Session {
         self.pointer
     }
 
+    /// A posição do ponteiro em coordenadas cruas, para a periferia que não conhece `Point`.
+    #[must_use]
+    pub const fn pointer_xy(&self) -> (i32, i32) {
+        (self.pointer.x, self.pointer.y)
+    }
+
+    /// Sincroniza o ponteiro com a posição **absoluta** real da máquina, sem detectar travessia.
+    ///
+    /// O servidor rastreia a posição acumulando deltas; se o ponto de partida não for o cursor
+    /// real, a travessia dispararia na coordenada errada. A periferia chama isto ao estabelecer a
+    /// sessão (e ao retomar o controle) para semear a posição verdadeira; os deltas seguintes a
+    /// mantêm em sincronia. Não atravessa: é semeadura, não movimento.
+    pub fn sync_pointer(&mut self, x: i32, y: i32) {
+        let point = Point::new(x, y);
+        self.pointer = self
+            .local_screens
+            .as_ref()
+            .map_or(point, |desktop| desktop.nearest_valid(point));
+    }
+
     /// A última ida e volta medida até o par, se já houve alguma.
     #[must_use]
     pub const fn last_rtt(&self) -> Option<crate::time::Millis> {

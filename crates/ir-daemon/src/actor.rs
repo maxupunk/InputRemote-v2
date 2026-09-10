@@ -11,7 +11,7 @@ use ir_input::{CaptureEvent, Capturer, Injector};
 use ir_net::{ConnectMode, NetCommand, NetEvent};
 use ir_proto::carrier::Carrier;
 use ir_proto::input::PointerDelta;
-use ir_session::{CommandBatch, Input, LinkDown, Session, Timestamp};
+use ir_session::{CommandBatch, Input, LinkDown, Phase, Session, Timestamp};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tracing::{error, info, warn};
 
@@ -34,7 +34,18 @@ pub(crate) struct Daemon {
     config: Config,
     pending_peer: Option<ir_crypto::PublicKey>,
     awaiting_confirm: bool,
+    /// Se a próxima posição absoluta deve **semear** o ponteiro (sem atravessar) em vez de virar
+    /// movimento. Ligado ao estabelecer e ao retomar o controle, para o cursor real e o modelo da
+    /// sessão começarem no mesmo ponto.
+    seed_pointer: bool,
+    /// Se o enlace seguro (criptografia) está de pé. Distinto de a sessão estar estabelecida.
+    linked: bool,
+    /// Contador de batidas, para espaçar as tentativas de reconexão.
+    ticks: u32,
 }
+
+/// A cada quantas batidas de 5 ms se tenta reconectar. 600 × 5 ms = 3 s.
+const RECONNECT_TICKS: u32 = 600;
 
 /// O que o ator precisa para nascer.
 pub(crate) struct Parts {
@@ -73,6 +84,9 @@ impl Daemon {
             config: parts.config,
             pending_peer: None,
             awaiting_confirm: false,
+            seed_pointer: true,
+            linked: false,
+            ticks: 0,
         }
     }
 
@@ -89,6 +103,34 @@ impl Daemon {
         self.apply_commands();
     }
 
+    /// A batida periódica: reconecta quando é hora, depois avança a sessão.
+    fn on_tick(&mut self) {
+        self.ticks = self.ticks.wrapping_add(1);
+        // A cada ~3 s, tenta se recuperar do que estiver caído, para a ordem de subida das duas
+        // máquinas não importar e uma falha transitória não exigir reiniciar à mão.
+        if self.ticks.is_multiple_of(RECONNECT_TICKS) {
+            self.reconnect_if_needed();
+        }
+        self.drive(Input::Tick);
+    }
+
+    /// Retoma a conexão conforme o que está caído.
+    fn reconnect_if_needed(&mut self) {
+        if self.awaiting_confirm {
+            return; // no meio de um pareamento; não atrapalhar
+        }
+        if self.linked {
+            // O enlace seguro está de pé, mas a sessão caiu (silêncio do par). Reinicia a sessão
+            // sobre o mesmo enlace: um `Hello` novo, que o par absorve se já estiver de pé.
+            if self.session.phase() == Phase::Offline {
+                self.drive(Input::CarrierUp(Carrier::Udp));
+            }
+        } else {
+            // Sem enlace: se somos o iniciador (temos endereço), tenta conectar de novo.
+            self.connect_if_possible();
+        }
+    }
+
     /// Roda o ator até os canais fecharem.
     pub(crate) async fn run(
         mut self,
@@ -101,7 +143,7 @@ impl Daemon {
         let mut ticker = tokio::time::interval(std::time::Duration::from_millis(5));
         loop {
             tokio::select! {
-                _ = ticker.tick() => self.drive(Input::Tick),
+                _ = ticker.tick() => self.on_tick(),
                 event = net_events.recv() => match event {
                     Some(event) => self.on_net(event),
                     None => break,
@@ -130,6 +172,7 @@ impl Daemon {
             NetEvent::Frame(bytes) => self.on_frame(&bytes),
             NetEvent::LinkDown(reason) => {
                 info!(reason, "enlace de rede caiu");
+                self.linked = false;
                 self.drive(Input::CarrierDown {
                     carrier: Carrier::Udp,
                     reason: LinkDown::TransportFailed,
@@ -174,7 +217,11 @@ impl Daemon {
             let _ = self.net.send(NetCommand::Disconnect);
             return;
         }
+        self.linked = true;
         self.peer_addr = Some(peer);
+        // A próxima posição absoluta semeia o ponteiro: o cursor real está onde está, e o modelo
+        // da sessão precisa começar no mesmo ponto, senão a primeira travessia dispara errado.
+        self.seed_pointer = true;
         info!(%peer, "enlace seguro pronto; iniciando a sessão");
         self.drive(Input::CarrierUp(Carrier::Udp));
     }
@@ -205,6 +252,10 @@ impl Daemon {
     /// Um evento de entrada capturado localmente (papel de servidor).
     fn on_capture(&mut self, event: CaptureEvent) {
         let input = match event {
+            CaptureEvent::PointerAbsolute { x, y } => {
+                self.on_absolute_pointer(x, y);
+                return;
+            }
             CaptureEvent::PointerMotion { dx, dy } => Input::LocalPointer(PointerDelta { dx, dy }),
             CaptureEvent::Wheel(delta) => Input::LocalWheel(delta),
             CaptureEvent::Key { usage, pressed } => Input::LocalKey { usage, pressed },
@@ -212,6 +263,24 @@ impl Daemon {
             _ => return,
         };
         self.drive(input);
+    }
+
+    /// O cursor real está nesta posição absoluta (controle local).
+    ///
+    /// Na primeira vez após estabelecer, **semeia** o ponteiro da sessão sem atravessar. Depois,
+    /// vira o delta desde a posição que a sessão tem — o que mantém o modelo em sincronia com o
+    /// cursor real e faz a travessia disparar no ponto certo.
+    fn on_absolute_pointer(&mut self, x: i32, y: i32) {
+        if self.seed_pointer {
+            self.session.sync_pointer(x, y);
+            self.seed_pointer = false;
+            return;
+        }
+        let (px, py) = self.session.pointer_xy();
+        let (dx, dy) = (x - px, y - py);
+        if dx != 0 || dy != 0 {
+            self.drive(Input::LocalPointer(PointerDelta { dx, dy }));
+        }
     }
 
     /// Inicia a conexão como iniciador, se houver par e endereço.

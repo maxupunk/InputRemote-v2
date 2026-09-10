@@ -170,3 +170,42 @@ fn a_pointer_move_while_remote_is_coalesced_and_dispatched_on_the_interval() {
     let injections = pair.count(Side::Client, is::injection);
     assert_eq!(injections, 1, "as três amostras viram uma só, somada");
 }
+
+#[test]
+fn seeding_the_pointer_positions_without_crossing_then_a_delta_crosses() {
+    // Reproduz o cenário da máquina real: o cursor está perto da borda direita, e o servidor
+    // precisa saber a posição **absoluta** para atravessar no ponto certo. Semear não atravessa;
+    // um movimento pequeno a partir dali, sim. Sem a semeadura, o servidor acumularia deltas de
+    // (0,0) e o cursor real chegaria à borda física da tela antes de o modelo chegar à sua — e a
+    // travessia nunca aconteceria.
+    let mut pair = connected();
+
+    pair.server.sync_pointer(1900, 500);
+    assert_eq!(
+        pair.server.phase(),
+        Phase::Ready,
+        "semear a posição não pode atravessar"
+    );
+    assert_eq!(pair.server.pointer_xy(), (1900, 500));
+
+    pair.feed(
+        Side::Server,
+        Input::LocalPointer(PointerDelta { dx: 100, dy: 0 }),
+    );
+    assert_eq!(
+        pair.server.phase(),
+        Phase::Engaged,
+        "chegando na borda a partir da posição real, atravessa"
+    );
+}
+
+#[test]
+fn syncing_clamps_a_position_outside_every_screen() {
+    let mut pair = connected();
+    pair.server.sync_pointer(-500, -500);
+    let (x, y) = pair.server.pointer_xy();
+    assert!(
+        x >= 0 && y >= 0,
+        "posição fora de toda tela é trazida para dentro"
+    );
+}
