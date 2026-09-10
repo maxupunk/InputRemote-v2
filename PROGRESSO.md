@@ -158,17 +158,25 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Deltas de `i32::MIN`/`i32::MAX` saturam em vez de estourar
 
 ### 2.3. `ir-session`
-- [ ] `Input` / `Command` / `Session::step`
-- [ ] Máquina de estados completa
-- [ ] Travessia de borda ida e volta
-- [ ] `ReleaseAll` em toda falha
-- [ ] Reconexão sem novo pareamento
-- [ ] Troca de portador sem duplicar nem perder evento
-- [ ] `StateSnapshot` e reconciliação idempotente
-- [ ] Atalho de emergência
+- [x] `Timestamp`/`Millis` injetados — o crate nunca lê o relógio
+- [x] `Input` / `Command` / `CommandBatch` / `Session::step`
+- [x] Máquina de estados: 4 fases, tabela de 10 transições, sem atalho para `Engaged`
+- [x] Prazos coerentes por construção (`Timings::is_coherent`)
+- [x] Handshake com negociação de versão e recusa por incompatibilidade
+- [x] Política **única** de escolha de portador, com o motivo visível
+- [x] Travessia de borda ida e volta, entre resoluções diferentes
+- [x] `ReleaseAll` em toda falha, **antes** de qualquer outro comando
+- [x] Reconexão sem novo pareamento
+- [x] Troca de portador solta tudo antes de trocar
+- [x] `StateSnapshot` periódico e reconciliação idempotente
+- [x] Alinhamento de modificadores a cada mensagem de entrada
+- [x] Atalho de emergência nos dois papéis
+- [x] Coalescência de ponteiro, nunca de teclado
+- [x] Latência de ida e volta medida e observável
+- [x] Agente perdido devolve o controle sem deixar tecla presa
+- [x] 25 cenários de integração, um por linha de [10, §2](docs/10-testes-e-validacao.md)
 - [ ] Confiabilidade do canal de entrada sobre UDP (seq/ack/retransmissão)
-- [ ] Coalescência de ponteiro, nunca de teclado
-- [ ] Cobertura ≥ 85% em `ir-session` e `ir-proto`
+- [ ] Cobertura ≥ 85% medida em `ir-session` e `ir-proto`
 
 ---
 

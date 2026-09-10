@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/ir-proto",
     "crates/ir-geometry",
+    "crates/ir-session",
 ]
 
 [workspace.package]
@@ -17,6 +18,7 @@ repository = "https://github.com/inputremote/inputremote"
 # Núcleo puro — sem E/S. Ver docs/02-arquitetura.md §2.
 ir-proto = { path = "crates/ir-proto", version = "0.1.0-dev" }
 ir-geometry = { path = "crates/ir-geometry", version = "0.1.0-dev" }
+ir-session = { path = "crates/ir-session", version = "0.1.0-dev" }
 
 postcard = { version = "1.1", default-features = false, features = ["alloc"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }

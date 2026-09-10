@@ -1,0 +1,154 @@
+//! O que pode acontecer com a sessão.
+
+use ir_proto::carrier::Carrier;
+use ir_proto::frame::Frame;
+use ir_proto::input::{Button, HidUsage, PointerDelta, WheelDelta};
+use ir_proto::message::DisconnectReason;
+use ir_proto::screens::ScreenLayout;
+
+/// Tudo que pode acontecer com a sessão.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Input {
+    /// Passou tempo. Nada mais aconteceu.
+    ///
+    /// É como prazos vencem. A periferia entrega um `Tick` quando um temporizador que a
+    /// sessão pediu dispara, e também periodicamente — a sessão tolera os dois.
+    Tick,
+
+    /// Um portador ficou disponível.
+    CarrierUp(Carrier),
+
+    /// Um portador caiu.
+    CarrierDown {
+        /// Qual.
+        carrier: Carrier,
+        /// Por quê, do ponto de vista local.
+        reason: LinkDown,
+    },
+
+    /// Chegou um quadro do par.
+    Received {
+        /// Por onde chegou.
+        carrier: Carrier,
+        /// O quadro já decifrado e decodificado.
+        frame: Frame,
+    },
+
+    /// O ponteiro local se moveu. Só faz sentido no servidor.
+    LocalPointer(PointerDelta),
+
+    /// A roda local girou.
+    LocalWheel(WheelDelta),
+
+    /// Uma tecla local mudou de estado.
+    LocalKey {
+        /// A tecla física.
+        usage: HidUsage,
+        /// `true` para pressionada.
+        pressed: bool,
+    },
+
+    /// Um botão local mudou de estado.
+    LocalButton {
+        /// O botão.
+        button: Button,
+        /// `true` para pressionado.
+        pressed: bool,
+    },
+
+    /// O usuário acionou o atalho de emergência.
+    ///
+    /// Devolve o controle e solta tudo imediatamente, mesmo com o enlace saudável. É a saída
+    /// de que o usuário precisa quando alguma coisa deu errado e ele não sabe o quê.
+    EmergencyRelease,
+
+    /// O arranjo de telas desta máquina mudou.
+    LocalScreens(ScreenLayout),
+
+    /// O agente desta máquina está pronto para injetar.
+    AgentReady,
+
+    /// O agente desta máquina sumiu.
+    ///
+    /// No Windows acontece a cada logoff e a cada troca rápida de usuário. Não é falha da
+    /// sessão; é rotina, e o estado é do serviço justamente por isso
+    /// (`docs/02-arquitetura.md` §1.1).
+    AgentLost,
+}
+
+/// Por que um portador caiu, do ponto de vista local.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum LinkDown {
+    /// O par anunciou o encerramento.
+    PeerClosed(DisconnectReason),
+    /// O par parou de responder.
+    Timeout,
+    /// O transporte falhou: socket fechado, rádio desligado, cabo removido.
+    TransportFailed,
+    /// Esta máquina vai suspender.
+    Suspending,
+    /// O usuário mandou parar.
+    UserStopped,
+}
+
+impl LinkDown {
+    /// Se vale tentar reconectar sozinho depois disto.
+    #[must_use]
+    pub const fn should_retry(self) -> bool {
+        match self {
+            Self::PeerClosed(reason) => reason.should_retry(),
+            Self::Timeout | Self::TransportFailed | Self::Suspending => true,
+            Self::UserStopped => false,
+        }
+    }
+
+    /// O motivo a anunciar ao par, quando somos nós que encerramos.
+    #[must_use]
+    pub const fn as_disconnect_reason(self) -> DisconnectReason {
+        match self {
+            Self::PeerClosed(reason) => reason,
+            Self::Timeout => DisconnectReason::Timeout,
+            Self::TransportFailed => DisconnectReason::ProtocolError,
+            Self::Suspending => DisconnectReason::Suspending,
+            Self::UserStopped => DisconnectReason::UserRequested,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_user_stop_refuses_to_retry() {
+        assert!(!LinkDown::UserStopped.should_retry());
+        assert!(LinkDown::Timeout.should_retry());
+        assert!(LinkDown::TransportFailed.should_retry());
+        assert!(LinkDown::Suspending.should_retry());
+    }
+
+    #[test]
+    fn a_peer_close_inherits_the_peers_retry_policy() {
+        assert!(LinkDown::PeerClosed(DisconnectReason::Timeout).should_retry());
+        assert!(!LinkDown::PeerClosed(DisconnectReason::UserRequested).should_retry());
+        assert!(!LinkDown::PeerClosed(DisconnectReason::ProtocolError).should_retry());
+    }
+
+    #[test]
+    fn every_local_reason_maps_to_something_the_peer_understands() {
+        use DisconnectReason as D;
+        assert_eq!(LinkDown::Timeout.as_disconnect_reason(), D::Timeout);
+        assert_eq!(LinkDown::Suspending.as_disconnect_reason(), D::Suspending);
+        assert_eq!(
+            LinkDown::UserStopped.as_disconnect_reason(),
+            D::UserRequested
+        );
+        assert_eq!(
+            LinkDown::PeerClosed(D::Reconfiguring).as_disconnect_reason(),
+            D::Reconfiguring,
+            "o motivo do par é repassado intacto"
+        );
+    }
+}

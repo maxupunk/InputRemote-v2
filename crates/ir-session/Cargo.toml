@@ -1,0 +1,17 @@
+[package]
+name = "ir-session"
+description = "A máquina de estados do produto. Pura: entra evento, sai comando."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ir-geometry.workspace = true
+ir-proto.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

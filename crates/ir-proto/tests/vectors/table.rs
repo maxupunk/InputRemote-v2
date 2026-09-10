@@ -1,34 +1,12 @@
-//! Vetores gravados do formato de fio, versão 1.
+//! A tabela de vetores gravados, um grupo por canal.
 //!
-//! Este arquivo é a única proteção contra a falha mais perigosa deste protocolo.
-//!
-//! O `postcard` não é autodescritivo: os campos são posicionais. Reordenar dois campos de
-//! uma struct, inserir uma variante no meio de um enum ou trocar `u16` por `u32` produz
-//! bytes que a outra ponta **decodifica com sucesso** e interpreta errado. Num produto que
-//! digita senha em tela de bloqueio, isso não é um bug de compatibilidade — é digitar a
-//! coisa errada na máquina do outro.
-//!
-//! Nenhum teste de ida e volta pega isso, porque as duas pontas do teste mudam juntas.
-//! Só um byte gravado pega.
-//!
-//! # Quando este teste falhar
-//!
-//! Ele falha por um de dois motivos, e a resposta é diferente:
-//!
-//! 1. **A mudança foi intencional.** Incremente `version::CURRENT`, acrescente o conjunto
-//!    novo de vetores mantendo o antigo, e trate a versão antiga na negociação.
-//! 2. **A mudança foi acidental.** Reverta. Foi exatamente para isto que o teste existe.
-//!
-//! Apagar ou reescrever um vetor para "fazer o teste passar" desfaz a única proteção que
-//! existe aqui. Ver `docs/03-protocolo.md` §9.
+//! Separada do arquivo de testes porque é dado, não lógica — e porque o limite de 400 linhas
+//! por arquivo de `docs/09-padroes-de-codigo.md` §1 vale também para tabela.
 
-// Um teste de integração é um crate próprio, então a liberação de `expect` que a biblioteca
-// concede a `#[cfg(test)]` não chega até aqui. Em teste, `expect` com mensagem é melhor que
-// propagar erro: a mensagem *é* o diagnóstico.
-#![allow(clippy::expect_used)]
+// Este módulo só é usado pelo binário de teste ao lado; `pub` aqui é a única forma de
+// exportá-lo para lá.
+#![allow(unreachable_pub)]
 
-use ir_proto::carrier::Carrier;
-use ir_proto::codec;
 use ir_proto::frame::{Ack, Frame, Sequence};
 use ir_proto::ids::{MachineId, MonitorId};
 use ir_proto::input::{
@@ -38,6 +16,13 @@ use ir_proto::message::{Control, Feedback, Greeting, InputMessage, Message, Poin
 use ir_proto::peer::{Capabilities, ClipboardCapabilities, MachineName, PrivilegedInputLevel};
 use ir_proto::screens::{Edge, ScreenLayout};
 use ir_proto::version;
+
+/// Um vetor: nome, o quadro, e os bytes que a versão 1 produz para ele.
+pub struct Vector {
+    pub name: &'static str,
+    pub frame: Frame,
+    pub hex: &'static str,
+}
 
 /// Modificadores usados em todos os vetores de entrada: um da esquerda, um da direita.
 fn mods() -> Modifiers {
@@ -79,13 +64,6 @@ fn greeting() -> Greeting {
     }
 }
 
-/// Um vetor: nome, o quadro, e os bytes que a versão 1 produz para ele.
-struct Vector {
-    name: &'static str,
-    frame: Frame,
-    hex: &'static str,
-}
-
 /// Construtores curtos, compartilhados pelos quatro grupos de vetores.
 fn v(name: &'static str, frame: Frame, hex: &'static str) -> Vector {
     Vector { name, frame, hex }
@@ -112,7 +90,7 @@ fn feedback(message: Feedback, seq: u32) -> Frame {
 /// Dividido por canal e não numa tabela só porque o limite de 60 linhas por função de
 /// `docs/09-padroes-de-codigo.md` §1 vale também para tabela de dados — e porque um grupo
 /// por canal é onde se procura quando um canal muda.
-fn vectors() -> Vec<Vector> {
+pub fn vectors() -> Vec<Vector> {
     let mut all = control_vectors();
     all.extend(session_vectors());
     all.extend(input_vectors());
@@ -300,106 +278,4 @@ fn feedback_vectors() -> Vec<Vector> {
             "03011000",
         ),
     ]
-}
-
-fn to_hex(bytes: &[u8]) -> String {
-    use core::fmt::Write;
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        write!(out, "{byte:02x}").expect("escrever em String não falha");
-    }
-    out
-}
-
-fn from_hex(hex: &str) -> Vec<u8> {
-    assert!(
-        hex.len().is_multiple_of(2),
-        "hex com número ímpar de dígitos"
-    );
-    (0..hex.len())
-        .step_by(2)
-        .map(|i| {
-            let pair = hex.get(i..i + 2).expect("par de dígitos");
-            u8::from_str_radix(pair, 16).expect("dígito hexadecimal válido")
-        })
-        .collect()
-}
-
-#[test]
-fn encoding_matches_the_recorded_bytes() {
-    for Vector { name, frame, hex } in vectors() {
-        let bytes = codec::encode(&frame, Carrier::Udp).expect("codifica");
-        assert_eq!(
-            to_hex(&bytes),
-            hex,
-            "\no formato de fio de `{name}` mudou.\n\
-             Se a mudança foi intencional, incremente version::CURRENT e adicione um \
-             conjunto novo de vetores.\n\
-             Se não foi, reverta — este teste existe exatamente para pegar isto.\n"
-        );
-    }
-}
-
-#[test]
-fn recorded_bytes_decode_back_to_the_same_frame() {
-    for Vector { name, frame, hex } in vectors() {
-        let decoded = codec::decode(&from_hex(hex), Carrier::Udp).expect("decodifica");
-        assert_eq!(decoded, frame, "`{name}` não sobreviveu à ida e volta");
-    }
-}
-
-#[test]
-fn the_first_byte_is_always_the_channel() {
-    // A regra de docs/03-protocolo.md §4. Verificada contra os bytes gravados, e não contra
-    // o que o código calcula, para que ela não possa "mudar junto".
-    for Vector { name, frame, hex } in vectors() {
-        let first = from_hex(hex).first().copied().expect("vetor não vazio");
-        assert_eq!(
-            first,
-            frame.channel().to_wire(),
-            "primeiro byte de `{name}`"
-        );
-    }
-}
-
-#[test]
-fn every_recorded_vector_has_a_distinct_name_and_encoding() {
-    let all = vectors();
-    for (index, a) in all.iter().enumerate() {
-        for b in all.iter().skip(index + 1) {
-            assert_ne!(a.name, b.name, "nome de vetor repetido");
-            assert_ne!(a.hex, b.hex, "`{}` e `{}` codificam igual", a.name, b.name);
-        }
-    }
-}
-
-#[test]
-fn input_vectors_stay_within_the_hot_path_budget() {
-    for Vector { name, frame, hex } in vectors() {
-        if frame.message.is_hot_path() {
-            let size = from_hex(hex).len();
-            assert!(
-                size <= ir_proto::limits::MAX_INPUT_MESSAGE,
-                "`{name}` ocupa {size} B, teto {} B",
-                ir_proto::limits::MAX_INPUT_MESSAGE
-            );
-        }
-    }
-}
-
-#[test]
-fn the_vector_set_covers_every_channel_that_has_one() {
-    use ir_proto::ChannelId;
-    let covered: Vec<ChannelId> = vectors().iter().map(|v| v.frame.channel()).collect();
-    for channel in [
-        ChannelId::Control,
-        ChannelId::ReliableInput,
-        ChannelId::Pointer,
-        ChannelId::Feedback,
-    ] {
-        assert!(
-            covered.contains(&channel),
-            "nenhum vetor cobre o canal {channel}"
-        );
-    }
 }

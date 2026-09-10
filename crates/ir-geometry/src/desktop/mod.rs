@@ -11,10 +11,11 @@
 //! [`Desktop::nearest_valid`].
 
 use ir_proto::ids::MonitorId;
-use ir_proto::input::PointerPosition;
-use ir_proto::screens::{Edge, MonitorInfo, ScreenLayout};
+use ir_proto::screens::{MonitorInfo, ScreenLayout};
 
 use crate::geom::{Point, Rect};
+
+mod mapping;
 
 /// Um monitor validado.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,48 +128,6 @@ impl Desktop {
             .min_by_key(|candidate| squared_distance(*candidate, point))
             .unwrap_or(point)
     }
-
-    /// Converte um ponto do desktop na posição normalizada que viaja no protocolo.
-    ///
-    /// O ponto é primeiro trazido para dentro de um monitor, então esta função nunca falha.
-    #[must_use]
-    pub fn to_position(&self, point: Point) -> PointerPosition {
-        let point = self.nearest_valid(point);
-        let monitor = self.monitor_at(point).unwrap_or_else(|| self.primary());
-        PointerPosition {
-            monitor: monitor.id,
-            x: monitor.bounds.fraction_x(point),
-            y: monitor.bounds.fraction_y(point),
-        }
-    }
-
-    /// Converte uma posição do protocolo num ponto deste desktop.
-    ///
-    /// Se o monitor anunciado não existe aqui — o par tem outro arranjo, ou o arranjo mudou
-    /// entre o anúncio e a chegada da mensagem — a posição é interpretada contra o monitor
-    /// principal. É melhor colocar o ponteiro na tela errada do que em nenhuma.
-    #[must_use]
-    pub fn from_position(&self, position: PointerPosition) -> Point {
-        let monitor = self
-            .monitor(position.monitor)
-            .unwrap_or_else(|| self.primary());
-        let bounds = monitor.bounds;
-        Point {
-            x: bounds.x_at(position.x),
-            y: bounds.y_at(position.y),
-        }
-    }
-
-    /// Se o ponto está na borda dada do desktop, pronto para atravessar.
-    #[must_use]
-    pub fn is_at_edge(&self, point: Point, edge: Edge) -> bool {
-        match edge {
-            Edge::Left => point.x <= self.bounds.left(),
-            Edge::Right => point.x >= self.bounds.right(),
-            Edge::Top => point.y <= self.bounds.top(),
-            Edge::Bottom => point.y >= self.bounds.bottom(),
-        }
-    }
 }
 
 /// Distância ao quadrado, em `i64` para não estourar com coordenadas grandes.
@@ -182,7 +141,6 @@ fn squared_distance(a: Point, b: Point) -> i64 {
 mod tests {
     use super::*;
 
-    /// Monitor de teste. Por convenção, o de identificador 0 é o principal.
     fn info(id: u8, x: i32, y: i32, w: u32, h: u32) -> MonitorInfo {
         MonitorInfo {
             id: MonitorId(id),
@@ -212,6 +170,7 @@ mod tests {
         ])
     }
 
+    /// Dois monitores lado a lado, o segundo à esquerda em coordenada negativa.
     #[test]
     fn an_empty_layout_produces_no_desktop() {
         let layout = ScreenLayout::new(Vec::new()).expect("vazio é válido");
@@ -311,83 +270,6 @@ mod tests {
                 .map(|m| m.id),
             Some(MonitorId(1))
         );
-    }
-
-    #[test]
-    fn position_round_trips_within_a_pixel() {
-        let d = side_by_side();
-        for point in [
-            Point::new(0, 0),
-            Point::new(1919, 1079),
-            Point::new(960, 540),
-            Point::new(-1280, 0),
-            Point::new(-1, 500),
-        ] {
-            let position = d.to_position(point);
-            let back = d.from_position(position);
-            assert!(
-                back.x.abs_diff(point.x) <= 1 && back.y.abs_diff(point.y) <= 1,
-                "{point:?} voltou como {back:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn position_of_an_unknown_monitor_falls_back_to_primary() {
-        let d = single();
-        let alien = PointerPosition {
-            monitor: MonitorId(200),
-            x: 0,
-            y: 0,
-        };
-        let point = d.from_position(alien);
-        assert!(
-            d.monitor_at(point).is_some(),
-            "tem de cair em alguma tela real"
-        );
-        assert_eq!(d.monitor_at(point).map(|m| m.id), Some(d.primary().id));
-    }
-
-    #[test]
-    fn to_position_never_produces_an_unusable_coordinate() {
-        let d = desktop(vec![info(0, 0, 0, 800, 600), info(1, 800, 600, 800, 600)]);
-        for point in [
-            Point::new(1200, 100),
-            Point::new(-9999, 0),
-            Point::new(i32::MAX, i32::MIN),
-        ] {
-            let position = d.to_position(point);
-            assert!(
-                d.monitor(position.monitor).is_some(),
-                "monitor inexistente para {point:?}"
-            );
-            let back = d.from_position(position);
-            assert!(
-                d.monitor_at(back).is_some(),
-                "{point:?} virou coordenada inválida"
-            );
-        }
-    }
-
-    #[test]
-    fn edge_detection_uses_the_whole_desktop_not_one_monitor() {
-        let d = side_by_side();
-        assert!(d.is_at_edge(Point::new(1919, 500), Edge::Right));
-        assert!(
-            !d.is_at_edge(Point::new(0, 500), Edge::Right),
-            "borda do monitor não é do desktop"
-        );
-        assert!(d.is_at_edge(Point::new(-1280, 500), Edge::Left));
-        assert!(d.is_at_edge(Point::new(500, 0), Edge::Top));
-        assert!(d.is_at_edge(Point::new(500, 1079), Edge::Bottom));
-    }
-
-    #[test]
-    fn edge_detection_treats_beyond_the_edge_as_at_the_edge() {
-        // O gancho pode entregar um delta que passa da borda de uma vez.
-        let d = single();
-        assert!(d.is_at_edge(Point::new(5000, 500), Edge::Right));
-        assert!(d.is_at_edge(Point::new(-5000, 500), Edge::Left));
     }
 
     #[test]

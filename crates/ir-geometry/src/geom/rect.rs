@@ -1,46 +1,9 @@
-//! Ponto e retângulo, em pixels lógicos do desktop virtual.
-//!
-//! Tudo aqui é inteiro. Não há ponto flutuante em nenhum lugar desta biblioteca, e isso é
-//! deliberado: uma coordenada de ponteiro é um pixel, não uma fração dele, e `f32` não tem
-//! ordenação total nem resultado exatamente reprodutível entre plataformas — o que
-//! quebraria os vetores gravados e tornaria um teste de mapeamento frágil.
+//! Um retângulo em pixels lógicos, com bordas inclusivas.
 
 use ir_proto::screens::Edge;
 
-/// Um ponto no desktop virtual, em pixels lógicos.
-///
-/// Coordenadas negativas são normais: o Windows põe monitores à esquerda ou acima do
-/// principal em coordenadas negativas.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub struct Point {
-    /// Horizontal, positivo para a direita.
-    pub x: i32,
-    /// Vertical, positivo para baixo.
-    pub y: i32,
-}
-
-impl Point {
-    /// A origem.
-    pub const ORIGIN: Self = Self { x: 0, y: 0 };
-
-    /// Um ponto.
-    #[must_use]
-    pub const fn new(x: i32, y: i32) -> Self {
-        Self { x, y }
-    }
-
-    /// Este ponto deslocado, saturando em vez de estourar.
-    ///
-    /// Saturar e não estourar: um delta absurdo vindo de um par com defeito deve grudar o
-    /// ponteiro na borda, não dar a volta para o canto oposto nem derrubar o serviço.
-    #[must_use]
-    pub const fn offset(self, dx: i32, dy: i32) -> Self {
-        Self {
-            x: self.x.saturating_add(dx),
-            y: self.y.saturating_add(dy),
-        }
-    }
-}
+use super::point::Point;
+use super::scale::{clamp_i32, denormalise, normalise, span_as_i32, span_from_bounds};
 
 /// Um retângulo, em pixels lógicos.
 ///
@@ -263,58 +226,6 @@ impl Rect {
     }
 }
 
-/// Converte um deslocamento em pixels dentro de `span` numa fração `0..=u16::MAX`.
-///
-/// Arredonda para o mais próximo, e não trunca. A diferença não é cosmética: numa tela de
-/// 1920 px, um pixel vale 34 unidades de fração, e truncar nas duas conversões perdia o
-/// recuo de um pixel do ponto de entrada — o ponteiro voltava exatamente para a borda e
-/// atravessava de novo. Foi o teste `entry_is_never_on_the_far_edge` que pegou isso.
-fn normalise(offset: i64, span: u32) -> u16 {
-    let last = u64::from(span).saturating_sub(1);
-    if last == 0 {
-        return 0;
-    }
-    let clamped = u64::try_from(offset.max(0)).unwrap_or(0).min(last);
-    // Em u64: `last` cabe em u32 e u16::MAX é pequeno, então o produto não estoura.
-    let scaled = (clamped * u64::from(u16::MAX) + last / 2) / last;
-    u16::try_from(scaled).unwrap_or(u16::MAX)
-}
-
-/// Converte uma fração `0..=u16::MAX` num deslocamento em pixels dentro de `span`.
-///
-/// Arredonda para o mais próximo, pelo mesmo motivo de [`normalise`].
-fn denormalise(fraction: u16, span: u32) -> i32 {
-    let last = u64::from(span).saturating_sub(1);
-    let full = u64::from(u16::MAX);
-    let offset = (u64::from(fraction) * last + full / 2) / full;
-    i32::try_from(offset).unwrap_or(i32::MAX)
-}
-
-/// O deslocamento da última coluna ou linha de um retângulo de largura `span`.
-///
-/// Saturado: uma dimensão maior que `i32::MAX` não existe em tela real, e saturar é melhor
-/// que estourar num tipo que veio da rede.
-fn span_as_i32(span: u32) -> i32 {
-    i32::try_from(span.saturating_sub(1)).unwrap_or(i32::MAX)
-}
-
-/// A dimensão de um retângulo cujas bordas inclusivas são `low` e `high`.
-fn span_from_bounds(low: i32, high: i32) -> u32 {
-    let span = i64::from(high) - i64::from(low) + 1;
-    u32::try_from(span.max(1)).unwrap_or(u32::MAX)
-}
-
-/// `clamp` de `i32` utilizável em contexto constante.
-const fn clamp_i32(value: i32, low: i32, high: i32) -> i32 {
-    if value < low {
-        low
-    } else if value > high {
-        high
-    } else {
-        value
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -479,37 +390,5 @@ mod tests {
             let back = r.point_along(Edge::Left, fraction);
             assert!(back.y.abs_diff(y) <= 1, "y={y} voltou como {}", back.y);
         }
-    }
-
-    #[test]
-    fn normalisation_round_trips_exactly_for_every_common_resolution() {
-        // Regressão do defeito que o teste `entry_is_never_on_the_far_edge` pegou: com
-        // truncamento, um pixel de recuo virava zero na volta e o ponteiro quicava na borda.
-        // A ida e volta é exata enquanto a tela couber em 65 536 px, o que cobre qualquer
-        // resolução real com folga.
-        for span in [2u32, 3, 100, 800, 1280, 1366, 1920, 2560, 3840, 7680] {
-            let last = i64::from(span) - 1;
-            for px in [0, 1, 2, last / 2, last - 1, last] {
-                if !(0..=last).contains(&px) {
-                    continue; // spans pequenos não têm todos esses pixels
-                }
-                let fraction = normalise(px, span);
-                let back = i64::from(denormalise(fraction, span));
-                assert_eq!(back, px, "span={span}, px={px}, fração={fraction}");
-            }
-        }
-    }
-
-    #[test]
-    fn a_one_pixel_span_is_always_the_only_pixel() {
-        assert_eq!(normalise(0, 1), 0);
-        assert_eq!(normalise(999, 1), 0);
-        assert_eq!(denormalise(u16::MAX, 1), 0);
-    }
-
-    #[test]
-    fn offset_saturates_instead_of_wrapping() {
-        assert_eq!(Point::new(i32::MAX, 0).offset(10, 0).x, i32::MAX);
-        assert_eq!(Point::new(i32::MIN, 0).offset(-10, 0).x, i32::MIN);
     }
 }
