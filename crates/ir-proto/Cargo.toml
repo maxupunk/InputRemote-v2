@@ -1,0 +1,17 @@
+[package]
+name = "ir-proto"
+description = "Mensagens, codec e versionamento do protocolo InputRemote. Puro: sem E/S."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+postcard.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

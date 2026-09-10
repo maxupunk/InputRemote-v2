@@ -1,0 +1,227 @@
+# Progresso
+
+Checklist verificável da implementação. Espelha [docs/08-plano-de-implementacao.md](docs/08-plano-de-implementacao.md).
+
+## Regras deste arquivo
+
+1. Um item só recebe `[x]` quando estiver **implementado e verificado** — por teste que
+   passa, build que compila ou inspeção funcional registrada. Não existe `[x]` por
+   "acredito que funciona".
+2. Todo `[x]` **exige uma entrada correspondente em [LOG.md](LOG.md)**, com data, o que foi
+   feito, arquivos tocados e como foi verificado.
+3. `[~]` significa em andamento. `[!]` significa bloqueado — e o motivo fica escrito ao lado.
+4. `[H]` significa que só pode ser verificado em hardware físico, por uma pessoa. O código
+   pode estar pronto; o item não fecha sem a execução.
+5. Uma etapa com item aberto **bloqueia a próxima**, conforme a regra do plano. A exceção
+   registrada é a Etapa 2, que roda em paralelo à Etapa 0 porque não depende de hardware.
+
+Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!]` bloqueado ·
+`[H]` aguardando execução em hardware
+
+---
+
+## Etapa 0 — Provas de conceito
+
+### PoC-1 — Digitar na tela de bloqueio do Windows ⚠ bloqueante do produto
+- [ ] Serviço mínimo `LocalSystem` que registra, sobe e para
+- [ ] Lançamento de agente na sessão de console com `TokenUIAccess`
+- [ ] Thread por desktop com `SetThreadDesktop` como primeira instrução
+- [ ] Vigilância de desktop de entrada por `OpenInputDesktop` (200 ms)
+- [ ] Injeção por `SendInput` com `KEYEVENTF_SCANCODE`
+- [ ] `SendSAS` com a política `SoftwareSASGeneration`
+- [ ] Matriz de origem confiável — 4 configurações de token
+- [ ] `[H]` Item 1: sequência aparece no campo da tela de bloqueio
+- [ ] `[H]` Item 2: máquina desbloqueia com a senha digitada remotamente
+- [ ] `[H]` Item 3: funciona na tela de login pós-boot (nível N3)
+- [ ] `[H]` Item 4: funciona em prompt de UAC
+- [ ] `[H]` Item 5: troca de desktop detectada em < 300 ms
+- [ ] `[H]` Item 6: `SendSAS` produz a tela de Ctrl+Alt+Del
+- [ ] `[H]` **Nível de capacidade do Windows declarado** (N3 / N2 / N1)
+
+### PoC-2 — Bluetooth RFCOMM dentro de um serviço
+- [ ] Socket `AF_BTH` + `BTHPROTO_RFCOMM` no Windows, a partir de serviço
+- [ ] Publicação de serviço SDP por `WSASetService`
+- [ ] Backend BlueZ por `ProfileManager1.RegisterProfile`
+- [ ] Medidor de RTT com carga de 125 msg/s
+- [ ] `[H]` Socket abre na sessão 0, sem usuário logado
+- [ ] `[H]` Par continua pareado após reiniciar as duas máquinas
+- [ ] `[H]` Windows↔Windows e Windows↔Linux, nos dois sentidos
+- [ ] `[H]` Latência: mediana < 20 ms, p99 < 50 ms
+- [ ] `[H]` Reconexão < 5 s após religar o rádio
+- [ ] `[H]` MTU efetiva medida nas duas pilhas
+- [ ] `[H]` Comparação lado a lado com UDP cabeado e UDP Wi-Fi
+
+### PoC-3 — `uinput` no greeter e na tela de bloqueio do Linux
+- [ ] Criação dos três dispositivos virtuais
+- [ ] Confirmação de enumeração por `libudev` antes de declarar pronto
+- [ ] `[H]` Senha na tela de bloqueio do GNOME e do KDE (N2)
+- [ ] `[H]` Senha no greeter do GDM (N3)
+- [ ] `[H]` Atraso de enumeração medido
+- [ ] `[H]` SELinux em *enforcing* no Fedora
+- [ ] `[H]` Ponteiro absoluto acertando o pixel em telas de escalas diferentes
+- [ ] `[H]` Funciona sem `root`, como usuário de sistema dedicado
+- [ ] `[H]` **Nível de capacidade do Linux declarado** (N3 / N2 / N1)
+
+### PoC-4 — `InputCapture` + `libei` como servidor
+- [ ] Sessão de portal, `GetZones`, `SetPointerBarriers`, `ConnectToEIS`
+- [ ] Persistência e reapresentação do `restore_token`
+- [ ] `[H]` Barreiras nas quatro bordas, GNOME e KDE
+- [ ] `[H]` Atraso mediano de evento < 5 ms
+- [ ] `[H]` Segunda execução sem diálogo de permissão
+
+### PoC-5 — Noise sobre os três portadores
+- [ ] `Noise_XX` + código de seis dígitos derivado do handshake
+- [ ] `Noise_IK` com chave estática fixada
+- [ ] Janela deslizante de repetição (2 048 bits)
+- [ ] Mesmo código sobre stream e datagrama
+- [ ] Custo de cifrar/decifrar mensagem de entrada < 20 µs
+- [ ] `[H]` Latência adicionada em UDP na LAN: mediana < 8 ms
+
+### PoC-6 — Empacotamento
+- [ ] Um comando gera instalador, ZIP, RPM e DEB
+- [ ] Instalar e desinstalar sem resíduo
+
+---
+
+## Etapa 1 — Esqueleto
+
+### 1.1. Fundação do repositório
+- [x] `git init`, `.gitignore`, `.gitattributes`, `LICENSE` (MIT)
+- [x] Workspace Cargo com `resolver = "3"`, edição 2024
+- [x] Política de lints do workspace conforme [09](docs/09-padroes-de-codigo.md)
+- [x] `rustfmt.toml` e `rust-toolchain.toml` fixando a versão
+- [x] `PROGRESSO.md` e `LOG.md`
+- [x] `clippy.toml` com os limites verificáveis pelo clippy e os nomes próprios do projeto
+- [ ] `deny.toml` com licenças permitidas e avisos do RustSec
+- [ ] CI: `fmt`, `clippy -D warnings`, `test`, `deny`
+
+### 1.2. `xtask` — as regras que o CI faz cumprir
+- [ ] `check-limits`: linhas por arquivo, função, crate; parâmetros; aninhamento
+- [ ] `check-deps`: setas de dependência de [02, §2](docs/02-arquitetura.md)
+- [ ] `check-logs`: nenhuma macro de log recebendo tipo de entrada
+- [ ] `check-purity`: crates puros sem `tokio`, relógio, E/S
+
+### 1.3. Processos e IPC
+- [ ] `ir-ipc`: protocolo de controle daemon↔ui e daemon↔agente
+- [ ] Transporte: named pipe no Windows com SDDL restrito
+- [ ] Transporte: socket Unix `0660 root:inputremote`
+- [ ] Autorização em três níveis de [04, §5](docs/04-seguranca.md)
+- [ ] Canal do agente separado do canal da interface
+- [ ] `ir-daemon`: binário sobe, aceita IPC, encerra limpo
+- [ ] `ir-agent`: binário conecta, reporta pronto, encerra com o serviço
+- [ ] `ir-ui`: janela abre, mostra "sem par" e a impressão digital
+
+### 1.4. Observabilidade e configuração
+- [ ] `tracing` com escritor sem bloqueio
+- [ ] Configuração `toml` com escrita atômica
+- [ ] Caminhos de sistema por plataforma ([02, §7](docs/02-arquitetura.md))
+- [ ] Relatório de diagnóstico por lista de campos permitidos
+
+### 1.5. Instalação
+- [ ] Registro e remoção do serviço no Windows
+- [ ] Unidade `systemd` + regra `udev` + política D-Bus no Linux
+- [ ] Desinstalação sem resíduo
+
+---
+
+## Etapa 2 — Núcleo sem E/S
+
+### 2.1. `ir-proto`
+- [x] Tipos base: `HidUsage`, `Modifiers`, `Button`, `Buttons`, `Carrier`, `ChannelId`
+- [x] `PressedKeys` e `InputState` limitados, com reconciliação idempotente
+- [x] `Sequence` com aritmética de número de série (RFC 1982) e `Ack` com janela de 32
+- [x] Arranjo de telas (`ScreenLayout`, `MonitorInfo`, `Edge`) validado
+- [x] `MachineName`, `Capabilities` e os níveis `PrivilegedInputLevel` (N0–N3)
+- [x] Catálogo de mensagens de [03, §6](docs/03-protocolo.md), um enum por canal
+- [x] Codec `postcard` com o canal no primeiro byte, garantido por teste
+- [x] Negociação de versão e recusa por incompatibilidade
+- [x] Validação de manifesto e de caminho relativo contra travessia de diretório
+- [x] Ida e volta de quadro em todos os portadores permitidos, e de todos os vetores
+- [x] Teste de tamanho máximo (entrada ≤ 64 B em texto claro)
+- [x] Vetores gravados da versão 1 — 16 quadros, 4 canais
+- [x] Byte sobrando, truncamento em todo comprimento e lixo arbitrário não geram pânico
+- [~] Alvo de `cargo fuzz` do decodificador — há varredura determinística no CI de commit;
+      o alvo propriamente dito depende de `cargo-fuzz` e fecha junto com a Etapa 2
+- [ ] Ida e volta de **toda** variante de `ClipboardMessage` e `BulkMessage`
+
+### 2.2. `ir-geometry`
+- [ ] Monitor, retângulo, escala, arranjo
+- [ ] Mapeamento de coordenadas entre arranjos diferentes
+- [ ] Detecção de borda e ponto de entrada nas quatro direções
+- [ ] Normalização absoluta `0..65535`
+- [ ] Monitor removido durante a sessão não gera coordenada inválida
+
+### 2.3. `ir-session`
+- [ ] `Input` / `Command` / `Session::step`
+- [ ] Máquina de estados completa
+- [ ] Travessia de borda ida e volta
+- [ ] `ReleaseAll` em toda falha
+- [ ] Reconexão sem novo pareamento
+- [ ] Troca de portador sem duplicar nem perder evento
+- [ ] `StateSnapshot` e reconciliação idempotente
+- [ ] Atalho de emergência
+- [ ] Confiabilidade do canal de entrada sobre UDP (seq/ack/retransmissão)
+- [ ] Coalescência de ponteiro, nunca de teclado
+- [ ] Cobertura ≥ 85% em `ir-session` e `ir-proto`
+
+---
+
+## Etapa 3 — Criptografia e pareamento
+- [ ] `ir-crypto`: identidade estática X25519 persistente
+- [ ] `Noise_XX` + código de seis dígitos (SAS)
+- [ ] `Noise_IK` com chave fixada, recusa de chave diferente
+- [ ] Janela de repetição e rechaveamento
+- [ ] Armazenamento com ACL restrita e `zeroize`
+- [ ] Teste de handshake adulterado e de repetição
+
+## Etapa 4 — Rede
+- [ ] `ir-net`: UDP de entrada com a confiabilidade do protocolo
+- [ ] TCP de dados
+- [ ] Descoberta mDNS + endereço manual
+- [ ] Perda de 5% injetada não produz tecla presa
+- [ ] Latência dentro da meta de [01, §6](docs/01-visao-e-escopo.md)
+
+## Etapa 5 — Entrada no Windows
+- [ ] Captura: Raw Input + `WH_*_LL`, gancho sem trabalho
+- [ ] Supressão local e `ClipCursor`
+- [ ] Injeção absoluta de ponteiro e por scancode
+- [ ] Agente com thread por desktop ([ADR-0008](docs/adr/0008-agente-com-thread-por-desktop.md))
+- [ ] Nenhum gancho no desktop `Winlogon`, verificado por teste
+- [ ] `SendSAS` opcional na instalação
+- [ ] `[H]` Nível de capacidade confirmado no produto (mínimo N2)
+- [ ] `[H]` 10.000 travessias sem tecla presa
+
+## Etapa 6 — Entrada no Linux
+- [ ] Injeção por `uinput`, três dispositivos
+- [ ] Captura por `InputCapture` + `libei`
+- [ ] Integração com `logind`
+- [ ] Filtro de auto-recaptura por dispositivo de origem
+- [ ] `[H]` Quatro combinações entre plataformas
+- [ ] `[H]` Nível de capacidade confirmado no produto (mínimo N2)
+
+## Etapa 7 — Bluetooth
+- [ ] `ir-bt`: trait + backend Winsock + backend BlueZ
+- [ ] Política única de escolha de portador
+- [ ] Reconexão
+- [ ] `[H]` Quatro combinações por Bluetooth
+- [ ] `[H]` Degradação para UDP com motivo visível
+
+## Etapa 8 — Clipboard e arquivos
+- [ ] `ir-clip`: texto, imagem PNG, lista de arquivos
+- [ ] `ir-files`: manifesto, blocos, BLAKE3, cotas, staging por RAII
+- [ ] Progresso e cancelamento
+- [ ] Transferência de 5 GB degrada a entrada em no máximo 10%
+
+## Etapa 9 — Interface
+- [ ] Telas: estado, pareamento, portadores, telas, avançado
+- [ ] Fluxo de pareamento com código de seis dígitos
+- [ ] Estado observável de [01, §5](docs/01-visao-e-escopo.md)
+- [ ] Nível de capacidade visível
+- [ ] Bandeja do sistema
+- [ ] Fechar, matar ou não abrir não altera a sessão
+
+## Etapa 10 — Qualidade e lançamento
+- [ ] Assinatura de todos os binários do Windows
+- [ ] Instaladores e pacotes
+- [ ] Documentação de usuário
+- [ ] `[H]` Roteiro de validação física completo, quatro combinações

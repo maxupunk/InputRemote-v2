@@ -1,0 +1,10 @@
+# Nomes próprios do projeto que o clippy confundiria com identificadores de código.
+# ".." preserva a lista padrão do clippy.
+doc-valid-idents = ["InputRemote", "BlueZ", "RFCOMM", "SendInput", "SendSAS", "UIAccess", "WinSta0", ".."]
+
+# Os limites de docs/09-padroes-de-codigo.md §1 que o clippy sabe verificar.
+# Os demais ficam com `cargo xtask check-limits`.
+too-many-arguments-threshold = 5
+too-many-lines-threshold = 60
+cognitive-complexity-threshold = 15
+excessive-nesting-threshold = 5
