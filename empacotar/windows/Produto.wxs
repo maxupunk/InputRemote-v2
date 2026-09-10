@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  O instalador do Windows.
+
+  Instala em ProgramFiles64Folder de proposito, e nao numa pasta escolhida a esmo. No Windows um
+  processo so recebe UIAccess se estiver assinado E numa pasta que usuarios comuns nao possam
+  escrever, e a ACL padrao de %ProgramFiles% ja garante a segunda metade. Instalar em pasta
+  gravavel faz o passo do token passar sem o privilegio ser concedido: tudo parece certo e o
+  produto falha depois, na tela de bloqueio (docs/05-windows.md, secao 4.4).
+
+  As variaveis vem do empacotador:
+    Versao      x.y.z numerico (MSI nao aceita sufixo como "-dev")
+    Rotulo      a versao como o projeto a escreve, para aparecer na lista de programas
+    Binarios    pasta com os executaveis ja assinados
+    Recursos    pasta com LICENSE.rtf, LEIAME.txt e o MANIFESTO
+    TemDaemon   1 quando inputremote-daemon.exe existe
+    TemAgente   1 quando inputremote-agent.exe existe
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*"
+           Name="InputRemote"
+           Language="1033"
+           Version="$(var.Versao)"
+           Manufacturer="Projeto InputRemote"
+           UpgradeCode="8f3a6c1e-5d24-4b7a-9c0f-2e6b81d4a7c3">
+
+    <Package InstallerVersion="500"
+             Compressed="yes"
+             InstallScope="perMachine"
+             Manufacturer="Projeto InputRemote"
+             Description="InputRemote $(var.Rotulo) - compartilha teclado e mouse entre dois computadores" />
+
+    <!-- Atualizar por cima remove a versao anterior antes de instalar a nova. Sem isto, duas
+         instalacoes coexistiriam e o servico apontaria para o binario errado. -->
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="Ja existe uma versao mais nova do InputRemote instalada." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <Property Id="ARPPRODUCTICON" Value="icone.exe" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/inputremote/inputremote" />
+    <Property Id="WIXUI_INSTALLDIR" Value="PASTAINSTALACAO" />
+
+    <Icon Id="icone.exe" SourceFile="$(var.Binarios)\inputremote-ui.exe" />
+
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.Recursos)\LICENSE.rtf" />
+
+    <UIRef Id="WixUI_InstallDir" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="PASTAINSTALACAO" Name="InputRemote" />
+      </Directory>
+      <Directory Id="ProgramMenuFolder" />
+    </Directory>
+
+    <DirectoryRef Id="PASTAINSTALACAO">
+
+      <Component Id="Interface" Guid="*" Win64="yes">
+        <File Id="inputremote_ui.exe"
+              Source="$(var.Binarios)\inputremote-ui.exe"
+              KeyPath="yes">
+          <!-- O atalho vive dentro do proprio arquivo, e nao num componente com chave de
+               registro. Assim a chave do componente e o executavel — que e o que o atalho
+               aponta — e o Windows repara o atalho sozinho se o programa sumir. Um atalho em
+               componente separado precisaria de chave HKCU, e este e um instalador para a
+               maquina inteira, nao para um usuario. -->
+          <Shortcut Id="AtalhoInterface"
+                    Directory="ProgramMenuFolder"
+                    Name="InputRemote"
+                    Description="Compartilha teclado e mouse com outro computador"
+                    WorkingDirectory="PASTAINSTALACAO"
+                    Advertise="yes" />
+        </File>
+      </Component>
+
+      <?if $(var.TemAgente) = 1 ?>
+      <Component Id="Agente" Guid="*" Win64="yes">
+        <File Id="inputremote_agent.exe"
+              Source="$(var.Binarios)\inputremote-agent.exe"
+              KeyPath="yes" />
+      </Component>
+      <?endif?>
+
+      <?if $(var.TemDaemon) = 1 ?>
+      <!-- O servico sobe com a maquina, porque digitar na tela de bloqueio exige que ele ja
+           esteja de pe antes de qualquer usuario entrar. -->
+      <Component Id="Servico" Guid="*" Win64="yes">
+        <File Id="inputremote_daemon.exe"
+              Source="$(var.Binarios)\inputremote-daemon.exe"
+              KeyPath="yes" />
+        <ServiceInstall Id="ServicoInputRemote"
+                        Name="InputRemote"
+                        DisplayName="InputRemote"
+                        Description="Compartilha teclado e mouse com outro computador."
+                        Type="ownProcess"
+                        Start="auto"
+                        Account="LocalSystem"
+                        ErrorControl="normal"
+                        Vital="yes" />
+        <ServiceControl Id="ControleInputRemote"
+                        Name="InputRemote"
+                        Start="install"
+                        Stop="both"
+                        Remove="uninstall"
+                        Wait="yes" />
+      </Component>
+      <?endif?>
+
+      <!-- Um arquivo por componente. O MSI so sabe gerar GUID sozinho quando o componente tem
+           um unico arquivo como chave, e agrupar tres textos num componente so custaria manter
+           tres GUIDs escritos a mao. -->
+      <Component Id="DocLeiame" Guid="*" Win64="yes">
+        <File Id="LEIAME.txt" Source="$(var.Recursos)\LEIAME.txt" KeyPath="yes" />
+      </Component>
+
+      <Component Id="DocLicenca" Guid="*" Win64="yes">
+        <File Id="LICENSE.txt" Source="$(var.Recursos)\LICENSE.txt" KeyPath="yes" />
+      </Component>
+
+      <Component Id="DocManifesto" Guid="*" Win64="yes">
+        <File Id="MANIFESTO.txt" Source="$(var.Recursos)\MANIFESTO.txt" KeyPath="yes" />
+      </Component>
+
+    </DirectoryRef>
+
+    <Feature Id="Principal" Title="InputRemote" Level="1" Absent="disallow">
+      <ComponentRef Id="Interface" />
+      <?if $(var.TemAgente) = 1 ?><ComponentRef Id="Agente" /><?endif?>
+      <?if $(var.TemDaemon) = 1 ?><ComponentRef Id="Servico" /><?endif?>
+      <ComponentRef Id="DocLeiame" />
+      <ComponentRef Id="DocLicenca" />
+      <ComponentRef Id="DocManifesto" />
+    </Feature>
+
+  </Product>
+</Wix>

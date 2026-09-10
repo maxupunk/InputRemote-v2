@@ -5,3 +5,11 @@
 *.pdb
 .vscode/
 .idea/
+
+# Ferramentas de empacotamento baixadas sob demanda (WiX). Sao binarios de terceiros,
+# verificados por hash pelo empacotador; nao entram no repositorio.
+/empacotar/ferramentas
+
+# Certificado autoassinado de teste. A chave privada fica na loja do usuario, nunca em arquivo,
+# mas o .cer exportado tambem nao precisa ser versionado.
+/empacotar/certificado

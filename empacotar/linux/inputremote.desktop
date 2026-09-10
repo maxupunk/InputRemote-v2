@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=InputRemote
+GenericName=Teclado e mouse compartilhados
+Comment=Compartilha teclado e mouse com outro computador
+Exec=inputremote-ui
+Terminal=false
+Categories=Utility;Settings;HardwareSettings;
+Keywords=kvm;teclado;mouse;keyboard;
+StartupNotify=true
+StartupWMClass=inputremote-ui

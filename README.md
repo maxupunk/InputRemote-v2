@@ -61,6 +61,25 @@ Quatro diferenças estruturais:
 | Criptografia | SPAKE2 + TLS/QUIC, um caminho por transporte | Noise, um caminho só sobre Bluetooth, UDP e TCP |
 | Lógica de produto | acoplada ao ciclo da GUI | núcleo *sans-io*, testável sem hardware |
 
+## Como gerar os instaladores
+
+Um comando, os dois sistemas:
+
+```powershell
+.\empacotar\empacotar.ps1
+```
+
+Sai em `dist/`: o `.msi` do Windows, assinado, e o `.rpm` do Fedora 44. O RPM é construído dentro
+de um container do Fedora — não por compilação cruzada —, porque o gerador de dependências do RPM
+precisa ler o ELF no próprio sistema de destino para acertar os `Requires`.
+
+`-Alvo Windows` ou `-Alvo Linux` fazem só um lado. Detalhes e o que ainda **não** entra no pacote:
+[docs/logs/11-instaladores.md](docs/logs/11-instaladores.md).
+
+> A assinatura é autoassinada, para teste e uso local. Ela não substitui um certificado de
+> verdade, e sem confiar nela na máquina de destino o Windows não concede `UIAccess` — sem o qual
+> digitar na tela de bloqueio não funciona ([05, §4.4](docs/05-windows.md)).
+
 ## Documentação
 
 Comece pelo [índice](docs/00-indice.md).

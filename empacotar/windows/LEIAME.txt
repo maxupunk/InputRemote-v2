@@ -1,0 +1,61 @@
+InputRemote
+===========
+
+Compartilha um teclado e um mouse entre dois computadores. O ponteiro atravessa a borda da tela
+e passa a controlar o outro.
+
+
+O QUE HA NESTA INSTALACAO
+-------------------------
+
+Leia MANIFESTO.txt, nesta mesma pasta. Ele lista o que entrou, a impressao digital de cada
+arquivo, o estado da assinatura e -- o que mais importa neste momento do projeto -- o que NAO
+entrou.
+
+
+COMO ABRIR
+----------
+
+Menu iniciar > InputRemote.
+
+Enquanto o servico do InputRemote nao existir, ou nao estiver respondendo, uma faixa amarela no
+alto da janela avisa que aquilo e uma demonstracao: os dados sao simulados e nada e digitado em
+computador nenhum. Da para percorrer o fluxo inteiro -- procurar, comparar o codigo de seis
+digitos, conectar, escolher a borda, mexer nas preferencias, ver o diagnostico.
+
+
+COMO REMOVER
+------------
+
+Configuracoes do Windows > Aplicativos > InputRemote > Desinstalar.
+
+A desinstalacao remove os programas, o atalho e o servico. A configuracao e o registro de
+diagnostico em %ProgramData%\InputRemote ficam: quem desinstala para resolver um problema
+costuma reinstalar em seguida, e jogar fora o registro junto com o programa apaga justamente o
+que explicaria a falha. Para apagar tambem, remova essa pasta a mao.
+
+
+SOBRE A ASSINATURA
+------------------
+
+Os executaveis sao assinados com um certificado AUTOASSINADO, para teste e uso local. Ele nao
+substitui um certificado de verdade.
+
+Isso importa por um motivo concreto: no Windows, digitar na tela de bloqueio exige que o
+processo que injeta tenha UIAccess, e o sistema so concede UIAccess a um programa assinado por
+um certificado em que a maquina confia, instalado numa pasta que usuarios comuns nao possam
+escrever. A pasta ja esta certa -- e por isso que a instalacao vai para %ProgramFiles%. A
+confianca no certificado tem que ser dada de proposito, na maquina de teste:
+
+    empacotar\assinar.ps1 -Acao Confiar     (como administrador)
+    empacotar\assinar.ps1 -Acao Remover     (para desfazer)
+
+Confiar num certificado autoassinado e uma decisao de seguranca de verdade: dali em diante,
+qualquer binario assinado com aquela chave passa a ser confiavel naquele computador. Faca numa
+bancada de teste, e desfaca quando terminar.
+
+
+LICENCA
+-------
+
+MIT. Ver LICENSE.txt.

@@ -129,14 +129,17 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 
 ### 1.5. Instalação
 - [x] Nomes de executável conforme [00](docs/00-indice.md): `inputremote-ui`, não `ir-ui`
-- [x] Empacotamento: build em release, manifesto com impressão digital e com o que **falta**, zip
-- [x] Instalação em pasta protegida, com ACL por SID (verificada num Windows em português)
-- [~] Registro e remoção do serviço no Windows — script pronto; o caminho do serviço não pôde
-      ser exercitado porque `inputremote-daemon` ainda não existe
-- [~] Desinstalação sem resíduo — script pronto, preserva configuração salvo pedido explícito;
-      não executado, porque exige elevação
-- [ ] Unidade `systemd` + regra `udev` + política D-Bus no Linux — sem binário de Linux para
-      empacotar, um instalador seria dívida disfarçada de progresso
+- [x] Um comando gera os dois instaladores em `dist/`
+- [x] Windows: instalador `.msi` (WiX), com atalho, entrada em Programas e desinstalação
+- [x] Instalação em `%ProgramFiles%`, que é o requisito de pasta protegida do `UIAccess`
+- [x] Assinatura Authenticode com certificado autoassinado, para teste e uso local
+- [x] Manifesto com impressão digital, estado da assinatura e o que **falta** no pacote
+- [x] Linux: RPM do Fedora 44, construído dentro do sistema de destino
+- [~] Registro e remoção do serviço no Windows — declarado no MSI (`ServiceInstall`), mas não
+      exercitado: `inputremote-daemon` ainda não existe
+- [ ] Unidade `systemd` + regra `udev` + política D-Bus no Linux — entram no RPM junto com o
+      serviço, que é quem os usa
+- [ ] Assinatura com certificado de verdade e GPG no RPM ([Etapa 10](#etapa-10--qualidade-e-lançamento))
 
 ---
 

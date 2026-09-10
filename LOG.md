@@ -35,3 +35,4 @@ quê. Um registro que se reescreve não é registro.
 | 08 | 2026-09-09 | [`ir-ipc`: o contrato que a interface enxerga](docs/logs/08-ir-ipc.md) |
 | 09 | 2026-09-09 | [A interface: três telas, e o desenho no lugar da pergunta](docs/logs/09-interface.md) |
 | 10 | 2026-09-10 | [Empacotamento: o que dá para instalar hoje](docs/logs/10-empacotamento.md) |
+| 11 | 2026-09-10 | [Instaladores: MSI, RPM e assinatura, num comando](docs/logs/11-instaladores.md) |
