@@ -1,0 +1,67 @@
+# O CI de docs/10-testes-e-validacao.md §8.
+#
+# Nenhum resultado aqui é aviso. Ou passa, ou a build falha. Aviso é ruído que se aprende a
+# ignorar, e foi assim que o ROADMAP.md do InputRemote 1 chegou ao lançamento com itens em
+# aberto.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  # Um aviso do compilador que não falha a build é um aviso que ninguém lê.
+  RUSTFLAGS: -D warnings
+
+jobs:
+  # As regras de docs/09 que só dependem de ler o repositório. Rodam primeiro porque são as
+  # mais rápidas e as que mais frequentemente pegam algo.
+  regras:
+    name: Regras do projeto
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Formatação
+        run: cargo fmt --all -- --check
+      - name: Limites, setas de dependência e privacidade dos logs
+        run: cargo xtask check
+
+  # Os dois sistemas alvo. A matriz existe porque um backend de plataforma que compila só num
+  # deles é um backend que vai quebrar no outro sem ninguém perceber.
+  testes:
+    name: Testes (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Testes
+        run: cargo test --workspace
+      - name: Documentação sem link quebrado
+        run: cargo doc --workspace --no-deps
+
+  # Compila para Linux a partir do que houver, sem ligar: pega uso de API específica de
+  # plataforma no núcleo puro antes de o backend existir.
+  alvo-linux:
+    name: Verificação cruzada para Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo check --workspace --target x86_64-unknown-linux-gnu
+
+  cadeia:
+    name: Cadeia de suprimentos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Licenças, avisos do RustSec e fontes
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check

@@ -4,6 +4,7 @@ members = [
     "crates/ir-proto",
     "crates/ir-geometry",
     "crates/ir-session",
+    "xtask",
 ]
 
 [workspace.package]

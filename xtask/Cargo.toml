@@ -1,0 +1,16 @@
+[package]
+name = "xtask"
+description = "As verificações de docs/09-padroes-de-codigo.md, executáveis."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+toml.workspace = true
+
+[lints]
+workspace = true

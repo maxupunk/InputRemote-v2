@@ -1,0 +1,37 @@
+# `cargo deny` — a cadeia de suprimentos, conforme docs/04-seguranca.md §8.
+#
+# Um serviço que roda como SYSTEM e processa bytes de um rádio aberto não pode ter
+# dependência não auditada. Estas regras falham a build, não avisam.
+
+[advisories]
+# Qualquer aviso do RustSec derruba a build. Uma exceção precisa de linha aqui, com data.
+yanked = "deny"
+ignore = []
+
+[licenses]
+# Só licenças permissivas compatíveis com MIT. Ver docs/07-stack-e-dependencias.md §3 para o
+# caso do Slint, que é a única exceção e fica contida no binário da interface.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "CC0-1.0",
+]
+confidence-threshold = 0.9
+
+[bans]
+# Duas versões da mesma biblioteca dobram a superfície a auditar e o tamanho do binário.
+multiple-versions = "warn"
+wildcards = "deny"
+# Nada de dependência sem versão fixada num serviço privilegiado.
+deny = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

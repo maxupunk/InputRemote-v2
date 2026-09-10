@@ -6,14 +6,28 @@ Estas regras não são estilo. Cada uma corresponde a uma falha medida no v1
 
 ## 1. Limites de tamanho — verificados pelo CI
 
-| Limite | Valor | Ação ao estourar |
-|---|---:|---|
-| Linhas por arquivo `.rs` | 400 | falha de build |
-| Linhas por função | 60 | falha de build |
-| Linhas por crate (`src/`) | 2 500 | falha de build |
-| Parâmetros por função | 5 | falha de build |
-| Complexidade ciclomática por função | 15 | falha de build |
-| Profundidade de aninhamento | 4 | falha de build |
+| Limite | Valor | O que conta | Ação ao estourar |
+|---|---:|---|---|
+| Linhas por arquivo `.rs` | 400 | **tudo**: código, documentação, testes | falha de build |
+| Linhas por função | 60 | tudo, da assinatura ao fecha-chaves | falha de build |
+| Linhas por crate (`src/`) | 2 500 | **só código de produção** | falha de build |
+| Parâmetros por função | 5 | — | falha de build |
+| Complexidade ciclomática por função | 15 | — | falha de build |
+| Profundidade de aninhamento | 4 | — | falha de build |
+
+As duas colunas do meio não são detalhe. Cada limite protege uma coisa diferente, e medir a
+coisa errada cria o incentivo errado:
+
+- o limite **por arquivo** protege a navegabilidade. Um arquivo de 800 linhas é longo de rolar
+  mesmo que 500 delas sejam documentação, então ali conta tudo.
+- o limite **por crate** protege contra acúmulo de responsabilidade — é ele que existiria para
+  impedir o crate de 10.491 linhas do v1. Documentação não acrescenta responsabilidade (reduz
+  o custo de entender o que já está lá), e teste não acrescenta responsabilidade (acrescenta
+  confiança). Contar qualquer um dos dois criaria pressão para escrever menos deles, que é o
+  oposto do que este projeto quer. Então ali conta só código de produção.
+
+Um crate que estoura o limite de código precisa de uma fronteira nova, não de mais um número.
+Um crate que só cresceu em documentação e teste está crescendo na direção certa.
 
 Referência do v1: `controller.rs` tinha 4.545 linhas — onze vezes o limite. Nenhum
 commit isolado criou aquele arquivo; ele cresceu porque nada o impedia. A verificação

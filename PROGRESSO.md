@@ -92,14 +92,16 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] `rustfmt.toml` e `rust-toolchain.toml` fixando a versão
 - [x] `PROGRESSO.md` e `LOG.md`
 - [x] `clippy.toml` com os limites verificáveis pelo clippy e os nomes próprios do projeto
-- [ ] `deny.toml` com licenças permitidas e avisos do RustSec
-- [ ] CI: `fmt`, `clippy -D warnings`, `test`, `deny`
+- [x] `deny.toml` com licenças permitidas, avisos do RustSec e fontes confiáveis
+- [x] CI: `fmt`, `clippy -D warnings`, `test`, `doc`, `xtask check`, `deny`, nos dois sistemas
 
 ### 1.2. `xtask` — as regras que o CI faz cumprir
-- [ ] `check-limits`: linhas por arquivo, função, crate; parâmetros; aninhamento
-- [ ] `check-deps`: setas de dependência de [02, §2](docs/02-arquitetura.md)
-- [ ] `check-logs`: nenhuma macro de log recebendo tipo de entrada
-- [ ] `check-purity`: crates puros sem `tokio`, relógio, E/S
+- [x] `check-limits`: linhas por arquivo, por função e por crate
+- [x] `check-deps`: setas de dependência de [02, §2](docs/02-arquitetura.md)
+- [x] `check-deps`: pureza — crates puros sem runtime, relógio, E/S ou API de sistema
+- [x] `check-logs`: nenhuma macro de log recebendo tipo de entrada
+- [x] 23 testes do próprio `xtask` — uma verificação sem teste não é de confiança
+- [ ] Parâmetros por função e aninhamento (delegados ao `clippy.toml`, a confirmar no CI)
 
 ### 1.3. Processos e IPC
 - [ ] `ir-ipc`: protocolo de controle daemon↔ui e daemon↔agente
