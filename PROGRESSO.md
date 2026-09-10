@@ -109,6 +109,7 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [ ] Parâmetros por função e aninhamento (delegados ao `clippy.toml`, a confirmar no CI)
 
 ### 1.3. Processos e IPC
+- [x] `ir-daemon`: binário sobe, gera identidade, escuta UDP, pareia e estabelece a sessão
 - [x] `ir-ipc`: protocolo de controle daemon↔ui e daemon↔agente
 - [x] Vocabulário próprio do contrato, para `ir-ui` não depender de `ir-proto`
 - [x] Canal do agente separado do canal da interface, com vocabulários que não se misturam
@@ -209,25 +210,29 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 ---
 
 ## Etapa 3 — Criptografia e pareamento
-- [ ] `ir-crypto`: identidade estática X25519 persistente
-- [ ] `Noise_XX` + código de seis dígitos (SAS)
-- [ ] `Noise_IK` com chave fixada, recusa de chave diferente
-- [ ] Janela de repetição e rechaveamento
-- [ ] Armazenamento com ACL restrita e `zeroize`
-- [ ] Teste de handshake adulterado e de repetição
+- [x] `ir-crypto`: identidade estática X25519 persistente (chave gravada, pública derivada)
+- [x] `Noise_XX` + código de seis dígitos (SAS); teste de homem no meio produzindo códigos diferentes
+- [x] `Noise_IK` com chave fixada, recusa de chave diferente (verificado no daemon)
+- [x] Janela de repetição de 2048 bits (RFC 6479); `should_rekey` por volume
+- [x] Armazenamento com `zeroize` e permissão 0600 na chave
+- [x] Teste de handshake adulterado e de repetição
+- [ ] Rechaveamento automático executado (hoje só sinalizado por `should_rekey`)
 
 ## Etapa 4 — Rede
-- [ ] `ir-net`: UDP de entrada com a confiabilidade do protocolo
-- [ ] TCP de dados
-- [ ] Descoberta mDNS + endereço manual
-- [ ] Perda de 5% injetada não produz tecla presa
-- [ ] Latência dentro da meta de [01, §6](docs/01-visao-e-escopo.md)
+- [x] `ir-net`: UDP de entrada cifrado, com o endpoint por canais
+- [x] Pareamento de ponta a ponta testado (dois endpoints em loopback; código igual, confirmação dupla, quadro atravessa)
+- [x] Descoberta mDNS + endereço manual
+- [~] Confiabilidade sobre UDP — a de `ir-session` já existe e é testada; falta o ensaio de perda de 5% ponta a ponta
+- [ ] TCP de dados (só entrada foi implementada; arquivos são Etapa 8)
+- [ ] `[H]` Latência dentro da meta, medida entre duas máquinas
 
 ## Etapa 5 — Entrada no Windows
-- [ ] Captura: Raw Input + `WH_*_LL`, gancho sem trabalho
-- [ ] Supressão local e `ClipCursor`
-- [ ] Injeção absoluta de ponteiro e por scancode
-- [ ] Agente com thread por desktop ([ADR-0008](docs/adr/0008-agente-com-thread-por-desktop.md))
+- [x] Captura: `WH_MOUSE_LL` + `WH_KEYBOARD_LL`, gancho sem trabalho (fila e retorno)
+- [x] Supressão local e prisão do ponteiro por `SetCursorPos`
+- [x] Injeção absoluta de ponteiro e por scancode (`SendInput`)
+- [x] Captura exercitada de verdade na sessão desbloqueada (477 eventos, deltas corretos)
+- [~] Raw Input para deltas de alta resolução — hoje os deltas vêm do gancho; refinamento posterior
+- [ ] Agente com thread por desktop ([ADR-0008](docs/adr/0008-agente-com-thread-por-desktop.md)) — é o que leva de N1 a N2/N3
 - [ ] Nenhum gancho no desktop `Winlogon`, verificado por teste
 - [ ] `SendSAS` opcional na instalação
 - [ ] `[H]` Nível de capacidade confirmado no produto (mínimo N2)

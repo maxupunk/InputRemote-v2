@@ -80,6 +80,10 @@ precisa ler o ELF no próprio sistema de destino para acertar os `Requires`.
 > verdade, e sem confiar nela na máquina de destino o Windows não concede `UIAccess` — sem o qual
 > digitar na tela de bloqueio não funciona ([05, §4.4](docs/05-windows.md)).
 
+## Como usar agora
+
+O teclado e o mouse do Windows já chegam ao Linux por rede, com pareamento cifrado, na sessão desbloqueada (nível N1). O passo a passo está em [USAR.md](USAR.md).
+
 ## Documentação
 
 Comece pelo [índice](docs/00-indice.md).

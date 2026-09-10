@@ -37,3 +37,4 @@ quê. Um registro que se reescreve não é registro.
 | 10 | 2026-09-10 | [Empacotamento: o que dá para instalar hoje](docs/logs/10-empacotamento.md) |
 | 11 | 2026-09-10 | [Instaladores: MSI, RPM e assinatura, num comando](docs/logs/11-instaladores.md) |
 | 12 | 2026-09-10 | [O ícone, e a janela preta que abria atrás](docs/logs/12-icone-e-janela-sem-console.md) |
+| 13 | 2026-09-10 | [A pilha completa: do pareamento cifrado à sessão de pé](docs/logs/13-pilha-completa-mouse-cruzando.md) |
