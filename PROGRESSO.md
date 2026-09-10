@@ -23,13 +23,17 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 ## Etapa 0 — Provas de conceito
 
 ### PoC-1 — Digitar na tela de bloqueio do Windows ⚠ bloqueante do produto
-- [ ] Serviço mínimo `LocalSystem` que registra, sobe e para
-- [ ] Lançamento de agente na sessão de console com `TokenUIAccess`
-- [ ] Thread por desktop com `SetThreadDesktop` como primeira instrução
-- [ ] Vigilância de desktop de entrada por `OpenInputDesktop` (200 ms)
-- [ ] Injeção por `SendInput` com `KEYEVENTF_SCANCODE`
-- [ ] `SendSAS` com a política `SoftwareSASGeneration`
-- [ ] Matriz de origem confiável — 4 configurações de token
+- [x] Serviço mínimo `LocalSystem` que registra, sobe e para
+- [x] Lançamento de agente na sessão de console com `TokenUIAccess`
+- [x] Thread por desktop com `SetThreadDesktop` como primeira instrução
+- [x] Vigilância de desktop de entrada por `OpenInputDesktop` (200 ms)
+- [x] Injeção por `SendInput` com `KEYEVENTF_SCANCODE`
+- [x] `SendSAS` carregado de `sas.dll`, com a política `SoftwareSASGeneration`
+- [x] Matriz de origem confiável — 4 configurações, escolhidas por `POC1_MODE`
+- [x] Instalação em `%ProgramFiles%` com ACL de administrador, exigida pelo UIAccess
+- [x] Instalador recusa build anterior ao endurecimento de janeiro de 2026
+- [x] Desinstalação sem resíduo, preservando o registro do resultado
+- [ ] `[H]` **Executar em bancada Windows** — ver `spikes/poc1-winlogon/README.md`
 - [ ] `[H]` Item 1: sequência aparece no campo da tela de bloqueio
 - [ ] `[H]` Item 2: máquina desbloqueia com a senha digitada remotamente
 - [ ] `[H]` Item 3: funciona na tela de login pós-boot (nível N3)

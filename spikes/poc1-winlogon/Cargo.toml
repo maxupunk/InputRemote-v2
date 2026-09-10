@@ -1,0 +1,38 @@
+[package]
+name = "poc1-winlogon"
+description = "PoC-1: digitar na tela de bloqueio do Windows. Codigo descartavel."
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Deliberadamente FORA do workspace: este e codigo descartavel de prova de conceito
+# (docs/08-plano-de-implementacao.md §2), e nao deve carregar os lints nem os limites do
+# produto. Ele existe para responder uma pergunta, nao para ser mantido.
+[workspace]
+
+[dependencies]
+windows-service = "0.8"
+
+[dependencies.windows]
+version = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_LibraryLoader",
+    "Win32_System_RemoteDesktop",
+    "Win32_System_StationsAndDesktops",
+    "Win32_System_Threading",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+]
+
+[[bin]]
+name = "poc1-service"
+path = "src/service.rs"
+
+[[bin]]
+name = "poc1-agent"
+path = "src/agent.rs"
+
+[profile.release]
+panic = "abort"
