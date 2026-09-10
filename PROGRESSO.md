@@ -175,7 +175,15 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Latência de ida e volta medida e observável
 - [x] Agente perdido devolve o controle sem deixar tecla presa
 - [x] 25 cenários de integração, um por linha de [10, §2](docs/10-testes-e-validacao.md)
-- [ ] Confiabilidade do canal de entrada sobre UDP (seq/ack/retransmissão)
+- [x] Confiabilidade sobre datagrama: janela, confirmação cumulativa com bitmap,
+      retransmissão com `RTO = max(20 ms, 2 × srtt)`, e queda ao esgotar as tentativas
+- [x] **Entrega em ordem** nos canais confiáveis — retransmissão cria fora de ordem, e um
+      `KeyDown` chegando depois do `KeyUp` deixaria a tecla presa para sempre
+- [x] Detecção de repetição: um datagrama reenviado não é aplicado duas vezes
+- [x] Confirmação pura fora do fluxo ordenado, sem consumir janela nem sequência
+- [x] Adeus anunciado em toda queda decidida por este lado
+- [x] Um par emissor/receptor por canal, para retransmissão de clipboard não atrasar `KeyUp`
+- [x] 29 testes da camada isolada + 6 cenários exercendo-a através da sessão inteira
 - [ ] Cobertura ≥ 85% medida em `ir-session` e `ir-proto`
 
 ---

@@ -53,6 +53,7 @@
 pub mod config;
 pub mod event;
 pub mod phase;
+pub mod reliability;
 pub mod sequences;
 pub mod session;
 pub mod time;

@@ -122,6 +122,8 @@ pub struct Clock {
     pub last_snapshot: Timestamp,
     /// Quando saiu a última amostra de ponteiro.
     pub last_pointer: Timestamp,
+    /// Quando saiu a última confirmação pura.
+    pub last_bare_ack: Timestamp,
 }
 
 impl Clock {
@@ -136,6 +138,7 @@ impl Clock {
             last_heartbeat: now,
             last_snapshot: now,
             last_pointer: now,
+            last_bare_ack: now,
         }
     }
 }
@@ -225,5 +228,6 @@ mod tests {
         assert_eq!(clock.last_heartbeat, now);
         assert_eq!(clock.last_snapshot, now);
         assert_eq!(clock.last_pointer, now);
+        assert_eq!(clock.last_bare_ack, now);
     }
 }

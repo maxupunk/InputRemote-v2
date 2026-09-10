@@ -129,7 +129,10 @@ mod tests {
 
     #[test]
     fn round_trip_preserves_a_carried_ack() {
-        let frame = key_frame().with_ack(Ack::new(Sequence(42)).with(Sequence(41)));
+        let frame = key_frame().with_ack(
+            crate::channel::ChannelId::ReliableInput,
+            Ack::new(Sequence(42)).with(Sequence(41)),
+        );
         let bytes = encode(&frame, Carrier::Udp).unwrap();
         assert_eq!(decode(&bytes, Carrier::Udp).unwrap(), frame);
     }
@@ -264,10 +267,13 @@ mod tests {
         ];
         for message in hot {
             assert!(message.is_hot_path() || message.is_release_all());
-            let frame = Frame::new(message.clone(), Sequence(u32::MAX)).with_ack(Ack {
-                cumulative: Sequence(u32::MAX),
-                bits: u32::MAX,
-            });
+            let frame = Frame::new(message.clone(), Sequence(u32::MAX)).with_ack(
+                crate::channel::ChannelId::ReliableInput,
+                Ack {
+                    cumulative: Sequence(u32::MAX),
+                    bits: u32::MAX,
+                },
+            );
             let bytes = encode(&frame, Carrier::Udp).unwrap();
             assert!(
                 bytes.len() <= limits::MAX_INPUT_MESSAGE,

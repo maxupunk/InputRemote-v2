@@ -49,6 +49,14 @@ pub struct Pair {
     log: Vec<(Side, Command)>,
     /// Portadores que o roteador deixa passar. Tirar um daqui simula perda total.
     delivering: bool,
+    /// Entrega cada quadro duas vezes, para exercer a detecção de repetição.
+    duplicating: bool,
+    /// Descarta um quadro a cada `n`. Zero desliga.
+    drop_every: u32,
+    /// Quantos quadros o roteador já viu, para o padrão de descarte.
+    seen: u32,
+    /// Quantos quadros o roteador descartou.
+    dropped: u32,
 }
 
 /// Um arranjo de uma tela só, com o tamanho dado.
@@ -103,6 +111,10 @@ impl Pair {
             now: Timestamp::from_millis(10_000),
             log: Vec::new(),
             delivering: true,
+            duplicating: false,
+            drop_every: 0,
+            seen: 0,
+            dropped: 0,
         };
         pair.feed(Side::Server, Input::LocalScreens(server_screens));
         pair.feed(Side::Client, Input::LocalScreens(client_screens));
@@ -136,6 +148,26 @@ impl Pair {
     /// Liga ou desliga a entrega de quadros. Desligar simula perda total do meio.
     pub fn set_delivery(&mut self, delivering: bool) {
         self.delivering = delivering;
+    }
+
+    /// Faz o roteador entregar cada quadro duas vezes.
+    ///
+    /// Um meio de datagrama duplica de verdade — por retransmissão do próprio rádio, por
+    /// caminho múltiplo na rede, ou por um atacante reenviando o que gravou.
+    pub fn set_duplicating(&mut self, duplicating: bool) {
+        self.duplicating = duplicating;
+    }
+
+    /// Descarta um quadro a cada `n`. Zero desliga.
+    pub fn set_drop_every(&mut self, n: u32) {
+        self.drop_every = n;
+        self.seen = 0;
+        self.dropped = 0;
+    }
+
+    /// Quantos quadros o roteador descartou.
+    pub const fn dropped(&self) -> u32 {
+        self.dropped
     }
 
     /// Sobe o portador dos dois lados e conclui o handshake.
@@ -173,14 +205,25 @@ impl Pair {
         }
 
         for (carrier, frame) in to_deliver {
-            let mut batch = CommandBatch::new();
-            let now = self.now;
-            let input = Input::Received { carrier, frame };
-            match side.other() {
-                Side::Server => self.server.step(now, input, &mut batch),
-                Side::Client => self.client.step(now, input, &mut batch),
+            self.seen += 1;
+            if self.drop_every > 0 && self.seen.is_multiple_of(self.drop_every) {
+                self.dropped += 1;
+                continue;
             }
-            self.dispatch(side.other(), &batch, depth + 1);
+            let copies = if self.duplicating { 2 } else { 1 };
+            for _ in 0..copies {
+                let mut batch = CommandBatch::new();
+                let now = self.now;
+                let input = Input::Received {
+                    carrier,
+                    frame: frame.clone(),
+                };
+                match side.other() {
+                    Side::Server => self.server.step(now, input, &mut batch),
+                    Side::Client => self.client.step(now, input, &mut batch),
+                }
+                self.dispatch(side.other(), &batch, depth + 1);
+            }
         }
     }
 

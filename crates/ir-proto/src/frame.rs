@@ -63,7 +63,7 @@ impl Sequence {
 /// Confirmação de recebimento, para os canais confiáveis sobre UDP.
 ///
 /// Sobre RFCOMM e TCP o portador já garante ordem e entrega, e este campo fica ausente —
-/// custando 1 byte de `None` em vez dos 8 de um `Ack` que ninguém usaria
+/// custando 1 byte de `None` em vez dos 9 de uma confirmação que ninguém usaria
 /// (`docs/03-protocolo.md` §4.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Ack {
@@ -113,6 +113,32 @@ impl Ack {
     }
 }
 
+/// Uma confirmação, e a qual canal ela se refere.
+///
+/// O canal é explícito, e **não** é o canal do quadro que a carrega. A razão é direta: o
+/// canal de entrada confiável é unidirecional, do servidor para o cliente. Se a confirmação
+/// se referisse ao canal do próprio quadro, o cliente nunca teria como confirmar o que
+/// recebeu ali — ele não manda nada por aquele canal —, e a janela do servidor encheria
+/// depois de 64 teclas, derrubando a sessão no meio de uma frase.
+///
+/// Com o canal explícito, qualquer quadro pode confirmar qualquer canal, e um
+/// [`Control::AckOnly`](crate::message::Control::AckOnly) resolve todos.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChannelAck {
+    /// A qual canal esta confirmação se refere.
+    pub channel: ChannelId,
+    /// O que foi recebido nele.
+    pub ack: Ack,
+}
+
+impl ChannelAck {
+    /// Uma confirmação para o canal dado.
+    #[must_use]
+    pub const fn new(channel: ChannelId, ack: Ack) -> Self {
+        Self { channel, ack }
+    }
+}
+
 /// Um quadro do protocolo, pronto para ser cifrado e enviado.
 ///
 /// A ordem dos campos **é o formato de fio** e não pode ser trocada sem incremento de
@@ -126,7 +152,9 @@ pub struct Frame {
     /// Sequência desta mensagem, dentro do seu canal.
     pub seq: Sequence,
     /// Confirmação carregada de volta, quando o portador precisa dela.
-    pub ack: Option<Ack>,
+    ///
+    /// Refere-se ao canal que ela mesma nomeia, não ao canal deste quadro.
+    pub ack: Option<ChannelAck>,
 }
 
 impl Frame {
@@ -140,10 +168,10 @@ impl Frame {
         }
     }
 
-    /// O mesmo quadro, carregando uma confirmação.
+    /// O mesmo quadro, carregando uma confirmação de um canal.
     #[must_use]
-    pub fn with_ack(mut self, ack: Ack) -> Self {
-        self.ack = Some(ack);
+    pub fn with_ack(mut self, channel: ChannelId, ack: Ack) -> Self {
+        self.ack = Some(ChannelAck::new(channel, ack));
         self
     }
 

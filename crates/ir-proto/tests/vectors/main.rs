@@ -21,6 +21,15 @@
 //!
 //! Apagar ou reescrever um vetor para "fazer o teste passar" desfaz a única proteção que
 //! existe aqui. Ver `docs/03-protocolo.md` §9.
+//!
+//! # A exceção de pré-lançamento
+//!
+//! Enquanto a versão 1 não tiver sido lançada — enquanto não houver um par instalado em lugar
+//! nenhum falando este protocolo —, uma mudança intencional atualiza o vetor **no lugar**, em
+//! vez de acrescentar um conjunto novo: não há com quem manter compatibilidade. Toda
+//! atualização dessas fica registrada em `LOG.md`, com o motivo.
+//!
+//! A exceção acaba no primeiro lançamento. Depois dele, a regra acima vale sem ressalva.
 
 // Um teste de integração é um crate próprio, então a liberação de `expect` que a biblioteca
 // concede a `#[cfg(test)]` não chega até aqui. Em teste, `expect` com mensagem é melhor que

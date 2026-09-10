@@ -6,15 +6,22 @@
 //! cometer (`docs/02-arquitetura.md` §8).
 
 use ir_proto::carrier::Carrier;
+use ir_proto::frame::{Frame, Sequence};
 use ir_proto::message::{Control, DisconnectReason, ErrorCode, Greeting, Message};
 use ir_proto::version;
 
 use crate::config::Role;
 use crate::event::{CarrierChoice, Command, CommandBatch, LinkDown, Notice, TimerId};
 use crate::phase::Phase;
+use crate::reliability::Due;
 use crate::session::Session;
 use crate::session::state::{Clock, PeerInfo};
-use crate::time::Timestamp;
+use crate::time::{Millis, Timestamp};
+
+/// Intervalo entre confirmações puras.
+///
+/// Origem: `docs/03-protocolo.md` §4.1 — a cada 20 ms enquanto houver algo pendente.
+const ACK_INTERVAL: Millis = Millis(20);
 
 impl Session {
     pub(super) fn on_carrier_up(
@@ -82,6 +89,7 @@ impl Session {
         // Sequências zeradas: uma herdada da sessão anterior faria o par descartar as
         // primeiras mensagens da nova.
         self.seqs.reset();
+        self.reliability.reset();
         self.clock = Clock::started_at(now);
 
         if !self.move_to(Phase::Handshaking, out) {
@@ -142,6 +150,13 @@ impl Session {
     }
 
     fn establish(&mut self, now: Timestamp, out: &mut CommandBatch) {
+        // Um `Hello` atrasado ou retransmitido chega numa sessão que já está de pé. Deixar
+        // `establish` correr de novo rebaixaria a fase de `Engaged` para `Ready` — devolvendo
+        // o controle no meio do uso — e reanunciaria a conexão à interface. A identidade do
+        // par já foi atualizada por quem chamou; aqui não há mais nada a fazer.
+        if self.phase.is_established() {
+            return;
+        }
         if !self.move_to(Phase::Ready, out) {
             return;
         }
@@ -166,6 +181,29 @@ impl Session {
 
     /// Encerra a sessão corrente.
     pub(super) fn tear_down(&mut self, now: Timestamp, reason: LinkDown, out: &mut CommandBatch) {
+        // Avisa o par antes de morrer, quando a decisão é nossa e ainda há por onde falar.
+        //
+        // Sem isto, quem fica do outro lado só percebe pelo próprio prazo de queda — até um
+        // segundo depois — e segura as teclas até lá. O adeus quase sempre chega, porque a
+        // maioria das quedas é por perda parcial, não por meio morto. E ele **não** entra na
+        // janela de retransmissão: não haveria quem confirmasse, e mandar por `send` poderia
+        // reentrar aqui pela janela cheia.
+        if self.phase.is_established()
+            && !matches!(reason, LinkDown::PeerClosed(_))
+            && let Some(carrier) = self.carrier
+        {
+            let farewell = Frame::new(
+                Message::Control(Control::Bye {
+                    reason: reason.as_disconnect_reason(),
+                }),
+                Sequence::ZERO,
+            );
+            out.push(Command::Send {
+                carrier,
+                frame: farewell,
+            });
+        }
+
         // Primeiro soltar, depois qualquer outra coisa. A ordem é contrato.
         if self.phase.may_hold_input() {
             self.release_everything(out);
@@ -183,6 +221,7 @@ impl Session {
         self.peer_screens = None;
         self.pending_pointer = ir_proto::input::PointerDelta::ZERO;
         self.seqs.reset();
+        self.reliability.reset();
 
         for timer in [TimerId::Heartbeat, TimerId::Snapshot, TimerId::PointerFlush] {
             out.push(Command::ClearTimer(timer));
@@ -197,17 +236,11 @@ impl Session {
         }
     }
 
-    /// Encerra por vontade própria, avisando o par antes.
+    /// Encerra por vontade própria.
+    ///
+    /// O aviso ao par é responsabilidade de [`Session::tear_down`], que o manda em toda queda
+    /// decidida por este lado — não só nesta.
     pub fn stop(&mut self, now: Timestamp, reason: LinkDown, out: &mut CommandBatch) {
-        if self.phase.is_established() {
-            self.send(
-                now,
-                Message::Control(Control::Bye {
-                    reason: reason.as_disconnect_reason(),
-                }),
-                out,
-            );
-        }
         self.tear_down(now, reason, out);
     }
 
@@ -245,6 +278,77 @@ impl Session {
         if self.config.role == Role::Server && self.phase == Phase::Engaged {
             self.flush_pointer_if_due(now, out);
             self.send_snapshot_if_due(now, out);
+        }
+
+        self.service_retransmissions(now, out);
+        self.send_bare_ack_if_needed(now, out);
+    }
+
+    /// Reenvia o que venceu, ou derruba o enlace se alguma mensagem esgotou as tentativas.
+    fn service_retransmissions(&mut self, now: Timestamp, out: &mut CommandBatch) {
+        let Some(carrier) = self.carrier else { return };
+        if !matches!(carrier.delivery(), ir_proto::carrier::Delivery::Datagram) {
+            return; // sobre stream o portador já garante entrega
+        }
+
+        let timings = self.config.timings;
+        let due = self.reliability.on_tick(
+            now,
+            timings.min_retransmit,
+            timings.link_timeout,
+            timings.max_retransmits,
+        );
+
+        match due {
+            Due::Idle => {}
+            Due::Retransmit(frames) => {
+                for frame in frames {
+                    out.push(Command::Send { carrier, frame });
+                }
+            }
+            Due::GiveUp { .. } => {
+                // Esgotadas as tentativas, prosseguir seguiria com uma lacuna no canal de
+                // teclado. Se a mensagem perdida for um `KeyUp`, a tecla fica presa na
+                // máquina do outro — e o usuário não sabe o que aconteceu nem como sair.
+                self.tear_down(now, LinkDown::Timeout, out);
+            }
+        }
+    }
+
+    /// Manda uma confirmação pura quando há o que confirmar e nada saindo para carregá-la.
+    ///
+    /// É o caso da digitação contínua: o servidor manda tecla após tecla e o cliente não tem
+    /// nada a dizer. Sem isto, a janela do servidor encheria depois de 64 teclas e a sessão
+    /// cairia no meio de uma frase.
+    fn send_bare_ack_if_needed(&mut self, now: Timestamp, out: &mut CommandBatch) {
+        let Some(carrier) = self.carrier else { return };
+        if !matches!(carrier.delivery(), ir_proto::carrier::Delivery::Datagram) {
+            return;
+        }
+        if !now.elapsed_at_least(self.clock.last_bare_ack, ACK_INTERVAL) {
+            return;
+        }
+
+        // Uma confirmação por canal com algo a confirmar. Um quadro carrega a confirmação de
+        // **um** canal, e mandar só a do canal mais urgente deixaria os outros sem
+        // confirmação nenhuma — a janela deles encheria e a sessão cairia por um caminho que
+        // ninguém associaria à causa.
+        let mut sent_any = false;
+        for channel in ir_proto::channel::ChannelId::ALL {
+            let Some(ack) = self.reliability.ack_for(channel) else {
+                continue;
+            };
+            // Sequência zero e nunca contada: uma confirmação pura não faz parte do fluxo
+            // ordenado. Se ela consumisse número de sequência sem ser retransmitida, perder
+            // uma criaria um buraco que nunca seria preenchido, e tudo depois dela ficaria
+            // esperando para sempre.
+            let frame = Frame::new(Message::Control(Control::AckOnly), Sequence::ZERO)
+                .with_ack(channel, ack);
+            out.push(Command::Send { carrier, frame });
+            sent_any = true;
+        }
+        if sent_any {
+            self.clock.last_bare_ack = now;
         }
     }
 

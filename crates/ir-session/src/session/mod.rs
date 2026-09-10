@@ -20,6 +20,7 @@ use ir_proto::screens::ScreenLayout;
 use crate::config::{Role, SessionConfig};
 use crate::event::{Command, CommandBatch, Input, LinkDown, Notice};
 use crate::phase::Phase;
+use crate::reliability::{ReliableChannels, SendOutcome};
 use crate::sequences::Sequences;
 use crate::time::Timestamp;
 
@@ -63,6 +64,12 @@ pub struct Session {
     pub(super) agent_ready: bool,
 
     pub(super) seqs: Sequences,
+
+    /// Janelas de retransmissão e detecção de repetição, por canal.
+    ///
+    /// Só têm efeito sobre portador de datagrama; sobre stream o portador já garante ordem e
+    /// entrega, e as janelas ficam vazias.
+    pub(super) reliability: ReliableChannels,
     pub(super) clock: Clock,
 
     /// A última ida e volta medida até o par.
@@ -96,6 +103,7 @@ impl Session {
             input_state: InputState::released(),
             agent_ready: false,
             seqs: Sequences::new(),
+            reliability: ReliableChannels::new(),
             clock: Clock::default(),
             pending_pointer: PointerDelta::ZERO,
             last_rtt: None,
@@ -224,7 +232,7 @@ impl Session {
     ///
     /// Sem portador ativo, nada acontece: é o caso normal entre a queda e a reconexão, e
     /// enfileirar silenciosamente seria pior — a mensagem chegaria fora de contexto.
-    pub(super) fn send(&mut self, _now: Timestamp, message: Message, out: &mut CommandBatch) {
+    pub(super) fn send(&mut self, now: Timestamp, message: Message, out: &mut CommandBatch) {
         let Some(carrier) = self.carrier else { return };
         let channel = message.channel();
         if !channel.allows(carrier) {
@@ -236,8 +244,52 @@ impl Session {
             }));
             return;
         }
-        let frame = Frame::new(message, self.seqs.next(channel));
+
+        let seq = self.seqs.next(channel);
+        let mut frame = Frame::new(message, seq);
+
+        // Pega uma confirmação para carregar de volta. Aproveitar um quadro que já vai sair é
+        // de graça, e é o que evita mandar `AckOnly` na maioria dos casos.
+        if channel.needs_app_reliability(carrier)
+            && let Some(pending) = self.ack_to_piggyback()
+        {
+            frame = frame.with_ack(pending.channel, pending.ack);
+        }
+
+        // Uma confirmação pura **não** entra na janela e nunca é retransmitida. Se entrasse,
+        // cada confirmação precisaria ser confirmada, e o laço encheria a janela do canal de
+        // controle até derrubar a sessão. É a mesma razão pela qual um ACK puro de TCP não
+        // carrega sequência a confirmar.
+        if channel.needs_app_reliability(carrier)
+            && !is_bare_ack(&frame)
+            && self.reliability.on_sent(channel, now, seq, &frame) == SendOutcome::WindowFull
+        {
+            // Janela cheia é o único caso em que não se pode nem enviar nem descartar: o
+            // descarte perderia um evento de teclado em silêncio. A política de saturação de
+            // canal confiável é derrubar o enlace, e é o que se faz.
+            self.tear_down(now, LinkDown::TransportFailed, out);
+            return;
+        }
+
         out.push(Command::Send { carrier, frame });
+    }
+
+    /// A confirmação mais urgente a carregar num quadro que já vai sair.
+    ///
+    /// A ordem é a de importância: entrada antes de controle, porque é a janela da entrada que
+    /// enche durante digitação contínua e é ela que derrubaria a sessão no meio de uma frase.
+    fn ack_to_piggyback(&self) -> Option<ir_proto::frame::ChannelAck> {
+        const ORDER: [ChannelId; 4] = [
+            ChannelId::ReliableInput,
+            ChannelId::Control,
+            ChannelId::Feedback,
+            ChannelId::ClipboardText,
+        ];
+        ORDER.into_iter().find_map(|channel| {
+            self.reliability
+                .ack_for(channel)
+                .map(|ack| ir_proto::frame::ChannelAck::new(channel, ack))
+        })
     }
 
     /// A sequência que este canal usaria em seguida. Só para teste e diagnóstico.
@@ -245,6 +297,28 @@ impl Session {
     pub const fn next_sequence(&self, channel: ChannelId) -> ir_proto::frame::Sequence {
         self.seqs.peek(channel)
     }
+}
+
+/// Se este quadro é uma confirmação pura.
+///
+/// Reconhecido pelo conteúdo e não por uma marca separada: `AckOnly` existe justamente para
+/// carregar nada além da confirmação, e duas formas de dizer a mesma coisa divergiriam.
+pub(super) fn is_bare_ack(frame: &Frame) -> bool {
+    matches!(
+        frame.message,
+        Message::Control(ir_proto::message::Control::AckOnly)
+    )
+}
+
+/// Se este quadro é um adeus.
+///
+/// Como a confirmação pura, ele viaja fora do fluxo ordenado: é a última coisa que se manda,
+/// não há quem o confirme, e esperar a ordem dele seria esperar por uma sessão que já acabou.
+pub(super) fn is_farewell(frame: &Frame) -> bool {
+    matches!(
+        frame.message,
+        Message::Control(ir_proto::message::Control::Bye { .. })
+    )
 }
 
 /// Erro ao construir uma sessão com configuração incoerente.

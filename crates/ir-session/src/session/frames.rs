@@ -8,6 +8,7 @@ use ir_proto::message::{Control, Feedback, Message};
 use crate::config::Role;
 use crate::event::{Command, CommandBatch, Notice};
 use crate::phase::Phase;
+use crate::reliability::Delivery;
 use crate::session::Session;
 use crate::time::Timestamp;
 
@@ -24,13 +25,57 @@ impl Session {
         // tempo enquanto processa uma rajada.
         self.clock.last_rx = now;
         self.arm_link_timeout(now, out);
+        self.adopt_carrier_if_needed(carrier, out);
 
-        if self.carrier != Some(carrier) && frame.channel().allows(carrier) {
-            // Chegou por um portador que não é o ativo. Acontece na troca, com mensagens em
-            // trânsito. Aceita-se o conteúdo — a alternativa seria perder um `KeyUp`.
+        // A confirmação vem antes de qualquer despacho: ela libera janela do nosso lado, e
+        // fazê-lo primeiro impede que uma rajada encha a janela enquanto é processada.
+        if let Some(carried) = frame.ack {
+            self.reliability.on_ack(carried.channel, now, carried.ack);
         }
 
-        match frame.message {
+        // Uma confirmação pura não entra na ordenação nem na detecção de repetição: ela não
+        // faz parte do fluxo, e o que ela carregava já foi aplicado acima.
+        if super::is_bare_ack(&frame) {
+            return;
+        }
+
+        // O adeus também viaja fora da ordem: esperar a vez dele seria esperar por uma sessão
+        // que já acabou, e o par do outro lado ficaria segurando as teclas até o prazo vencer.
+        if super::is_farewell(&frame) {
+            self.dispatch_message(now, frame.message, out);
+            return;
+        }
+
+        let channel = frame.channel();
+        if !channel.needs_app_reliability(carrier) {
+            self.dispatch_message(now, frame.message, out);
+            return;
+        }
+
+        match self.reliability.accept(channel, frame) {
+            // Repetição: descartar sem processar não é otimização. Reaplicar um `KeyDown`
+            // gravado do ar seria redigitar o que o usuário digitou
+            // (`docs/04-seguranca.md` §2).
+            // Adiantado espera o buraco à frente ser preenchido: entregar agora poria um
+            // `KeyDown` retransmitido **depois** do `KeyUp` que o soltaria, e a tecla ficaria
+            // presa para sempre.
+            Delivery::Duplicate | Delivery::Buffered => {}
+            Delivery::Ready(frames) => {
+                for frame in frames {
+                    self.dispatch_message(now, frame.message, out);
+                }
+            }
+            Delivery::Overflow => {
+                // Perdeu-se mais do que a fila consegue reparar. Entregar com lacuna deixaria
+                // tecla presa; cair é a escolha menos ruim.
+                self.tear_down(now, crate::event::LinkDown::Timeout, out);
+            }
+        }
+    }
+
+    /// Entrega uma mensagem ao tratador do seu canal.
+    fn dispatch_message(&mut self, now: Timestamp, message: Message, out: &mut CommandBatch) {
+        match message {
             Message::Control(control) => self.on_control(now, control, out),
             Message::Input(message) => self.on_input_message(message, out),
             Message::Pointer(message) => self.on_pointer_message(now, message, out),
@@ -39,6 +84,24 @@ impl Session {
             // núcleo. Ignorar é o correto até que sejam, e o par não é penalizado por
             // oferecê-los.
             _ => {}
+        }
+    }
+
+    /// Adota o portador por onde um quadro chegou, quando ainda não há nenhum.
+    ///
+    /// Sem isto, quem recebe o `Hello` primeiro não consegue responder — `send` não tem por
+    /// onde mandar — e acaba iniciando o próprio handshake, zerando as janelas e fazendo o
+    /// `Hello` retransmitido do outro lado parecer novo. A regra passa a ser simples: **quem
+    /// ouve primeiro, responde**. Receber um quadro por um portador é prova de que ele
+    /// funciona; esperar o aviso local de que ele subiu é esperar informação que já chegou.
+    fn adopt_carrier_if_needed(&mut self, carrier: Carrier, out: &mut CommandBatch) {
+        if self.carrier.is_some() || !carrier.carries_input() {
+            return;
+        }
+        self.available.set(carrier, true);
+        self.carrier = Some(carrier);
+        if self.phase == Phase::Offline {
+            self.move_to(Phase::Handshaking, out);
         }
     }
 

@@ -7,6 +7,7 @@
 // exportá-lo para lá.
 #![allow(unreachable_pub)]
 
+use ir_proto::channel::ChannelId;
 use ir_proto::frame::{Ack, Frame, Sequence};
 use ir_proto::ids::{MachineId, MonitorId};
 use ir_proto::input::{
@@ -166,11 +167,14 @@ fn session_vectors() -> Vec<Vector> {
         ),
         v(
             "ack_only",
-            control(Control::AckOnly, 7).with_ack(Ack {
-                cumulative: Sequence(99),
-                bits: 0x0000_00ff,
-            }),
-            "0009070163ff01",
+            control(Control::AckOnly, 7).with_ack(
+                ChannelId::ReliableInput,
+                Ack {
+                    cumulative: Sequence(99),
+                    bits: 0x0000_00ff,
+                },
+            ),
+            "000907010163ff01",
         ),
     ]
 }
