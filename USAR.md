@@ -13,6 +13,9 @@ comparação de um código de 6 dígitos nas duas telas.
 - As duas máquinas na **mesma rede local**, e o IP de cada uma.
 - No **Linux**, o serviço precisa de acesso a `/dev/uinput`. Para o teste, o jeito mais simples é
   rodar com `sudo` (a instalação como serviço, com regra `udev` e usuário dedicado, é a Etapa 1.5).
+- As portas **UDP** de cada lado (52525 e 52526, ou as que você escolher) abertas no firewall. Na
+  primeira execução, o Windows costuma perguntar se libera — responda que sim para redes privadas.
+- **Uma tela em cada máquina** (o caso de vários monitores tem uma ressalva, no fim).
 
 ## 1. Compilar
 
@@ -88,8 +91,26 @@ Encoste o ponteiro na **borda direita** da tela do Windows. Ele atravessa para o
 teclado e o mouse passam a controlar o Linux. Para voltar, encoste na borda esquerda da tela do
 Linux.
 
-Se algo travar, o atalho de emergência solta tudo e devolve o controle (a ser ligado na interface;
-por ora, encerrar o serviço no Windows devolve o controle e solta todas as teclas).
+A **ordem de subida não importa**: quem estiver esperando tenta conectar a cada 3 segundos, e a
+conexão se refaz sozinha depois de uma queda passageira.
+
+### Se algo travar
+
+Encerre o serviço no **Windows** (Ctrl+C na janela dele). O cliente percebe o silêncio em até 1
+segundo e **solta todas as teclas e botões** automaticamente — é a rede de segurança contra tecla
+presa. Se um dos lados ficar confuso (por exemplo, depois de reiniciar só um deles), encerre e suba
+os dois de novo.
+
+## Ressalvas conhecidas deste primeiro teste
+
+- **Vários monitores:** o mapeamento assume uma tela por máquina. Com mais de um monitor, a borda
+  de travessia e a posição do cursor podem ficar deslocadas — é um refinamento posterior.
+- **Injeção no Linux (`uinput`):** o dispositivo virtual é criado seguindo o desenho de
+  [docs/06-linux.md](docs/06-linux.md), mas só foi compilado, não exercitado numa máquina Linux com
+  ambiente gráfico. Se o ponteiro não se mexer no Linux, é o primeiro ponto a investigar (confira
+  que `/dev/uinput` está acessível e que o compositor reconheceu os dispositivos `InputRemote`).
+- **Resolução do Linux:** ponha `screen_width`/`screen_height` na resolução real da tela do Linux,
+  para o movimento e a borda de volta ficarem na proporção certa.
 
 ## O que ainda não está aqui
 
