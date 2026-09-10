@@ -88,8 +88,13 @@ fn spawn_stdin_reader() -> mpsc::UnboundedReceiver<String> {
         let stdin = std::io::stdin();
         for line in stdin.lock().lines().map_while(Result::ok) {
             if tx.send(line).is_err() {
-                break;
+                return;
             }
+        }
+        // Fim do stdin (redirecionado de um arquivo, por exemplo): segura o emissor para o canal
+        // não fechar, senão o laço do ator giraria recebendo `None` sem parar.
+        loop {
+            std::thread::park();
         }
     });
     rx
@@ -119,6 +124,12 @@ fn build_io(role: Role) -> Result<Io> {
         Ok((Some(capturer), None, cap_rx))
     } else {
         let injector = ir_input::open_injector().context("abrindo o injetor")?;
+        // O cliente não captura, mas o canal precisa ficar aberto: um `recv` num canal fechado
+        // volta na hora, e o laço do ator giraria sem parar. Uma tarefa segura o emissor.
+        tokio::spawn(async move {
+            let _hold = cap_tx;
+            std::future::pending::<()>().await;
+        });
         Ok((None, Some(injector), cap_rx))
     }
 }
