@@ -1,5 +1,6 @@
 [package]
 name = "ir-net"
+description = "Transporte UDP de entrada e descoberta mDNS. Move os quadros cifrados pelo socket."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,6 +10,14 @@ repository.workspace = true
 
 [dependencies]
 ir-proto.workspace = true
+ir-crypto.workspace = true
+tokio.workspace = true
+mdns-sd.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros", "net", "time", "sync"] }
 
 [lints]
 workspace = true
