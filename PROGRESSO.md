@@ -128,9 +128,15 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [ ] Relatório de diagnóstico por lista de campos permitidos
 
 ### 1.5. Instalação
-- [ ] Registro e remoção do serviço no Windows
-- [ ] Unidade `systemd` + regra `udev` + política D-Bus no Linux
-- [ ] Desinstalação sem resíduo
+- [x] Nomes de executável conforme [00](docs/00-indice.md): `inputremote-ui`, não `ir-ui`
+- [x] Empacotamento: build em release, manifesto com impressão digital e com o que **falta**, zip
+- [x] Instalação em pasta protegida, com ACL por SID (verificada num Windows em português)
+- [~] Registro e remoção do serviço no Windows — script pronto; o caminho do serviço não pôde
+      ser exercitado porque `inputremote-daemon` ainda não existe
+- [~] Desinstalação sem resíduo — script pronto, preserva configuração salvo pedido explícito;
+      não executado, porque exige elevação
+- [ ] Unidade `systemd` + regra `udev` + política D-Bus no Linux — sem binário de Linux para
+      empacotar, um instalador seria dívida disfarçada de progresso
 
 ---
 

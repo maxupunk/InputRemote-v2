@@ -8,6 +8,12 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 
+# O nome do executável é o de `docs/00-indice.md`, não o do crate. `ir-ui` é como o código se
+# organiza; `inputremote-ui` é como o usuário encontra o programa no menu iniciar.
+[[bin]]
+name = "inputremote-ui"
+path = "src/main.rs"
+
 [dependencies]
 ir-ipc.workspace = true
 slint = "1.14"

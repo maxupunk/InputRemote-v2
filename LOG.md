@@ -34,3 +34,4 @@ quê. Um registro que se reescreve não é registro.
 | 07 | 2026-09-09 | [PoC-1: o spike da tela de bloqueio, pronto para rodar](docs/logs/07-poc1-tela-de-bloqueio.md) |
 | 08 | 2026-09-09 | [`ir-ipc`: o contrato que a interface enxerga](docs/logs/08-ir-ipc.md) |
 | 09 | 2026-09-09 | [A interface: três telas, e o desenho no lugar da pergunta](docs/logs/09-interface.md) |
+| 10 | 2026-09-10 | [Empacotamento: o que dá para instalar hoje](docs/logs/10-empacotamento.md) |
