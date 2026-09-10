@@ -4,7 +4,12 @@ members = [
     "crates/ir-proto",
     "crates/ir-geometry",
     "crates/ir-session",
+    "crates/ir-crypto",
     "crates/ir-ipc",
+    "crates/ir-net",
+    "crates/ir-input",
+    "crates/ir-daemon",
+    "crates/ir-agent",
     "crates/ir-ui",
     "xtask",
 ]
@@ -22,13 +27,28 @@ repository = "https://github.com/inputremote/inputremote"
 ir-proto = { path = "crates/ir-proto", version = "0.1.0-dev" }
 ir-geometry = { path = "crates/ir-geometry", version = "0.1.0-dev" }
 ir-session = { path = "crates/ir-session", version = "0.1.0-dev" }
+ir-crypto = { path = "crates/ir-crypto", version = "0.1.0-dev" }
 ir-ipc = { path = "crates/ir-ipc", version = "0.1.0-dev" }
+ir-net = { path = "crates/ir-net", version = "0.1.0-dev" }
+ir-input = { path = "crates/ir-input", version = "0.1.0-dev" }
 
 postcard = { version = "1.1", default-features = false, features = ["alloc"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
 thiserror = "2.0"
 
-# Ferramentas de desenvolvimento (xtask)
+# Criptografia e rede (crates de E/S — fora do núcleo puro)
+snow = "0.10"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+blake3 = "1.5"
+zeroize = { version = "1.8", features = ["derive"] }
+subtle = "2.6"
+rand = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "macros", "io-util"] }
+mdns-sd = "0.11"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Ferramentas de desenvolvimento (xtask) e binários
 anyhow = "1.0"
 toml = "0.9"
 
