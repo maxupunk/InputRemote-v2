@@ -9,7 +9,7 @@ FROM fedora:44
 # Dependencias de compilacao do Slint com backend winit/femtovg, mais as ferramentas de RPM.
 RUN dnf -y install \
         gcc gcc-c++ make pkgconf-pkg-config git curl-minimal \
-        rpm-build rpmdevtools \
+        rpm-build rpmdevtools desktop-file-utils \
         fontconfig-devel freetype-devel \
         libxkbcommon-devel libxkbcommon-x11-devel \
         wayland-devel wayland-protocols-devel \

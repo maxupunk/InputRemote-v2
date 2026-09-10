@@ -48,6 +48,9 @@ component Voltar inherits Rectangle {
 
 export component Janela inherits Window {
     title: "InputRemote";
+    // O icone da janela: barra de tarefas no Windows, lancador no Linux. E outro caminho que o
+    // icone embutido no `.exe`, que e o que o Explorer usa.
+    icon: @image-url("../../../recursos/icone-256.png");
     width: Tema.largura;
     height: 660px;
     background: Tema.fundo;

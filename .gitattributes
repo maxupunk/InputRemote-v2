@@ -9,3 +9,8 @@
 *.spec text eol=lf
 *.desktop text eol=lf
 Dockerfile text eol=lf
+
+# Imagem e icone sao binarios. O git costuma detectar sozinho, mas uma conversao de fim de linha
+# num .ico corrompe o arquivo sem avisar, e o defeito so aparece em quem clonar.
+*.png binary
+*.ico binary

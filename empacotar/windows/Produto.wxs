@@ -37,11 +37,13 @@
 
     <MediaTemplate EmbedCab="yes" />
 
-    <Property Id="ARPPRODUCTICON" Value="icone.exe" />
+    <Property Id="ARPPRODUCTICON" Value="icone.ico" />
     <Property Id="ARPHELPLINK" Value="https://github.com/inputremote/inputremote" />
     <Property Id="WIXUI_INSTALLDIR" Value="PASTAINSTALACAO" />
 
-    <Icon Id="icone.exe" SourceFile="$(var.Binarios)\inputremote-ui.exe" />
+    <!-- O icone da entrada em Aplicativos. Vem do arquivo, e nao extraido do executavel:
+         extrair pegaria o primeiro tamanho que aparecesse, e a lista de programas usa 32 px. -->
+    <Icon Id="icone.ico" SourceFile="$(var.Recursos)\icone.ico" />
 
     <WixVariable Id="WixUILicenseRtf" Value="$(var.Recursos)\LICENSE.rtf" />
 

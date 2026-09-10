@@ -134,6 +134,7 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Instalação em `%ProgramFiles%`, que é o requisito de pasta protegida do `UIAccess`
 - [x] Assinatura Authenticode com certificado autoassinado, para teste e uso local
 - [x] Manifesto com impressão digital, estado da assinatura e o que **falta** no pacote
+- [x] Ícone no `.exe`, na entrada de Aplicativos e no tema `hicolor` do Linux
 - [x] Linux: RPM do Fedora 44, construído dentro do sistema de destino
 - [~] Registro e remoção do serviço no Windows — declarado no MSI (`ServiceInstall`), mas não
       exercitado: `inputremote-daemon` ainda não existe
@@ -271,6 +272,8 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Serviço simulado, para a interface rodar e ser testada antes de existir transporte
 - [x] A janela avisa quando o serviço real não está respondendo
 - [x] Diagnóstico em campo selecionável, por lista de campos permitidos
+- [x] Ícone do programa, desenhado para ler em 16 px, nos quatro lugares que o mostram
+- [x] Nenhuma janela de console atrás da interface no build de release
 - [~] Fluxo de pareamento com código de seis dígitos — a interface está pronta e testada; o
       código de verdade depende da Etapa 3
 - [ ] Preferências avançadas: arranjo de telas, atalho de emergência

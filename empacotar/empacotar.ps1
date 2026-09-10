@@ -198,6 +198,7 @@ function Empacotar-Windows([string]$versao, [string]$commit) {
 
     # --- Recursos que entram no MSI ------------------------------------------------------------
     Copy-Item (Join-Path $PSScriptRoot 'windows\LEIAME.txt') -Destination $recursos
+    Copy-Item (Join-Path $raiz 'recursos\icone.ico') -Destination $recursos
     Copy-Item (Join-Path $raiz 'LICENSE') -Destination (Join-Path $recursos 'LICENSE.txt')
     Converter-Para-Rtf (Join-Path $raiz 'LICENSE') (Join-Path $recursos 'LICENSE.rtf')
 

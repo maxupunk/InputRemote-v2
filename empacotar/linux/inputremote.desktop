@@ -3,6 +3,7 @@ Type=Application
 Name=InputRemote
 GenericName=Teclado e mouse compartilhados
 Comment=Compartilha teclado e mouse com outro computador
+Icon=inputremote
 Exec=inputremote-ui
 Terminal=false
 Categories=Utility;Settings;HardwareSettings;

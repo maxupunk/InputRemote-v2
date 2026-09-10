@@ -35,6 +35,11 @@ BuildRequires:  libXrandr-devel
 BuildRequires:  libXi-devel
 BuildRequires:  mesa-libGL-devel
 BuildRequires:  mesa-libEGL-devel
+BuildRequires:  desktop-file-utils
+
+# O tema de icones e quem resolve `Icon=inputremote` para um arquivo. Sem ele o lancador mostra o
+# icone generico, que e o mesmo que nao ter icone.
+Requires:       hicolor-icon-theme
 
 %description
 O ponteiro atravessa a borda da tela e passa a controlar o outro computador. Um teclado e um
@@ -57,14 +62,22 @@ install -Dpm 0755 target/release/inputremote-ui %{buildroot}%{_bindir}/inputremo
 install -Dpm 0644 empacotar/linux/inputremote.desktop \
         %{buildroot}%{_datadir}/applications/%{name}.desktop
 
+# Um arquivo por tamanho, no lugar que o tema de icones procura. Um PNG grande sozinho obrigaria
+# cada lancador a reduzir por conta propria, e cada um reduz de um jeito.
+for tamanho in 16 22 24 32 48 64 128 256; do
+    install -Dpm 0644 "recursos/icone-${tamanho}.png" \
+        "%{buildroot}%{_datadir}/icons/hicolor/${tamanho}x${tamanho}/apps/%{name}.png"
+done
+
 %check
-desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop || :
+desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 
 %files
 %license LICENSE
 %doc README.md PROGRESSO.md
 %{_bindir}/inputremote-ui
 %{_datadir}/applications/%{name}.desktop
+%{_datadir}/icons/hicolor/*/apps/%{name}.png
 
 %changelog
 * Thu Sep 10 2026 InputRemote <inputremote@example.invalid> - 0.1.0-0.1.dev
