@@ -56,7 +56,9 @@ async fn start_pairing() -> Pair {
 /// Recebe o código de pareamento de um lado, conferindo a chave que ele aprendeu.
 async fn take_code(events: &mut UnboundedReceiver<NetEvent>, expected: &Identity) -> [u8; 6] {
     match next_event(events).await {
-        NetEvent::PairingCode { code, peer_static } => {
+        NetEvent::PairingCode {
+            code, peer_static, ..
+        } => {
             assert_eq!(peer_static, expected.public(), "aprendeu a chave certa");
             code
         }

@@ -54,11 +54,15 @@ pub enum NetEvent {
         code: [u8; 6],
         /// A chave estática que o par apresentou, para gravar após a confirmação.
         peer_static: PublicKey,
+        /// O endereço do par.
+        peer: SocketAddr,
     },
     /// O enlace está pronto: pareamento confirmado dos dois lados, ou reconexão fixada.
     Established {
         /// A chave estática do par.
         peer_static: PublicKey,
+        /// O endereço do par.
+        peer: SocketAddr,
     },
     /// Chegou um quadro do par (bytes de `ir_proto::Frame`).
     Frame(Vec<u8>),
@@ -200,9 +204,11 @@ impl Endpoint {
         if let Some(code) = established.code {
             // Pareamento: mostra o código e espera a confirmação dos dois lados antes de
             // deixar qualquer quadro de sessão passar.
-            let _ = self
-                .events
-                .send(NetEvent::PairingCode { code, peer_static });
+            let _ = self.events.send(NetEvent::PairingCode {
+                code,
+                peer_static,
+                peer,
+            });
             self.state = State::AwaitingConfirm {
                 link,
                 peer_static,
@@ -211,7 +217,9 @@ impl Endpoint {
             };
         } else {
             // Reconexão: a identidade já está fixada, então o enlace já vale.
-            let _ = self.events.send(NetEvent::Established { peer_static });
+            let _ = self
+                .events
+                .send(NetEvent::Established { peer_static, peer });
             self.state = State::Established { link };
         }
     }
@@ -290,7 +298,10 @@ impl Endpoint {
             link, peer_static, ..
         } = old
         {
-            let _ = self.events.send(NetEvent::Established { peer_static });
+            let peer = link.peer();
+            let _ = self
+                .events
+                .send(NetEvent::Established { peer_static, peer });
             self.state = State::Established { link };
         }
     }

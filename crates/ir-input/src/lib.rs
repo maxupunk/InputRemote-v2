@@ -124,6 +124,22 @@ pub trait Capturer: Send {
     fn warp_pointer(&self, x: i32, y: i32);
 }
 
+/// O tamanho da tela primária em pixels, quando a plataforma sabe informar.
+///
+/// No Windows vem de `GetSystemMetrics`. No Linux devolve `None` — o serviço usa o valor da
+/// configuração —, porque obter isso sem sessão gráfica não é confiável.
+#[must_use]
+pub fn primary_screen_size() -> Option<(u32, u32)> {
+    #[cfg(windows)]
+    {
+        windows::primary_screen_size()
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
 /// Abre o injetor desta plataforma.
 ///
 /// # Errors
