@@ -27,7 +27,7 @@
 //! Enquanto a versão 1 não tiver sido lançada — enquanto não houver um par instalado em lugar
 //! nenhum falando este protocolo —, uma mudança intencional atualiza o vetor **no lugar**, em
 //! vez de acrescentar um conjunto novo: não há com quem manter compatibilidade. Toda
-//! atualização dessas fica registrada em `LOG.md`, com o motivo.
+//! atualização dessas fica registrada em `docs/logs/`, com o motivo.
 //!
 //! A exceção acaba no primeiro lançamento. Depois dele, a regra acima vale sem ressalva.
 

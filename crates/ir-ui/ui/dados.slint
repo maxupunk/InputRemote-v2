@@ -1,0 +1,161 @@
+// A superfície entre a interface e o serviço.
+//
+// Tudo que a janela sabe entra por `Dados`; tudo que ela quer sai por `Acoes`. Não há terceiro
+// caminho, e é isso que permite rodar a interface inteira contra um serviço simulado.
+//
+// Os campos aqui são texto já pronto. A tradução de `ir_ipc::Estado` para estas frases acontece
+// em Rust (`src/ponte.rs`), e não em expressões espalhadas pelo `.slint`: o dia em que uma
+// frase estiver errada, ela está num arquivo só, e tem teste.
+
+import { Tema } from "tema.slint";
+
+/// O estado observável, na forma em que a tela o desenha.
+export struct EstadoUi {
+    /// A frase principal: responde "está funcionando, e se não, por quê?".
+    resumo: string,
+    /// O rótulo curto do enlace.
+    enlace: string,
+    /// 0 tudo bem, 1 em andamento, 2 atenção, 3 quebrado. Governa cor e ponto.
+    saude: int,
+    /// Se há sessão de pé.
+    conectado: bool,
+    /// Se esta máquina tem o teclado e o mouse.
+    servidor: bool,
+    /// A borda por onde se atravessa: 0 esquerda, 1 direita, 2 acima, 3 abaixo.
+    borda: int,
+    /// Se há par pareado.
+    tem-par: bool,
+    /// O nome do par, ou vazio.
+    par-nome: string,
+    /// O nome desta máquina.
+    este-nome: string,
+    /// A impressão digital desta instalação, para conferência.
+    esta-impressao: string,
+    /// O portador em uso, já com o motivo, ou vazio.
+    portador: string,
+    /// Por que ele foi escolhido, ou vazio.
+    motivo-do-portador: string,
+    /// 0 automático, 1 Bluetooth, 2 rede — o que está fixado nas preferências.
+    portador-fixado: int,
+    /// "12 ms · 34 ms no pior caso", ou vazio.
+    latencia: string,
+    /// Se a latência medida está dentro da meta do portador.
+    latencia-boa: bool,
+    /// O rótulo do nível de capacidade: N0 a N3.
+    nivel: string,
+    /// O que aquele nível quer dizer, em uma frase.
+    nivel-explicacao: string,
+    /// Se o nível atende o requisito de digitar na tela de bloqueio.
+    nivel-suficiente: bool,
+    /// Se a digitação na tela de bloqueio está permitida para o par.
+    bloqueio-permitido: bool,
+    /// O único impedimento que importa agora, ou vazio.
+    impedimento: string,
+}
+
+/// Em que ponto o pareamento está.
+export enum EtapaDoPareamento {
+    /// Escolhendo com quem parear.
+    escolhendo,
+    /// Esperando o outro lado responder.
+    esperando,
+    /// Os dois códigos estão na tela; falta o usuário comparar.
+    comparando,
+    /// Deu certo.
+    concluido,
+    /// Não deu.
+    falhou,
+}
+
+export global Dados {
+    /// O estado corrente.
+    in property <EstadoUi> estado;
+
+    /// Se este processo tem privilégio para as ações que decidem quem digita.
+    in property <bool> elevado: false;
+
+    /// Se o serviço em uso é o simulado. A janela avisa, porque uma interface que finge estar
+    /// funcionando é pior que uma que não abre.
+    in property <bool> simulado: false;
+
+    /// A etapa do pareamento.
+    in property <EtapaDoPareamento> etapa: EtapaDoPareamento.escolhendo;
+
+    /// Os candidatos que a descoberta encontrou.
+    in property <[string]> candidatos;
+
+    /// Se a descoberta está em andamento.
+    in property <bool> procurando: false;
+
+    /// Os seis dígitos do código, um por posição.
+    ///
+    /// Vêm separados, e não como um texto, porque a tela os mostra em caixas — que é o que faz
+    /// duas pessoas conseguirem comparar em voz alta sem errar.
+    in property <[string]> digitos;
+
+    /// A explicação do que deu errado no pareamento, quando deu.
+    in property <string> erro;
+
+    /// Um recado sobre uma ação que falhou fora do pareamento, ou vazio.
+    ///
+    /// Separado de `erro` porque aparece em outro lugar: `erro` pertence à tela de pareamento,
+    /// que é um fluxo, e este pertence à janela, que é onde toda ação avulsa acontece.
+    in property <string> recado;
+
+    /// O que fazer a respeito do recado.
+    in property <string> recado-o-que-fazer;
+
+    /// O que fazer a respeito.
+    in property <string> erro-o-que-fazer;
+
+    /// O relatório de diagnóstico, quando pedido.
+    in property <string> diagnostico;
+}
+
+export global Acoes {
+    /// Trocar o papel desta máquina. `true` para servidor.
+    callback definir-papel(bool);
+    /// Trocar a borda de travessia: 0 esquerda, 1 direita, 2 acima, 3 abaixo.
+    callback definir-borda(int);
+    /// Fixar portador: 0 automático, 1 Bluetooth, 2 rede.
+    callback fixar-portador(int);
+    /// Procurar computadores para parear.
+    callback procurar();
+    /// Começar o pareamento com o candidato desta posição da lista.
+    ///
+    /// Posição, e não nome: dois computadores podem se chamar igual, e a tela não é o lugar de
+    /// resolver ambiguidade de identidade.
+    callback iniciar-pareamento(int);
+    /// Responder se os códigos conferem.
+    callback confirmar-pareamento(bool);
+    /// Voltar o pareamento ao começo.
+    callback reiniciar-pareamento();
+    /// Esquecer o par.
+    callback esquecer-par();
+    /// Permitir, ou deixar de permitir, digitação na tela de bloqueio.
+    callback permitir-bloqueio(bool);
+    /// Encerrar a sessão agora.
+    callback encerrar();
+    /// Montar o diagnóstico e mostrá-lo para o usuário copiar.
+    callback mostrar-diagnostico();
+    /// Descartar o recado.
+    callback descartar-recado();
+}
+
+/// As cores de cada nível de saúde, num lugar só, para as três telas concordarem.
+export global Saude {
+    /// A cor que representa este nível.
+    public pure function cor(nivel: int) -> color {
+        return nivel == 0
+            ? Tema.bom
+            : (nivel == 1 ? Tema.acao : (nivel == 2 ? Tema.atencao : Tema.ruim));
+    }
+
+    /// O fundo suave correspondente, para blocos inteiros.
+    public pure function fundo(nivel: int) -> color {
+        return nivel == 0
+            ? Tema.bom-suave
+            : (nivel == 1 ? Tema.superficie-suave
+                          : (nivel == 2 ? Tema.atencao-suave : Tema.ruim-suave));
+    }
+}

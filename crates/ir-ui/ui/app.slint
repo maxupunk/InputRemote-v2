@@ -1,0 +1,176 @@
+// A janela.
+//
+// Uma janela, três telas, e navegação com voltar explícito em vez de abas. O motivo: das três,
+// duas são visitadas uma vez na vida (pareamento e preferências) e uma é visitada sempre. Abas
+// dariam o mesmo peso às três e fariam o usuário escolher onde olhar; assim ele abre o programa
+// e já está onde importa.
+//
+// Largura fixa: é uma tela de configuração, não um painel. Redimensionar não melhora nada e só
+// cria estados de layout que ninguém testou.
+
+import { ScrollView } from "std-widgets.slint";
+
+import { Tema } from "tema.slint";
+import { Dados, Acoes, EtapaDoPareamento } from "dados.slint";
+import { Botao, Faixa } from "componentes.slint";
+import { Inicio } from "inicio.slint";
+import { Pareamento } from "pareamento.slint";
+import { Preferencias } from "preferencias.slint";
+
+// O Rust só enxerga o que o arquivo de entrada exporta. Sem esta linha, `Dados` e `Acoes`
+// existem no Slint e não existem na ponte — que é o único jeito de a janela receber dados.
+export { Dados, Acoes, EstadoUi, EtapaDoPareamento } from "dados.slint";
+
+component Voltar inherits Rectangle {
+    callback acionado();
+
+    width: rotulo.preferred-width + Tema.e3;
+    height: 28px;
+    border-radius: Tema.raio-pequeno;
+    background: toque.has-hover ? Tema.superficie-suave : transparent;
+    animate background { duration: 120ms; }
+
+    rotulo := Text {
+        text: "← Voltar";
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        font-size: Tema.fonte-corpo;
+        color: Tema.acao;
+    }
+
+    toque := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => {
+            root.acionado();
+        }
+    }
+}
+
+export component Janela inherits Window {
+    title: "InputRemote";
+    width: Tema.largura;
+    height: 660px;
+    background: Tema.fundo;
+    default-font-size: Tema.fonte-corpo;
+
+    // 0 inicial, 1 pareamento, 2 preferências.
+    property <int> tela: 0;
+
+    /// Volta à tela inicial. O serviço a chama quando o estado muda por fora — por exemplo
+    /// quando o par é esquecido enquanto as preferências estão abertas.
+    public function mostrar-inicio() {
+        root.tela = 0;
+    }
+
+    VerticalLayout {
+        Rectangle {
+            background: Tema.superficie;
+            height: 48px;
+
+            HorizontalLayout {
+                padding-left: Tema.e4;
+                padding-right: Tema.e4;
+                spacing: Tema.e3;
+
+                if root.tela != 0: Voltar {
+                    y: (parent.height - self.height) / 2;
+                    acionado => {
+                        root.tela = 0;
+                    }
+                }
+
+                Text {
+                    text: root.tela == 0
+                        ? "InputRemote"
+                        : (root.tela == 1 ? "Parear computador" : "Preferências");
+                    vertical-alignment: center;
+                    font-size: Tema.fonte-titulo;
+                    font-weight: 600;
+                    color: Tema.texto;
+                }
+
+                Rectangle { }
+            }
+        }
+
+        Rectangle {
+            height: Tema.traco;
+            background: Tema.borda;
+        }
+
+        // Uma interface que finge estar funcionando é pior que uma que não abre. Quando o
+        // serviço real não está no ar, a janela diz isso na cara.
+        if Dados.simulado: Rectangle {
+            background: Tema.atencao-suave;
+
+            VerticalLayout {
+                padding-left: Tema.e4;
+                padding-right: Tema.e4;
+                padding-top: Tema.e3;
+
+                Faixa {
+                    texto: "Modo de demonstração: o serviço do InputRemote não está respondendo, "
+                        + "e os dados abaixo são simulados. Nada é injetado em computador nenhum.";
+                    cor: Tema.atencao;
+                    cor-de-fundo: Tema.atencao-suave;
+                }
+            }
+        }
+
+        // Uma ação recusada precisa aparecer onde o olho já está, e precisa dizer o que fazer.
+        // Um erro que só existe no log é um erro que o usuário vai reportar como "não funciona".
+        if Dados.recado != "": Rectangle {
+            background: Tema.fundo;
+
+            VerticalLayout {
+                padding-left: Tema.e4;
+                padding-right: Tema.e4;
+                padding-top: Tema.e3;
+                spacing: Tema.e2;
+
+                Faixa {
+                    texto: Dados.recado + " " + Dados.recado-o-que-fazer;
+                    cor: Tema.ruim;
+                    cor-de-fundo: Tema.ruim-suave;
+                }
+
+                HorizontalLayout {
+                    alignment: end;
+
+                    Botao {
+                        texto: "Entendi";
+                        acionado => {
+                            Acoes.descartar-recado();
+                        }
+                    }
+                }
+            }
+        }
+
+        ScrollView {
+            VerticalLayout {
+                padding: Tema.e4;
+                spacing: Tema.e4;
+
+                if root.tela == 0: Inicio {
+                    ir-para-pareamento => {
+                        root.tela = 1;
+                        Acoes.reiniciar-pareamento();
+                        Acoes.procurar();
+                    }
+                    ir-para-preferencias => {
+                        root.tela = 2;
+                    }
+                }
+
+                if root.tela == 1: Pareamento {
+                    concluir => {
+                        root.tela = 0;
+                    }
+                }
+
+                if root.tela == 2: Preferencias { }
+            }
+        }
+    }
+}

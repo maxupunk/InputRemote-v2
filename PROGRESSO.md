@@ -7,8 +7,9 @@ Checklist verificável da implementação. Espelha [docs/08-plano-de-implementac
 1. Um item só recebe `[x]` quando estiver **implementado e verificado** — por teste que
    passa, build que compila ou inspeção funcional registrada. Não existe `[x]` por
    "acredito que funciona".
-2. Todo `[x]` **exige uma entrada correspondente em [LOG.md](LOG.md)**, com data, o que foi
-   feito, arquivos tocados e como foi verificado.
+2. Todo `[x]` **exige uma entrada de log correspondente**: um arquivo em
+   [`docs/logs/`](docs/logs/), indexado em [LOG.md](LOG.md), com data, o que foi feito, arquivos
+   tocados e como foi verificado.
 3. `[~]` significa em andamento. `[!]` significa bloqueado — e o motivo fica escrito ao lado.
 4. `[H]` significa que só pode ser verificado em hardware físico, por uma pessoa. O código
    pode estar pronto; o item não fecha sem a execução.
@@ -94,7 +95,7 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Workspace Cargo com `resolver = "3"`, edição 2024
 - [x] Política de lints do workspace conforme [09](docs/09-padroes-de-codigo.md)
 - [x] `rustfmt.toml` e `rust-toolchain.toml` fixando a versão
-- [x] `PROGRESSO.md` e `LOG.md`
+- [x] `PROGRESSO.md` e `LOG.md` (índice de `docs/logs/`)
 - [x] `clippy.toml` com os limites verificáveis pelo clippy e os nomes próprios do projeto
 - [x] `deny.toml` com licenças permitidas, avisos do RustSec e fontes confiáveis
 - [x] CI: `fmt`, `clippy -D warnings`, `test`, `doc`, `xtask check`, `deny`, nos dois sistemas
@@ -108,14 +109,17 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [ ] Parâmetros por função e aninhamento (delegados ao `clippy.toml`, a confirmar no CI)
 
 ### 1.3. Processos e IPC
-- [ ] `ir-ipc`: protocolo de controle daemon↔ui e daemon↔agente
+- [x] `ir-ipc`: protocolo de controle daemon↔ui e daemon↔agente
+- [x] Vocabulário próprio do contrato, para `ir-ui` não depender de `ir-proto`
+- [x] Canal do agente separado do canal da interface, com vocabulários que não se misturam
+- [x] Cada pedido declara a autoridade que exige, como propriedade do próprio pedido
 - [ ] Transporte: named pipe no Windows com SDDL restrito
 - [ ] Transporte: socket Unix `0660 root:inputremote`
-- [ ] Autorização em três níveis de [04, §5](docs/04-seguranca.md)
-- [ ] Canal do agente separado do canal da interface
+- [~] Autorização em três níveis de [04, §5](docs/04-seguranca.md) — declarada no contrato;
+      a imposição depende do transporte, que lê o token do cliente
 - [ ] `ir-daemon`: binário sobe, aceita IPC, encerra limpo
 - [ ] `ir-agent`: binário conecta, reporta pronto, encerra com o serviço
-- [ ] `ir-ui`: janela abre, mostra "sem par" e a impressão digital
+- [x] `ir-ui`: janela abre, mostra "sem par" e a impressão digital
 
 ### 1.4. Observabilidade e configuração
 - [ ] `tracing` com escritor sem bloqueio
@@ -241,10 +245,26 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [ ] Transferência de 5 GB degrada a entrada em no máximo 10%
 
 ## Etapa 9 — Interface
-- [ ] Telas: estado, pareamento, portadores, telas, avançado
-- [ ] Fluxo de pareamento com código de seis dígitos
-- [ ] Estado observável de [01, §5](docs/01-visao-e-escopo.md)
-- [ ] Nível de capacidade visível
+
+> **Fora de ordem, e de propósito.** A regra 5 diz que uma etapa com item aberto bloqueia a
+> próxima, e a Etapa 1.3 ainda tem transporte pendente. A interface foi adiantada porque ela é o
+> que revela se o contrato de `ir-ipc` serve — e revelou: três campos e um pedido faltavam
+> ([log 08](docs/logs/08-ir-ipc.md)). Ela roda contra `ServicoSimulado`, e os itens que dependem
+> do serviço de
+> verdade continuam abertos ou em `[~]`.
+
+- [x] Linguagem visual única em `ui/tema.slint`; tema claro e escuro seguindo o do sistema
+- [x] Telas de estado, pareamento e preferências, com voltar explícito em vez de abas
+- [x] Seletor visual de borda: duas telas desenhadas, no lugar de quatro botões de rádio
+- [x] Uma ação em destaque por tela e, no máximo, um impedimento por vez
+- [x] Estado observável de [01, §5](docs/01-visao-e-escopo.md) na tela inicial
+- [x] Nível de capacidade visível sempre, e não escondido em preferências
+- [x] Serviço simulado, para a interface rodar e ser testada antes de existir transporte
+- [x] A janela avisa quando o serviço real não está respondendo
+- [x] Diagnóstico em campo selecionável, por lista de campos permitidos
+- [~] Fluxo de pareamento com código de seis dígitos — a interface está pronta e testada; o
+      código de verdade depende da Etapa 3
+- [ ] Preferências avançadas: arranjo de telas, atalho de emergência
 - [ ] Bandeja do sistema
 - [ ] Fechar, matar ou não abrir não altera a sessão
 

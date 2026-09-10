@@ -87,7 +87,7 @@ crates/
 ├── ir-files/      manifesto, blocos, BLAKE3, cotas, staging
 ├── ir-daemon/     binário do serviço
 ├── ir-agent/      binário do agente
-└── ir-ui/         binário da interface (Slint)
+└── ir-ui/         interface (Slint): biblioteca testável + binário fino
 ```
 
 A regra de dependência é uma seta só, e o CI a verifica:
@@ -113,6 +113,29 @@ Proibições verificadas automaticamente:
 - nenhum crate de plataforma (`ir-input`, `ir-bt`, `ir-clip`) depende de outro.
 
 Foi a ausência dessas setas que permitiu ao v1 acumular 10.491 linhas no crate da GUI.
+
+### 2.1. Os dois vocabulários de `ir-ipc`
+
+A seta `ir-ui ──► ir-ipc` só protege alguma coisa se `ir-ipc` **não devolver tipos de
+`ir-proto`** para a interface. Se os tipos que a tela desenha forem os tipos do fio, mudar o
+formato de fio quebra a interface, e a interface volta a ter opinião sobre protocolo — a seta
+estaria cumprida na letra e violada no efeito.
+
+Por isso `ir-ipc` tem dois vocabulários:
+
+| Módulo | Vocabulário | Quem consome |
+|---|---|---|
+| `status`, `ui`, `vocabulario` | tipos próprios (`Portador`, `Borda`, `Nivel`, `Maquina`, `Nome`, `Recursos`) | `ir-ui` |
+| `agent` | tipos de `ir-proto` (`HidUsage`, `Button`, `PointerPosition`) | `ir-agent` |
+
+A exceção do canal do agente é deliberada: ele carrega injeção de entrada, e ali os tipos do
+protocolo são exatamente os certos. A interface nunca vê esse módulo, porque `Injetar` não
+existe no vocabulário dela ([04, §5](04-seguranca.md)).
+
+As conversões nos dois sentidos vivem em `ir_ipc::vocabulario`, e é o serviço quem traduz. O
+efeito colateral é que o nome que aparece na tela deixa de ser o nome técnico: `Portador::nome()`
+devolve "Bluetooth", `Portador::nome_tecnico()` devolve "RFCOMM", e só o segundo entra no
+diagnóstico.
 
 ## 3. O núcleo sem E/S
 

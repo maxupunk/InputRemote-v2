@@ -1,0 +1,67 @@
+// A linguagem visual, num lugar só.
+//
+// Nenhuma cor, nenhum espaçamento e nenhum tamanho de fonte aparece solto em outro arquivo.
+// O motivo não é purismo: quando um valor está em vinte lugares, ele fica diferente em três
+// deles, e a interface passa a parecer montada por pessoas que não se falaram.
+//
+// O tema segue o do sistema. Um aplicativo de configuração que ignora a preferência de tema
+// da máquina parece um intruso, e este roda ao lado das configurações do próprio sistema.
+
+import { Palette } from "std-widgets.slint";
+
+export global Tema {
+    out property <bool> escuro: Palette.color-scheme == ColorScheme.dark;
+
+    // --- Superfícies -----------------------------------------------------------------------
+    out property <color> fundo: escuro ? #16161a : #f6f6f8;
+    out property <color> superficie: escuro ? #1e1e25 : #ffffff;
+    out property <color> superficie-suave: escuro ? #24242c : #f0f0f3;
+    out property <color> borda: escuro ? #2e2e38 : #e2e2e8;
+
+    // --- Texto -----------------------------------------------------------------------------
+    out property <color> texto: escuro ? #f2f2f5 : #17171a;
+    out property <color> texto-fraco: escuro ? #9c9ca8 : #62626d;
+    out property <color> texto-sobre-cor: #ffffff;
+
+    // --- Significado ------------------------------------------------------------------------
+    // Cada uma responde a uma pergunta do usuário, e é por isso que são só quatro:
+    // "está funcionando?" (bom), "tem algo a saber?" (atenção), "está quebrado?" (ruim),
+    // "onde eu clico?" (ação).
+    out property <color> bom: escuro ? #3ddc97 : #15803d;
+    out property <color> atencao: escuro ? #f7b955 : #b45309;
+    out property <color> ruim: escuro ? #f87171 : #c02626;
+    out property <color> acao: escuro ? #5b8dfa : #2563eb;
+    out property <color> acao-sobre: escuro ? #7aa3fc : #1d4ed8;
+
+    // Fundos suaves das mesmas cores, para blocos inteiros sem virar cartaz.
+    out property <color> bom-suave: escuro ? #14301f : #e8f6ec;
+    out property <color> atencao-suave: escuro ? #33240c : #fdf3e3;
+    out property <color> ruim-suave: escuro ? #331616 : #fdeaea;
+
+    // --- Espaçamento ------------------------------------------------------------------------
+    // Escala de 4, e só estes valores. Espaçamento arbitrário é o que faz uma tela parecer
+    // desalinhada sem ninguém saber apontar onde.
+    out property <length> e1: 4px;
+    out property <length> e2: 8px;
+    out property <length> e3: 12px;
+    out property <length> e4: 16px;
+    out property <length> e5: 24px;
+    out property <length> e6: 32px;
+
+    // --- Forma ------------------------------------------------------------------------------
+    out property <length> raio: 10px;
+    out property <length> raio-pequeno: 6px;
+    out property <length> traco: 1px;
+
+    // --- Tipografia -------------------------------------------------------------------------
+    out property <length> fonte-titulo: 20px;
+    out property <length> fonte-destaque: 15px;
+    out property <length> fonte-corpo: 13px;
+    out property <length> fonte-nota: 12px;
+    out property <length> fonte-codigo: 30px;
+
+    // --- Medidas da janela ------------------------------------------------------------------
+    // Largura fixa e altura que acompanha o conteúdo: é uma tela de configuração, não um
+    // painel. Redimensionar não melhora nada e só cria estados feios de layout.
+    out property <length> largura: 420px;
+}

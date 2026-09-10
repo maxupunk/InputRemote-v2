@@ -1,0 +1,229 @@
+// As peças de que as três telas são feitas.
+//
+// Existem para que nenhuma tela invente aparência própria. No v1 cada janela desenhava seus
+// próprios botões, e o resultado era um produto que parecia três produtos.
+
+import { Tema } from "tema.slint";
+
+/// Um bloco de conteúdo sobre a superfície.
+export component Cartao inherits Rectangle {
+    in property <color> cor-de-fundo: Tema.superficie;
+
+    background: root.cor-de-fundo;
+    border-radius: Tema.raio;
+    border-width: Tema.traco;
+    border-color: Tema.borda;
+
+    VerticalLayout {
+        padding: Tema.e4;
+        spacing: Tema.e3;
+        @children
+    }
+}
+
+/// Um botão.
+///
+/// `primario` marca a ação que a tela quer que aconteça — e há no máximo uma por tela. Duas
+/// ações em destaque é o mesmo que nenhuma.
+export component Botao inherits Rectangle {
+    in property <string> texto;
+    in property <bool> primario: false;
+    in property <bool> perigo: false;
+    in property <bool> habilitado: true;
+    callback acionado();
+
+    height: 34px;
+    border-radius: Tema.raio-pequeno;
+    border-width: root.primario ? 0px : Tema.traco;
+    border-color: root.perigo ? Tema.ruim : Tema.borda;
+    background: root.primario
+        ? (toque.has-hover ? Tema.acao-sobre : Tema.acao)
+        : (toque.has-hover ? Tema.superficie-suave : transparent);
+    opacity: root.habilitado ? 1.0 : 0.4;
+    animate background, opacity { duration: 120ms; }
+
+    HorizontalLayout {
+        alignment: center;
+        padding-left: Tema.e4;
+        padding-right: Tema.e4;
+
+        Text {
+            text: root.texto;
+            vertical-alignment: center;
+            font-size: Tema.fonte-corpo;
+            font-weight: root.primario ? 600 : 400;
+            color: root.primario
+                ? Tema.texto-sobre-cor
+                : (root.perigo ? Tema.ruim : Tema.texto);
+        }
+    }
+
+    toque := TouchArea {
+        enabled: root.habilitado;
+        mouse-cursor: root.habilitado ? MouseCursor.pointer : MouseCursor.not-allowed;
+        clicked => {
+            root.acionado();
+        }
+    }
+}
+
+/// Uma etiqueta curta, para o nível de capacidade e o portador em uso.
+export component Selo inherits Rectangle {
+    in property <string> texto;
+    in property <color> cor;
+    in property <color> cor-de-fundo;
+
+    background: root.cor-de-fundo;
+    border-radius: 5px;
+
+    HorizontalLayout {
+        padding-left: Tema.e2;
+        padding-right: Tema.e2;
+        padding-top: 3px;
+        padding-bottom: 3px;
+
+        Text {
+            text: root.texto;
+            color: root.cor;
+            font-size: Tema.fonte-nota;
+            font-weight: 600;
+        }
+    }
+}
+
+/// Uma linha de "rótulo … valor".
+export component Dado inherits HorizontalLayout {
+    in property <string> rotulo;
+    in property <string> valor;
+    in property <color> cor-do-valor: Tema.texto;
+
+    spacing: Tema.e3;
+
+    Text {
+        text: root.rotulo;
+        color: Tema.texto-fraco;
+        font-size: Tema.fonte-corpo;
+        vertical-alignment: center;
+    }
+
+    Rectangle { }
+
+    Text {
+        text: root.valor;
+        color: root.cor-do-valor;
+        font-size: Tema.fonte-corpo;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+    }
+}
+
+/// Um recado que o usuário precisa ler antes de continuar.
+///
+/// A tela mostra no máximo uma. Cinco avisos ao mesmo tempo é o mesmo que nenhum.
+export component Faixa inherits Rectangle {
+    in property <string> texto;
+    in property <color> cor;
+    in property <color> cor-de-fundo;
+
+    background: root.cor-de-fundo;
+    border-radius: Tema.raio-pequeno;
+
+    HorizontalLayout {
+        padding: Tema.e3;
+        spacing: Tema.e3;
+
+        Rectangle {
+            width: 3px;
+            background: root.cor;
+            border-radius: 2px;
+        }
+
+        Text {
+            text: root.texto;
+            color: Tema.texto;
+            font-size: Tema.fonte-corpo;
+            wrap: word-wrap;
+        }
+    }
+}
+
+/// O ponto colorido de estado.
+///
+/// Pulsa enquanto está conectando, para que o "…" não seja a única indicação de que algo está
+/// em andamento — quem olha a janela de longe vê o movimento antes de ler a frase.
+export component Ponto inherits Rectangle {
+    in property <color> cor;
+    in property <bool> pulsando: false;
+
+    // A animação precisa de uma mudança para acontecer, e `init` faz essa mudança uma vez.
+    // Daí em diante `alternate` com repetição infinita mantém o vaivém.
+    property <float> fase: 1.0;
+
+    width: 10px;
+    height: 10px;
+    border-radius: 5px;
+    background: root.cor;
+    opacity: root.pulsando ? root.fase : 1.0;
+
+    animate fase {
+        duration: 900ms;
+        iteration-count: -1;
+        direction: alternate;
+        easing: ease-in-out;
+    }
+
+    init => {
+        self.fase = 0.25;
+    }
+}
+
+/// Um rótulo de seção.
+export component Secao inherits Text {
+    font-size: Tema.fonte-nota;
+    font-weight: 600;
+    color: Tema.texto-fraco;
+}
+
+/// Uma escolha entre poucas alternativas, na horizontal.
+///
+/// Preferido a uma lista suspensa quando são duas ou três opções: o usuário vê todas as
+/// alternativas sem clicar, e a que está valendo fica evidente.
+export component Alternativas inherits HorizontalLayout {
+    in property <[string]> opcoes;
+    in property <int> escolhida;
+    callback escolher(int);
+
+    spacing: Tema.e1;
+
+    for opcao[indice] in root.opcoes: Rectangle {
+        height: 30px;
+        border-radius: Tema.raio-pequeno;
+        border-width: Tema.traco;
+        border-color: indice == root.escolhida ? Tema.acao : Tema.borda;
+        background: indice == root.escolhida
+            ? Tema.acao
+            : (toque.has-hover ? Tema.superficie-suave : transparent);
+        animate background { duration: 120ms; }
+
+        HorizontalLayout {
+            alignment: center;
+            padding-left: Tema.e3;
+            padding-right: Tema.e3;
+
+            Text {
+                text: opcao;
+                vertical-alignment: center;
+                font-size: Tema.fonte-corpo;
+                font-weight: indice == root.escolhida ? 600 : 400;
+                color: indice == root.escolhida ? Tema.texto-sobre-cor : Tema.texto;
+            }
+        }
+
+        toque := TouchArea {
+            mouse-cursor: MouseCursor.pointer;
+            clicked => {
+                root.escolher(indice);
+            }
+        }
+    }
+}

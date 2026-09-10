@@ -1,0 +1,184 @@
+// As preferências.
+//
+// Cada grupo tem uma frase abaixo dizendo o efeito da escolha. Uma configuração cujo efeito o
+// usuário não consegue prever é uma configuração que ele não vai mexer — ou vai mexer errado, o
+// que é pior.
+
+import { Tema } from "tema.slint";
+import { Dados, Acoes } from "dados.slint";
+import { TextEdit } from "std-widgets.slint";
+
+import { Cartao, Botao, Dado, Faixa, Selo, Secao, Alternativas } from "componentes.slint";
+
+component Grupo inherits VerticalLayout {
+    in property <string> titulo;
+    in property <string> nota;
+
+    spacing: Tema.e2;
+
+    Secao {
+        text: root.titulo;
+    }
+
+    @children
+
+    if root.nota != "": Text {
+        text: root.nota;
+        font-size: Tema.fonte-nota;
+        color: Tema.texto-fraco;
+        wrap: word-wrap;
+    }
+}
+
+/// A tela de preferências.
+export component Preferencias inherits VerticalLayout {
+    spacing: Tema.e4;
+
+    Cartao {
+        Grupo {
+            titulo: "PAPEL DESTE COMPUTADOR";
+            nota: Dados.estado.servidor
+                ? "O teclado e o mouse ligados aqui controlam os dois computadores."
+                : "O teclado e o mouse do outro computador controlam este.";
+
+            Alternativas {
+                opcoes: ["Tem o teclado", "É controlado"];
+                escolhida: Dados.estado.servidor ? 0 : 1;
+                escolher(indice) => {
+                    Acoes.definir-papel(indice == 0);
+                }
+            }
+        }
+    }
+
+    Cartao {
+        Grupo {
+            titulo: "MEIO DE CONEXÃO";
+            nota: "Automático usa Bluetooth quando ele está disponível, porque o atraso é mais "
+                + "constante, e cai para a rede local quando não está. Fixe um meio só para "
+                + "testar.";
+
+            Alternativas {
+                opcoes: ["Automático", "Bluetooth", "Rede"];
+                escolhida: Dados.estado.portador-fixado;
+                escolher(indice) => {
+                    Acoes.fixar-portador(indice);
+                }
+            }
+        }
+    }
+
+    Cartao {
+        Grupo {
+            titulo: "TELA DE BLOQUEIO";
+            nota: "Com isto ligado, o teclado do outro computador digita na tela de bloqueio e "
+                + "nos pedidos de permissão deste. É o que permite desbloquear esta máquina de "
+                + "lá — e é por isso que exige administrador.";
+
+            Alternativas {
+                opcoes: ["Não permitir", "Permitir"];
+                escolhida: Dados.estado.bloqueio-permitido ? 1 : 0;
+                escolher(indice) => {
+                    Acoes.permitir-bloqueio(indice == 1);
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: Tema.e2;
+
+            Selo {
+                texto: Dados.estado.nivel;
+                cor: Dados.estado.nivel-suficiente ? Tema.bom : Tema.atencao;
+                cor-de-fundo: Dados.estado.nivel-suficiente
+                    ? Tema.bom-suave
+                    : Tema.atencao-suave;
+            }
+
+            Text {
+                text: Dados.estado.nivel-explicacao;
+                vertical-alignment: center;
+                font-size: Tema.fonte-nota;
+                color: Tema.texto-fraco;
+                wrap: word-wrap;
+            }
+        }
+
+        if !Dados.estado.nivel-suficiente: Faixa {
+            texto: "Este computador ainda não consegue aceitar digitação na tela de bloqueio. "
+                + "Verifique se o serviço do InputRemote está instalado e em execução, e se o "
+                + "programa está assinado e instalado na pasta de programas.";
+            cor: Tema.atencao;
+            cor-de-fundo: Tema.atencao-suave;
+        }
+    }
+
+    Cartao {
+        Grupo {
+            titulo: "ESTE COMPUTADOR";
+            nota: "A impressão digital identifica esta instalação. O outro computador mostra a "
+                + "mesma coisa depois de pareado, e conferir as duas é como se verifica que a "
+                + "conexão é com quem se espera.";
+
+            Dado {
+                rotulo: "Nome";
+                valor: Dados.estado.este-nome;
+            }
+
+            Dado {
+                rotulo: "Impressão digital";
+                valor: Dados.estado.esta-impressao;
+            }
+        }
+    }
+
+    Cartao {
+        Grupo {
+            titulo: "QUANDO ALGO DÁ ERRADO";
+            nota: "O relatório traz portador, atraso medido, motivo da última queda e nível de "
+                + "capacidade. Não traz nada do que foi digitado.";
+
+            if Dados.diagnostico == "": Botao {
+                texto: "Mostrar diagnóstico";
+                acionado => {
+                    Acoes.mostrar-diagnostico();
+                }
+            }
+
+            // Mostrado num campo selecionável em vez de copiado por um botão. A área de
+            // transferência é do sistema, e um programa que escreve nela sem o usuário pedir
+            // apaga o que ele tinha lá — num produto que compartilha clipboard, isso seria
+            // especialmente indelicado.
+            if Dados.diagnostico != "": TextEdit {
+                text: Dados.diagnostico;
+                read-only: true;
+                height: 190px;
+                font-size: Tema.fonte-nota;
+            }
+
+            if Dados.diagnostico != "": Text {
+                text: "Selecione tudo com Ctrl+A e copie com Ctrl+C.";
+                font-size: Tema.fonte-nota;
+                color: Tema.texto-fraco;
+            }
+        }
+    }
+
+    if Dados.estado.tem-par: Cartao {
+        Grupo {
+            titulo: "PAR";
+            nota: "Esquecer apaga a chave combinada. Para voltar a usar, os dois lados precisam "
+                + "parear de novo e comparar um código novo.";
+
+            Botao {
+                texto: "Esquecer " + Dados.estado.par-nome;
+                perigo: true;
+                acionado => {
+                    Acoes.esquecer-par();
+                }
+            }
+        }
+    }
+
+    Rectangle { }
+}

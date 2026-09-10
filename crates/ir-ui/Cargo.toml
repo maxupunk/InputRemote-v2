@@ -1,0 +1,19 @@
+[package]
+name = "ir-ui"
+description = "A janela de configuração. Não conhece o produto — só o contrato de ir-ipc."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ir-ipc.workspace = true
+slint = "1.14"
+
+[build-dependencies]
+slint-build = "1.14"
+
+[lints]
+workspace = true

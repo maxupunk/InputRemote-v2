@@ -1,0 +1,130 @@
+// Onde fica a outra tela.
+//
+// Quatro botões de rádio escritos "esquerda / direita / acima / abaixo" obrigam o usuário a
+// traduzir palavra em espaço, e ele erra — no v1 essa era a configuração mais reclamada, porque
+// "esquerda" nunca deixava claro *de quem*. Aqui ele vê as duas telas e clica no lado onde a
+// outra está de verdade. A pergunta desaparece.
+
+import { Tema } from "tema.slint";
+import { Dados, Acoes } from "dados.slint";
+import { Secao } from "componentes.slint";
+
+component Vizinha inherits Rectangle {
+    in property <int> borda;
+    in property <length> altura: 38px;
+
+    property <bool> ativa: Dados.estado.borda == root.borda;
+
+    height: root.altura;
+    min-width: 78px;
+    border-radius: Tema.raio-pequeno;
+    border-width: Tema.traco;
+    border-color: root.ativa ? Tema.acao : Tema.borda;
+    background: root.ativa
+        ? Tema.acao
+        : (toque.has-hover ? Tema.superficie-suave : Tema.fundo);
+    opacity: root.ativa ? 1.0 : (toque.has-hover ? 1.0 : 0.5);
+    animate background, opacity, border-color { duration: 120ms; }
+
+    Text {
+        // Só a escolhida se nomeia. As outras três são posições possíveis, não telas.
+        text: root.ativa ? (Dados.estado.tem-par ? Dados.estado.par-nome : "outro") : "";
+        width: parent.width - Tema.e2;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+        font-size: Tema.fonte-nota;
+        font-weight: 600;
+        color: Tema.texto-sobre-cor;
+    }
+
+    toque := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => {
+            Acoes.definir-borda(root.borda);
+        }
+    }
+}
+
+component EstaTela inherits Rectangle {
+    height: 72px;
+    min-width: 116px;
+    border-radius: Tema.raio-pequeno;
+    border-width: 2px;
+    border-color: Tema.borda;
+    background: Tema.superficie-suave;
+
+    VerticalLayout {
+        alignment: center;
+        padding: Tema.e2;
+        spacing: 2px;
+
+        Text {
+            text: "este";
+            horizontal-alignment: center;
+            font-size: Tema.fonte-nota;
+            color: Tema.texto-fraco;
+        }
+
+        Text {
+            text: Dados.estado.este-nome;
+            horizontal-alignment: center;
+            overflow: elide;
+            font-size: Tema.fonte-corpo;
+            font-weight: 600;
+            color: Tema.texto;
+        }
+    }
+}
+
+/// O mapa das duas telas, clicável.
+export component EscolhaDeBorda inherits VerticalLayout {
+    spacing: Tema.e3;
+
+    Secao {
+        text: "ONDE FICA O OUTRO COMPUTADOR";
+    }
+
+    GridLayout {
+        spacing: Tema.e2;
+
+        Row {
+            Rectangle { }
+            Vizinha {
+                borda: 2;
+            }
+            Rectangle { }
+        }
+
+        Row {
+            Vizinha {
+                borda: 0;
+                altura: 72px;
+            }
+            EstaTela { }
+            Vizinha {
+                borda: 1;
+                altura: 72px;
+            }
+        }
+
+        Row {
+            Rectangle { }
+            Vizinha {
+                borda: 3;
+            }
+            Rectangle { }
+        }
+    }
+
+    Text {
+        text: "Encoste o ponteiro na borda "
+            + (Dados.estado.borda == 0 ? "esquerda"
+                : (Dados.estado.borda == 1 ? "direita"
+                    : (Dados.estado.borda == 2 ? "de cima" : "de baixo")))
+            + " para atravessar.";
+        font-size: Tema.fonte-nota;
+        color: Tema.texto-fraco;
+        wrap: word-wrap;
+    }
+}

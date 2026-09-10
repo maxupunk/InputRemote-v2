@@ -34,6 +34,18 @@ Uma decisão só muda por um ADR novo que substitua o anterior — não por edi�
 | [0007](adr/0007-ui-slint-processo-separado.md) | Interface em Slint, em processo separado |
 | [0008](adr/0008-agente-com-thread-por-desktop.md) | Um agente por sessão, com uma thread por desktop |
 
+## Registro do que foi feito
+
+Documento diz o que o produto **deve** ser. Estes dois dizem o que ele **é** hoje.
+
+| Arquivo | Para quê |
+|---|---|
+| [PROGRESSO.md](../PROGRESSO.md) | checklist verificável; `[x]` só com verificação registrada |
+| [LOG.md](../LOG.md) | índice das entradas de [`logs/`](logs/), um arquivo por tópico |
+
+As entradas de log não são editadas depois de escritas. Correção vira entrada nova, dizendo o
+que mudou e por quê — um registro que se reescreve não é registro.
+
 ## Convenções
 
 - **Servidor**: o computador que tem o teclado e o mouse físicos.

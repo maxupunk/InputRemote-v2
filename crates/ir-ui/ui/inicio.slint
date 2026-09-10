@@ -1,0 +1,127 @@
+// A tela que responde uma pergunta só: está funcionando, e se não, por quê?
+//
+// A ordem dos blocos é a ordem em que o usuário quer saber. O estado vem primeiro porque é o
+// motivo de ele ter aberto a janela; o impedimento vem logo depois porque é a única coisa que
+// ele precisa resolver; a configuração vem por último porque quase nunca muda.
+
+import { Tema } from "tema.slint";
+import { Dados, Acoes, Saude } from "dados.slint";
+import { Cartao, Botao, Selo, Dado, Faixa, Ponto, Secao } from "componentes.slint";
+import { EscolhaDeBorda } from "bordas.slint";
+
+/// A tela inicial.
+export component Inicio inherits VerticalLayout {
+    callback ir-para-pareamento();
+    callback ir-para-preferencias();
+
+    spacing: Tema.e4;
+
+    Cartao {
+        HorizontalLayout {
+            spacing: Tema.e2;
+
+            Ponto {
+                cor: Saude.cor(Dados.estado.saude);
+                pulsando: Dados.estado.saude == 1;
+                y: (parent.height - self.height) / 2;
+            }
+
+            Text {
+                text: Dados.estado.enlace;
+                font-size: Tema.fonte-nota;
+                font-weight: 600;
+                color: Saude.cor(Dados.estado.saude);
+                vertical-alignment: center;
+            }
+
+            Rectangle { }
+
+            // O nível de capacidade fica sempre visível, e não escondido em Preferências. É o
+            // que decide se o produto vai servir na tela de bloqueio, e descobrir que não
+            // serve *com a tela bloqueada na frente* é o pior momento possível.
+            Selo {
+                texto: Dados.estado.nivel;
+                cor: Dados.estado.nivel-suficiente ? Tema.bom : Tema.atencao;
+                cor-de-fundo: Dados.estado.nivel-suficiente
+                    ? Tema.bom-suave
+                    : Tema.atencao-suave;
+            }
+        }
+
+        Text {
+            text: Dados.estado.resumo;
+            font-size: Tema.fonte-destaque;
+            color: Tema.texto;
+            wrap: word-wrap;
+        }
+
+        if Dados.estado.impedimento != "": Faixa {
+            texto: Dados.estado.impedimento;
+            cor: Tema.atencao;
+            cor-de-fundo: Tema.atencao-suave;
+        }
+
+        if Dados.estado.conectado: VerticalLayout {
+            spacing: Tema.e2;
+
+            Rectangle {
+                height: Tema.traco;
+                background: Tema.borda;
+            }
+
+            Dado {
+                rotulo: "Conexão";
+                valor: Dados.estado.portador;
+            }
+
+            if Dados.estado.motivo-do-portador != "": Text {
+                text: Dados.estado.motivo-do-portador;
+                font-size: Tema.fonte-nota;
+                color: Tema.texto-fraco;
+                wrap: word-wrap;
+            }
+
+            if Dados.estado.latencia != "": Dado {
+                rotulo: "Atraso";
+                valor: Dados.estado.latencia;
+                cor-do-valor: Dados.estado.latencia-boa ? Tema.bom : Tema.atencao;
+            }
+        }
+    }
+
+    // Uma ação em destaque por tela, e ela é sempre a próxima coisa a fazer.
+    if !Dados.estado.tem-par: Botao {
+        texto: "Parear um computador";
+        primario: true;
+        acionado => {
+            root.ir-para-pareamento();
+        }
+    }
+
+    if Dados.estado.conectado: Botao {
+        texto: "Encerrar conexão";
+        perigo: true;
+        acionado => {
+            Acoes.encerrar();
+        }
+    }
+
+    if Dados.estado.tem-par: Cartao {
+        EscolhaDeBorda { }
+    }
+
+    Rectangle { }
+
+    HorizontalLayout {
+        spacing: Tema.e2;
+
+        Botao {
+            texto: "Preferências";
+            acionado => {
+                root.ir-para-preferencias();
+            }
+        }
+
+        Rectangle { }
+    }
+}

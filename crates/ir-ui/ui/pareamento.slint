@@ -1,0 +1,241 @@
+// O pareamento, que é onde a segurança do produto é decidida pelo usuário.
+//
+// Os seis dígitos aparecem grandes e separados de propósito. Quem confere um código lê em voz
+// alta para a outra pessoa, e "104" separado de "782" é lido certo — um "104782" corrido é lido
+// errado. A tela também diz **por que** a conferência importa: um usuário que não entende o
+// motivo clica em "são iguais" sem olhar, e aí o passo todo deixou de existir.
+
+import { Tema } from "tema.slint";
+import { Dados, Acoes, EtapaDoPareamento } from "dados.slint";
+import { Cartao, Botao, Faixa, Secao } from "componentes.slint";
+
+component Digito inherits Rectangle {
+    in property <string> valor;
+
+    width: 46px;
+    height: 60px;
+    border-radius: Tema.raio-pequeno;
+    border-width: Tema.traco;
+    border-color: Tema.borda;
+    background: Tema.superficie-suave;
+
+    Text {
+        text: root.valor;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        font-size: Tema.fonte-codigo;
+        font-weight: 600;
+        font-family: "Consolas";
+        color: Tema.texto;
+    }
+}
+
+component Candidato inherits Rectangle {
+    in property <string> nome;
+    callback escolhido();
+
+    height: 42px;
+    border-radius: Tema.raio-pequeno;
+    border-width: Tema.traco;
+    border-color: toque.has-hover ? Tema.acao : Tema.borda;
+    background: toque.has-hover ? Tema.superficie-suave : transparent;
+    animate border-color, background { duration: 120ms; }
+
+    HorizontalLayout {
+        padding-left: Tema.e3;
+        padding-right: Tema.e3;
+        spacing: Tema.e2;
+
+        Text {
+            text: root.nome;
+            vertical-alignment: center;
+            overflow: elide;
+            font-size: Tema.fonte-corpo;
+            color: Tema.texto;
+        }
+
+        Rectangle { }
+
+        Text {
+            text: "Parear";
+            vertical-alignment: center;
+            font-size: Tema.fonte-nota;
+            font-weight: 600;
+            color: Tema.acao;
+        }
+    }
+
+    toque := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => {
+            root.escolhido();
+        }
+    }
+}
+
+/// O fluxo de pareamento, do zero ao par confirmado.
+export component Pareamento inherits VerticalLayout {
+    callback concluir();
+
+    spacing: Tema.e4;
+
+    // Pareamento decide quem pode digitar na tela de bloqueio desta máquina. Sem elevação o
+    // serviço vai recusar, e é melhor dizer isso antes do usuário procurar o outro computador
+    // do que depois de ele já ter comparado seis dígitos.
+    if !Dados.elevado: Faixa {
+        texto: "Pareamento precisa de permissão de administrador, porque decide quem pode "
+            + "digitar na tela de bloqueio deste computador. Feche e abra o InputRemote como "
+            + "administrador.";
+        cor: Tema.atencao;
+        cor-de-fundo: Tema.atencao-suave;
+    }
+
+    if Dados.etapa == EtapaDoPareamento.escolhendo: Cartao {
+        Secao {
+            text: "COMPUTADORES ENCONTRADOS";
+        }
+
+        if Dados.candidatos.length == 0: Text {
+            text: Dados.procurando
+                ? "Procurando…"
+                : "Nenhum computador encontrado. O InputRemote precisa estar instalado e "
+                    + "rodando no outro computador, na mesma rede ou emparelhado por "
+                    + "Bluetooth no sistema.";
+            font-size: Tema.fonte-corpo;
+            color: Tema.texto-fraco;
+            wrap: word-wrap;
+        }
+
+        for nome[indice] in Dados.candidatos: Candidato {
+            nome: nome;
+            escolhido => {
+                Acoes.iniciar-pareamento(indice);
+            }
+        }
+
+        Botao {
+            texto: Dados.procurando ? "Procurando…" : "Procurar de novo";
+            habilitado: !Dados.procurando;
+            acionado => {
+                Acoes.procurar();
+            }
+        }
+    }
+
+    if Dados.etapa == EtapaDoPareamento.esperando: Cartao {
+        Text {
+            text: "Aguardando o outro computador…";
+            font-size: Tema.fonte-destaque;
+            color: Tema.texto;
+        }
+
+        Text {
+            text: "Abra o InputRemote no outro computador se ele ainda não estiver aberto. "
+                + "O código vale 2 minutos.";
+            font-size: Tema.fonte-corpo;
+            color: Tema.texto-fraco;
+            wrap: word-wrap;
+        }
+    }
+
+    if Dados.etapa == EtapaDoPareamento.comparando: Cartao {
+        Text {
+            text: "Estes seis dígitos aparecem iguais na outra tela?";
+            font-size: Tema.fonte-destaque;
+            color: Tema.texto;
+            wrap: word-wrap;
+        }
+
+        HorizontalLayout {
+            alignment: center;
+            spacing: Tema.e2;
+
+            // Um respiro no meio: três e três se leem em voz alta sem erro.
+            for digito[indice] in Dados.digitos: HorizontalLayout {
+                padding-left: indice == 3 ? Tema.e3 : 0px;
+
+                Digito {
+                    valor: digito;
+                }
+            }
+        }
+
+        Text {
+            text: "Confira olhando as duas telas. Se os códigos forem diferentes, alguém pode "
+                + "estar no meio da conexão — e aí não é para parear.";
+            font-size: Tema.fonte-nota;
+            color: Tema.texto-fraco;
+            wrap: word-wrap;
+        }
+
+        HorizontalLayout {
+            spacing: Tema.e2;
+
+            Botao {
+                texto: "São iguais";
+                primario: true;
+                acionado => {
+                    Acoes.confirmar-pareamento(true);
+                }
+            }
+
+            Botao {
+                texto: "São diferentes";
+                perigo: true;
+                acionado => {
+                    Acoes.confirmar-pareamento(false);
+                }
+            }
+        }
+    }
+
+    if Dados.etapa == EtapaDoPareamento.concluido: Cartao {
+        Text {
+            text: "Pareado com " + Dados.estado.par-nome + ".";
+            font-size: Tema.fonte-destaque;
+            color: Tema.bom;
+            wrap: word-wrap;
+        }
+
+        Text {
+            text: "Encoste o ponteiro na borda escolhida para atravessar. A borda pode ser "
+                + "mudada na tela inicial.";
+            font-size: Tema.fonte-corpo;
+            color: Tema.texto-fraco;
+            wrap: word-wrap;
+        }
+
+        Botao {
+            texto: "Concluir";
+            primario: true;
+            acionado => {
+                root.concluir();
+            }
+        }
+    }
+
+    if Dados.etapa == EtapaDoPareamento.falhou: Cartao {
+        Text {
+            text: Dados.erro;
+            font-size: Tema.fonte-destaque;
+            color: Tema.ruim;
+            wrap: word-wrap;
+        }
+
+        Text {
+            text: Dados.erro-o-que-fazer;
+            font-size: Tema.fonte-corpo;
+            color: Tema.texto;
+            wrap: word-wrap;
+        }
+
+        Botao {
+            texto: "Voltar";
+            acionado => {
+                Acoes.reiniciar-pareamento();
+            }
+        }
+    }
+
+    Rectangle { }
+}
