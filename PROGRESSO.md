@@ -145,11 +145,17 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [ ] Ida e volta de **toda** variante de `ClipboardMessage` e `BulkMessage`
 
 ### 2.2. `ir-geometry`
-- [ ] Monitor, retângulo, escala, arranjo
-- [ ] Mapeamento de coordenadas entre arranjos diferentes
-- [ ] Detecção de borda e ponto de entrada nas quatro direções
-- [ ] Normalização absoluta `0..65535`
-- [ ] Monitor removido durante a sessão não gera coordenada inválida
+- [x] `Point` e `Rect` inteiros, sem ponto flutuante, com bordas inclusivas
+- [x] `Desktop` a partir de `ScreenLayout`, com o principal como invariante estrutural
+- [x] Monitor, retângulo, escala, arranjo, incluindo origens negativas
+- [x] Mapeamento de coordenadas entre arranjos de resoluções diferentes, por fração
+- [x] Normalização absoluta `0..=u16::MAX` com ida e volta exata até 65 536 px
+- [x] Detecção de borda e ponto de entrada nas quatro direções
+- [x] Recuo de um pixel na entrada, impedindo o ping-pong de travessia
+- [x] Só a borda do par atravessa; as outras três prendem o ponteiro
+- [x] Monitor removido durante a sessão não gera coordenada inválida
+- [x] Buraco de arranjo em L tratado por `nearest_valid`
+- [x] Deltas de `i32::MIN`/`i32::MAX` saturam em vez de estourar
 
 ### 2.3. `ir-session`
 - [ ] `Input` / `Command` / `Session::step`

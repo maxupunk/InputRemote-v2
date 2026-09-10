@@ -94,7 +94,7 @@ A regra de dependência é uma seta só, e o CI a verifica:
 
 ```text
 ir-daemon ──► ir-session ──► ir-proto ──► (nada)
-    │              └──────► ir-geometry
+    │              └──────► ir-geometry ──► ir-proto
     ├──► ir-net ──► ir-crypto ──► ir-proto
     ├──► ir-bt  ──► ir-crypto
     ├──► ir-files ──► ir-proto

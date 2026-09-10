@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/ir-proto",
+    "crates/ir-geometry",
 ]
 
 [workspace.package]

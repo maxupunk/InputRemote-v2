@@ -1,0 +1,15 @@
+[package]
+name = "ir-geometry"
+description = "Telas, bordas e mapeamento de coordenadas. Puro: sem E/S."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ir-proto.workspace = true
+
+[lints]
+workspace = true
