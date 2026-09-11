@@ -42,3 +42,4 @@ quê. Um registro que se reescreve não é registro.
 | 15 | 2026-09-10 | [O agente de sessão: o serviço alcança a sessão do usuário](docs/logs/15-agente-de-sessao.md) |
 | 16 | 2026-09-11 | [O serviço trancou a própria janela do lado de fora](docs/logs/16-o-servico-trancou-a-propria-janela.md) |
 | 17 | 2026-09-11 | [A janela que volta sozinha, e o grupo que vale na hora](docs/logs/17-a-janela-que-volta-e-o-grupo-que-vale-na-hora.md) |
+| 18 | 2026-09-11 | [A prova no notebook, e a troca de papel que ninguém viu](docs/logs/18-a-prova-no-notebook-e-a-troca-de-papel.md) |
