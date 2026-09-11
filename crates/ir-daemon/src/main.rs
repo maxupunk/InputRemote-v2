@@ -7,6 +7,9 @@
 mod actor;
 mod commands;
 mod config;
+mod ipc;
+#[cfg(windows)]
+mod service;
 
 use std::io::BufRead;
 use std::sync::Arc;
@@ -17,12 +20,37 @@ use ir_proto::peer::{Capabilities, MachineName, PrivilegedInputLevel};
 use ir_proto::screens::ScreenLayout;
 use ir_session::{Input, LocalIdentity, Role, Session, SessionConfig, Timestamp};
 use tokio::sync::mpsc;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::actor::{CaptureRx, Daemon, Parts};
 
-#[tokio::main]
-async fn main() -> Result<()> {
+/// Ponto de entrada.
+///
+/// No Windows, tenta primeiro rodar como serviço do SCM; se não fomos lançados pelo SCM (execução
+/// à mão, para o teste), cai para o primeiro plano. Nos demais sistemas, é sempre primeiro plano.
+fn main() -> Result<()> {
+    #[cfg(windows)]
+    {
+        // Bloqueia até o serviço parar quando o SCM nos lançou; devolve `false` fora dele.
+        if service::tentar_como_servico()? {
+            return Ok(());
+        }
+    }
+    executar_bloqueante()
+}
+
+/// Monta a runtime `tokio` e roda o serviço até o fim. É o caminho de primeiro plano, e também
+/// o que a tarefa do serviço chama por dentro.
+pub(crate) fn executar_bloqueante() -> Result<()> {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .context("criando a runtime")?;
+    runtime.block_on(executar())
+}
+
+/// O corpo do serviço: carrega estado, sobe rede, entrada e o canal de controle, e roda o ator.
+async fn executar() -> Result<()> {
     init_tracing();
 
     let dir = config::data_dir();
@@ -38,19 +66,21 @@ async fn main() -> Result<()> {
     // Tamanho de tela: da plataforma quando ela sabe, senão da configuração.
     let screen = ir_input::primary_screen_size().unwrap_or((cfg.screen_width, cfg.screen_height));
 
-    let socket = bind(
-        format!("0.0.0.0:{}", cfg.port)
-            .parse()
-            .context("porta inválida")?,
-    )
-    .await
-    .context("vinculando o socket UDP")?;
-    info!(local = %socket.local_addr().context("endereço local")?, "escutando UDP");
+    let socket = abrir_socket(cfg.port).await?;
     let net = Endpoint::spawn(Arc::clone(&socket), Arc::clone(&identity));
 
-    let (capturer, injector, capture_rx) = build_io(role)?;
+    let (capturer, injector, capture_rx) = build_io(role);
     let session = build_session(role, edge, &identity, &cfg);
     let peer_addr = cfg.peer_addr.as_deref().and_then(|a| a.parse().ok());
+
+    // O canal de controle: a interface pareia e observa o estado por ele. Sobe antes do ator
+    // para o emissor de avisos já existir quando o ator nascer.
+    let (pedido_tx, pedido_rx) = mpsc::unbounded_channel();
+    let avisos = ipc::iniciar_controle(pedido_tx).context("subindo o canal de controle")?;
+    info!(endereco = %ipc::endereco_de_controle(), "canal de controle no ar");
+
+    let machine = ir_ipc::Maquina(machine_id_from(&identity).0);
+    let nome = ir_ipc::Nome::coagido(&hostname());
 
     let mut daemon = Daemon::new(Parts {
         session,
@@ -61,13 +91,19 @@ async fn main() -> Result<()> {
         peer_addr,
         data_dir: dir,
         config: cfg,
+        avisos,
+        machine,
+        nome,
+        edge,
     });
 
     feed_screens(&mut daemon, screen);
     daemon.connect_if_possible();
     let confirm_rx = spawn_stdin_reader();
 
-    daemon.run(net.events, capture_rx, confirm_rx).await;
+    daemon
+        .run(net.events, capture_rx, confirm_rx, pedido_rx)
+        .await;
     Ok(())
 }
 
@@ -79,6 +115,19 @@ fn init_tracing() {
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
         .init();
+}
+
+/// Vincula o socket UDP local na porta dada e registra o endereço.
+async fn abrir_socket(port: u16) -> Result<Arc<tokio::net::UdpSocket>> {
+    let socket = bind(
+        format!("0.0.0.0:{port}")
+            .parse()
+            .context("porta inválida")?,
+    )
+    .await
+    .context("vinculando o socket UDP")?;
+    info!(local = %socket.local_addr().context("endereço local")?, "escutando UDP");
+    Ok(socket)
 }
 
 /// A ponte da confirmação de pareamento: lê linhas do stdin numa thread própria.
@@ -108,30 +157,65 @@ type Io = (
 );
 
 /// Liga o backend de entrada conforme o papel.
-fn build_io(role: Role) -> Result<Io> {
+///
+/// A falha de um backend **não** derruba o serviço. Rodando como serviço na sessão 0, a captura e
+/// a injeção diretas não alcançam a sessão do usuário — é para isso que existe o agente ([05,
+/// §5](../../../docs/05-windows.md)). Enquanto o agente não entra, o serviço fica de pé mesmo
+/// assim: o canal de controle funciona, o pareamento pela interface funciona, e só a passagem de
+/// teclado e mouse é que espera o agente. Um serviço que caísse por não capturar nada seria o
+/// pior dos mundos — nem sobe, nem diz por quê.
+fn build_io(role: Role) -> Io {
     let (cap_tx, cap_rx) = mpsc::unbounded_channel();
     if role == Role::Server {
         // Ponte da captura (thread std) para o canal do ator (tokio).
         let (std_tx, std_rx) = std::sync::mpsc::channel();
-        let capturer = ir_input::start_capture(std_tx).context("instalando a captura")?;
-        std::thread::spawn(move || {
-            while let Ok(event) = std_rx.recv() {
-                if cap_tx.send(event).is_err() {
-                    break;
-                }
+        match ir_input::start_capture(std_tx) {
+            Ok(capturer) => {
+                bridge_captura(std_rx, cap_tx);
+                (Some(capturer), None, cap_rx)
             }
-        });
-        Ok((Some(capturer), None, cap_rx))
+            Err(error) => {
+                warn!(%error, "captura local indisponível; a passagem de entrada aguarda o agente");
+                segurar_canal(cap_tx);
+                (None, None, cap_rx)
+            }
+        }
     } else {
-        let injector = ir_input::open_injector().context("abrindo o injetor")?;
-        // O cliente não captura, mas o canal precisa ficar aberto: um `recv` num canal fechado
-        // volta na hora, e o laço do ator giraria sem parar. Uma tarefa segura o emissor.
-        tokio::spawn(async move {
-            let _hold = cap_tx;
-            std::future::pending::<()>().await;
-        });
-        Ok((None, Some(injector), cap_rx))
+        let injector = match ir_input::open_injector() {
+            Ok(injector) => Some(injector),
+            Err(error) => {
+                warn!(%error, "injeção local indisponível; a passagem de entrada aguarda o agente");
+                None
+            }
+        };
+        segurar_canal(cap_tx);
+        (None, injector, cap_rx)
     }
+}
+
+/// Ponte da captura: repassa cada evento da thread `std` da captura para o canal do ator.
+fn bridge_captura(
+    std_rx: std::sync::mpsc::Receiver<ir_input::CaptureEvent>,
+    cap_tx: mpsc::UnboundedSender<ir_input::CaptureEvent>,
+) {
+    std::thread::spawn(move || {
+        while let Ok(event) = std_rx.recv() {
+            if cap_tx.send(event).is_err() {
+                break;
+            }
+        }
+    });
+}
+
+/// Segura o emissor de captura numa tarefa, para o canal não fechar quando ninguém captura.
+///
+/// Um `recv` num canal fechado volta na hora, e o laço do ator giraria sem parar; manter um
+/// emissor vivo evita isso.
+fn segurar_canal(cap_tx: mpsc::UnboundedSender<ir_input::CaptureEvent>) {
+    tokio::spawn(async move {
+        let _hold = cap_tx;
+        std::future::pending::<()>().await;
+    });
 }
 
 /// Monta a sessão a partir da configuração e da identidade.

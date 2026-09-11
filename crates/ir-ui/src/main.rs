@@ -16,6 +16,7 @@
 
 use std::rc::Rc;
 
+use ir_ui::real::ServicoReal;
 use ir_ui::servico::Servico;
 use ir_ui::simulado::ServicoSimulado;
 
@@ -25,9 +26,12 @@ use ir_ui::simulado::ServicoSimulado;
 ///
 /// Repassa a falha do Slint quando não há backend gráfico disponível.
 fn main() -> Result<(), slint::PlatformError> {
-    // Enquanto o transporte de IPC não existir, o único serviço disponível é o simulado, e a
-    // janela avisa o usuário disso na cara. A escolha acontece aqui e em lugar nenhum mais:
-    // trocar por um cliente de verdade é trocar esta linha.
-    let servico: Rc<dyn Servico> = Rc::new(ServicoSimulado::new());
+    // Fala com o serviço de verdade quando ele está no ar; se não estiver (não instalado, ou
+    // parado), cai para o simulado, e a janela avisa o usuário disso na cara. Uma interface que
+    // finge estar ligada é pior que uma que diz claramente que não está.
+    let servico: Rc<dyn Servico> = match ServicoReal::conectar() {
+        Ok(real) => Rc::new(real),
+        Err(_) => Rc::new(ServicoSimulado::new()),
+    };
     ir_ui::janela::abrir(servico)
 }

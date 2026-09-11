@@ -194,6 +194,32 @@ impl Falha {
     }
 }
 
+/// Uma mensagem do serviço para a interface, no fluxo de bytes do canal de controle.
+///
+/// O canal carrega dois tipos de coisa misturados: a resposta a um pedido, e um aviso que o
+/// serviço manda por conta própria (o código de pareamento, uma mudança de estado). O envelope
+/// distingue os dois para a interface não confundir um com o outro.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum ParaInterface {
+    /// A resposta a um [`Pedido`].
+    Resposta(Resposta),
+    /// Um aviso não solicitado.
+    Aviso(Aviso),
+}
+
+impl From<Resposta> for ParaInterface {
+    fn from(resposta: Resposta) -> Self {
+        Self::Resposta(resposta)
+    }
+}
+
+impl From<Aviso> for ParaInterface {
+    fn from(aviso: Aviso) -> Self {
+        Self::Aviso(aviso)
+    }
+}
+
 /// O que o serviço conta à interface sem ela pedir.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]

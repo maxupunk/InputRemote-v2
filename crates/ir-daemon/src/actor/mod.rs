@@ -8,14 +8,20 @@ use std::net::SocketAddr;
 use std::time::Instant;
 
 use ir_input::{CaptureEvent, Capturer, Injector};
+use ir_ipc::{Aviso, Maquina, Nome};
 use ir_net::{ConnectMode, NetCommand, NetEvent};
 use ir_proto::carrier::Carrier;
 use ir_proto::input::PointerDelta;
+use ir_proto::screens::Edge;
 use ir_session::{CommandBatch, Input, LinkDown, Phase, Session, Timestamp};
+use tokio::sync::broadcast;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tracing::{error, info, warn};
 
 use crate::config::{Config, PinnedPeer, encode_key};
+use crate::ipc::PedidoRecebido;
+
+mod pedidos;
 
 /// A entrada de captura, já convertida para o canal do ator.
 pub(crate) type CaptureRx = UnboundedReceiver<CaptureEvent>;
@@ -42,6 +48,16 @@ pub(crate) struct Daemon {
     linked: bool,
     /// Contador de batidas, para espaçar as tentativas de reconexão.
     ticks: u32,
+    /// Por onde o serviço empurra avisos para as interfaces conectadas.
+    avisos: broadcast::Sender<Aviso>,
+    /// Esta máquina, para a impressão digital aparecer na tela de pareamento.
+    machine: Maquina,
+    /// O nome desta máquina.
+    nome: Nome,
+    /// A borda que dá para o par.
+    edge: Edge,
+    /// A última fase informada às interfaces, para só avisar quando muda de verdade.
+    last_phase: Phase,
 }
 
 /// A cada quantas batidas de 5 ms se tenta reconectar. 600 × 5 ms = 3 s.
@@ -65,6 +81,14 @@ pub(crate) struct Parts {
     pub(crate) data_dir: std::path::PathBuf,
     /// A configuração corrente.
     pub(crate) config: Config,
+    /// Emissor de avisos para as interfaces.
+    pub(crate) avisos: broadcast::Sender<Aviso>,
+    /// Esta máquina, já no vocabulário da interface.
+    pub(crate) machine: Maquina,
+    /// O nome desta máquina.
+    pub(crate) nome: Nome,
+    /// A borda que dá para o par.
+    pub(crate) edge: Edge,
 }
 
 impl Daemon {
@@ -87,6 +111,11 @@ impl Daemon {
             seed_pointer: true,
             linked: false,
             ticks: 0,
+            avisos: parts.avisos,
+            machine: parts.machine,
+            nome: parts.nome,
+            edge: parts.edge,
+            last_phase: Phase::Offline,
         }
     }
 
@@ -112,6 +141,16 @@ impl Daemon {
             self.reconnect_if_needed();
         }
         self.drive(Input::Tick);
+        self.notar_estado();
+    }
+
+    /// Avisa as interfaces se a fase da sessão mudou desde o último aviso.
+    fn notar_estado(&mut self) {
+        let fase = self.session.phase();
+        if fase != self.last_phase {
+            self.last_phase = fase;
+            let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
+        }
     }
 
     /// Retoma a conexão conforme o que está caído.
@@ -137,6 +176,7 @@ impl Daemon {
         mut net_events: UnboundedReceiver<NetEvent>,
         mut capture: CaptureRx,
         mut confirm: UnboundedReceiver<String>,
+        mut pedidos: UnboundedReceiver<PedidoRecebido>,
     ) {
         // Bate a sessão a cada 5 ms: é o que faz os prazos (heartbeat, snapshot, retransmissão,
         // queda por tempo) vencerem, sem gerenciar temporizadores um a um.
@@ -158,6 +198,11 @@ impl Daemon {
                         self.on_confirm(&line);
                     }
                 }
+                pedido = pedidos.recv() => {
+                    if let Some(pedido) = pedido {
+                        self.on_pedido(pedido);
+                    }
+                }
             }
         }
     }
@@ -177,6 +222,7 @@ impl Daemon {
                     carrier: Carrier::Udp,
                     reason: LinkDown::TransportFailed,
                 });
+                self.notar_estado();
             }
             NetEvent::Error(message) => warn!(message, "erro de rede"),
             _ => {}
@@ -190,6 +236,11 @@ impl Daemon {
         info!("código de pareamento: {digits}");
         println!("\n=== CÓDIGO DE PAREAMENTO: {digits} ===");
         println!("Confere com o outro computador? [s/n] e Enter:");
+        // A interface mostra os seis dígitos em caixas para a comparação em voz alta; vão
+        // separados, não como texto, exatamente por isso.
+        let _ = self
+            .avisos
+            .send(Aviso::CodigoDePareamento { digitos: code });
     }
 
     fn on_confirm(&mut self, line: &str) {
@@ -199,17 +250,34 @@ impl Daemon {
             return;
         }
         let yes = matches!(trimmed.to_lowercase().as_str(), "s" | "sim" | "y" | "yes");
+        self.confirmar(yes);
+    }
+
+    /// A resposta à comparação do código, venha do terminal ou da interface.
+    fn confirmar(&mut self, yes: bool) {
+        if !self.awaiting_confirm {
+            return;
+        }
         self.awaiting_confirm = false;
         info!("confirmação recebida: {}", if yes { "sim" } else { "não" });
         let _ = self.net.send(NetCommand::ConfirmPairing(yes));
         if !yes {
+            // Códigos diferentes ou recusa: não há par, e a interface precisa saber que o
+            // pareamento terminou sem sucesso para sair da tela de comparação.
             self.pending_peer = None;
+            let _ = self
+                .avisos
+                .send(Aviso::PareamentoConcluido { sucesso: false });
         }
     }
 
     fn on_established(&mut self, peer_static: ir_crypto::PublicKey, peer: SocketAddr) {
         if self.pending_peer.take().is_some() {
             self.save_peer(peer_static, peer);
+            // O par foi gravado: a interface fecha a tela de comparação com sucesso.
+            let _ = self
+                .avisos
+                .send(Aviso::PareamentoConcluido { sucesso: true });
         } else if let Some(pinned) = self.config.first_peer_key()
             && pinned != peer_static
         {
@@ -224,6 +292,7 @@ impl Daemon {
         self.seed_pointer = true;
         info!(%peer, "enlace seguro pronto; iniciando a sessão");
         self.drive(Input::CarrierUp(Carrier::Udp));
+        self.notar_estado();
     }
 
     fn save_peer(&mut self, peer_static: ir_crypto::PublicKey, peer: SocketAddr) {

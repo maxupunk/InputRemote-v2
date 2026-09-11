@@ -112,12 +112,39 @@ os dois de novo.
 - **Resolução do Linux:** ponha `screen_width`/`screen_height` na resolução real da tela do Linux,
   para o movimento e a borda de volta ficarem na proporção certa.
 
+## Parear pela janela (em vez do terminal)
+
+O passo 3 acima usa o terminal. Dá para fazer o mesmo pela **janela** (`inputremote-ui`), que é
+o caminho normal:
+
+1. Suba o daemon em primeiro plano nas duas máquinas (sem `IR_CONTROL_ENDPOINT`, para a janela
+   achar o serviço no canal padrão).
+2. Abra o `inputremote-ui` em cada uma. Se ela achar o serviço, a barra de "serviço simulado" some.
+3. Numa delas, **Procurar** mostra o computador configurado em `peer_addr`; escolha-o e comece o
+   pareamento. As duas janelas mostram os seis dígitos em caixas.
+4. Confira que são iguais e confirme nas **duas** janelas. Deu certo, o par fica gravado.
+
+A comparação dos seis dígitos não é pulável — nem pela tela, nem por configuração. É o que protege
+contra alguém no meio da conexão.
+
+## Instalar como serviço (Windows)
+
+O MSI instala o daemon como serviço do Windows (sobe com a máquina, como SYSTEM). A instalação
+agora **conclui** — o serviço registra no Gerenciador de Serviços e responde ao "iniciar" do
+instalador. Depois de instalado, a janela pareia pelo serviço, igual ao primeiro plano.
+
+> **Ressalva do serviço instalado:** rodando como SYSTEM na sessão 0, o serviço ainda **não passa
+> teclado e mouse** para a sessão do usuário — isso depende do **agente**, que é a próxima etapa.
+> Até lá, o caminho que passa entrada de verdade é o **primeiro plano** descrito acima. O serviço
+> instalado sobe e pareia; a passagem de entrada aguarda o agente.
+
 ## O que ainda não está aqui
 
+- **Agente na sessão do usuário:** o que falta para o serviço instalado passar teclado e mouse.
 - **Tela de bloqueio (N2/N3):** precisa do agente no desktop seguro e da assinatura de código.
 - **Bluetooth:** o portador principal do projeto; hoje só a rede UDP está implementada.
-- **Interface gráfica ligada ao serviço:** a janela já existe (`inputremote-ui`), mas ainda fala
-  com um serviço simulado; ligá-la ao serviço de verdade é o próximo passo.
+- **Descoberta automática (mDNS) na janela:** por ora, **Procurar** mostra o par configurado em
+  `peer_addr`; a descoberta na rede é um refinamento posterior.
 - **Clipboard e arquivos.**
 
 O caminho completo até a tela de bloqueio está em [docs/08-plano-de-implementacao.md](docs/08-plano-de-implementacao.md).

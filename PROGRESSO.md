@@ -114,13 +114,18 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Vocabulário próprio do contrato, para `ir-ui` não depender de `ir-proto`
 - [x] Canal do agente separado do canal da interface, com vocabulários que não se misturam
 - [x] Cada pedido declara a autoridade que exige, como propriedade do próprio pedido
-- [ ] Transporte: named pipe no Windows com SDDL restrito
-- [ ] Transporte: socket Unix `0660 root:inputremote`
-- [~] Autorização em três níveis de [04, §5](docs/04-seguranca.md) — declarada no contrato;
-      a imposição depende do transporte, que lê o token do cliente
-- [ ] `ir-daemon`: binário sobe, aceita IPC, encerra limpo
+- [x] Transporte do canal de controle: named pipe no Windows / socket Unix, enquadrado por
+      `ir_ipc::codec`, com o cliente da interface (`ServicoReal`) e um teste de ida e volta
+      ([log 14](docs/logs/14-servico-de-ponta-a-ponta.md))
+- [~] Endurecimento do transporte: SDDL restrito no *pipe* e `0660 root:inputremote` no socket —
+      hoje o *pipe* usa o descritor padrão (basta com serviço e interface sob o mesmo usuário) e
+      o socket nasce `0660`; o SDDL para o serviço SYSTEM é da etapa de instalação
+- [~] Autorização em três níveis de [04, §5](docs/04-seguranca.md) — declarada no contrato; a
+      imposição depende de o transporte ler a elevação do token do cliente, ainda não feita
+- [x] `ir-daemon`: binário sobe, aceita IPC, pareia pela interface, encerra limpo
 - [ ] `ir-agent`: binário conecta, reporta pronto, encerra com o serviço
-- [x] `ir-ui`: janela abre, mostra "sem par" e a impressão digital
+- [x] `ir-ui`: janela abre, acha o serviço de verdade e pareia por ele; cai para o simulado se
+      ele não está no ar
 
 ### 1.4. Observabilidade e configuração
 - [ ] `tracing` com escritor sem bloqueio
@@ -137,8 +142,10 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Manifesto com impressão digital, estado da assinatura e o que **falta** no pacote
 - [x] Ícone no `.exe`, na entrada de Aplicativos e no tema `hicolor` do Linux
 - [x] Linux: RPM do Fedora 44, construído dentro do sistema de destino
-- [~] Registro e remoção do serviço no Windows — declarado no MSI (`ServiceInstall`), mas não
-      exercitado: `inputremote-daemon` ainda não existe
+- [x] Registro e remoção do serviço no Windows — `inputremote-daemon` responde ao SCM
+      (`windows-service`), então o `StartService` do instalador conclui em vez de estourar o
+      tempo; fora do SCM, o mesmo binário cai para primeiro plano
+      ([log 14](docs/logs/14-servico-de-ponta-a-ponta.md))
 - [ ] Unidade `systemd` + regra `udev` + política D-Bus no Linux — entram no RPM junto com o
       serviço, que é quem os usa
 - [ ] Assinatura com certificado de verdade e GPG no RPM ([Etapa 10](#etapa-10--qualidade-e-lançamento))
@@ -279,8 +286,9 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Diagnóstico em campo selecionável, por lista de campos permitidos
 - [x] Ícone do programa, desenhado para ler em 16 px, nos quatro lugares que o mostram
 - [x] Nenhuma janela de console atrás da interface no build de release
-- [~] Fluxo de pareamento com código de seis dígitos — a interface está pronta e testada; o
-      código de verdade depende da Etapa 3
+- [x] Fluxo de pareamento com código de seis dígitos — ligado ao serviço de verdade: a janela
+      mostra o código que o pareamento cifrado gera e a confirmação nas duas telas fecha o par
+      ([log 14](docs/logs/14-servico-de-ponta-a-ponta.md))
 - [ ] Preferências avançadas: arranjo de telas, atalho de emergência
 - [ ] Bandeja do sistema
 - [ ] Fechar, matar ou não abrir não altera a sessão

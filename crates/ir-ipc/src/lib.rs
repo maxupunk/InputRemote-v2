@@ -57,5 +57,5 @@ pub use codec::{ErroDeCodec, MAX_MENSAGEM, PREFIXO};
 pub use status::{
     Estado, Latencia, LinkState, MotivoDaQueda, MotivoDoPortador, Papel, ParConhecido,
 };
-pub use ui::{Autoridade, Aviso, Candidato, Falha, Pedido, Resposta};
+pub use ui::{Autoridade, Aviso, Candidato, Falha, ParaInterface, Pedido, Resposta};
 pub use vocabulario::{Borda, Maquina, Nivel, Nome, Portador, Recursos};
