@@ -35,7 +35,7 @@ const fn papel_sustentado(papel: Role, captura: bool) -> bool {
 }
 
 /// O texto de configuração para um papel.
-const fn texto_do_papel(papel: Role) -> &'static str {
+pub(super) const fn texto_do_papel(papel: Role) -> &'static str {
     match papel {
         Role::Server => "server",
         Role::Client => "client",
@@ -189,61 +189,13 @@ impl Daemon {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use std::path::PathBuf;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    use ir_ipc::{Maquina, Nome};
-    use ir_proto::ids::MachineId;
-    use ir_proto::peer::{Capabilities, MachineName};
-    use tokio::sync::{broadcast, mpsc};
 
     use super::*;
-    use crate::actor::Parts;
-
-    /// Um diretório por teste, para dois testes não gravarem no mesmo arquivo.
-    static PROXIMO: AtomicUsize = AtomicUsize::new(0);
-
-    fn identidade() -> LocalIdentity {
-        LocalIdentity {
-            machine: MachineId([7; 16]),
-            name: MachineName::coagido("bancada"),
-            capabilities: Capabilities::default(),
-        }
-    }
-
-    fn diretorio() -> PathBuf {
-        let n = PROXIMO.fetch_add(1, Ordering::SeqCst);
-        let dir = std::env::temp_dir().join(format!("ir-papel-{}-{n}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).expect("cria o diretório");
-        dir
-    }
+    use crate::actor::bancada::{Bancada, diretorio};
 
     fn daemon(papel: Role) -> (Daemon, PathBuf) {
-        let dir = diretorio();
-        let config = Config {
-            role: texto_do_papel(papel).to_owned(),
-            ..Config::default()
-        };
-        let (net, _) = mpsc::unbounded_channel();
-        let (avisos, _) = broadcast::channel(16);
-        let (agente, _) = broadcast::channel(16);
-        let daemon = Daemon::new(Parts {
-            session: nova_sessao(papel, Edge::Right, identidade()),
-            net,
-            injector: None,
-            capturer: None,
-            screen: (1920, 1080),
-            peer_addr: None,
-            data_dir: dir.clone(),
-            config,
-            avisos,
-            machine: Maquina([7; 16]),
-            nome: Nome::coagido("bancada"),
-            edge: Edge::Right,
-            agente,
-            identidade_local: identidade(),
-        });
-        (daemon, dir)
+        let bancada = Bancada::nova(papel);
+        (bancada.daemon, bancada.dir)
     }
 
     fn gravado(dir: &Path) -> String {

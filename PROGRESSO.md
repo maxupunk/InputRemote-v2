@@ -75,15 +75,18 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [ ] `[H]` Segunda execução sem diálogo de permissão
 
 ### PoC-5 — Noise sobre os três portadores
-- [ ] `Noise_XX` + código de seis dígitos derivado do handshake
-- [ ] `Noise_IK` com chave estática fixada
-- [ ] Janela deslizante de repetição (2 048 bits)
+- [x] `Noise_XX` + código de seis dígitos derivado do handshake — já no produto, na Etapa 3
+      ([log 13](docs/logs/13-pilha-completa-mouse-cruzando.md))
+- [x] `Noise_IK` com chave estática fixada — já no produto, na Etapa 3
+      ([log 13](docs/logs/13-pilha-completa-mouse-cruzando.md))
+- [x] Janela deslizante de repetição (2 048 bits) — já no produto, na Etapa 3
+      ([log 13](docs/logs/13-pilha-completa-mouse-cruzando.md))
 - [ ] Mesmo código sobre stream e datagrama
 - [ ] Custo de cifrar/decifrar mensagem de entrada < 20 µs
 - [ ] `[H]` Latência adicionada em UDP na LAN: mediana < 8 ms
 
 ### PoC-6 — Empacotamento
-- [ ] Um comando gera instalador, ZIP, RPM e DEB
+- [~] Um comando gera instalador, ZIP, RPM e DEB — gera o MSI e o RPM; faltam o ZIP e o DEB
 - [ ] Instalar e desinstalar sem resíduo
 
 ---
@@ -148,16 +151,22 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       sessão de console (`CreateProcessAsUserW` + `TokenUIAccess`)
 - [x] `ir-ui`: janela abre, acha o serviço de verdade e pareia por ele; sem o serviço, diz o
       motivo e o que fazer, e entra sozinha quando ele sobe. O simulado só com `--simulado`
-- [ ] Trocar o papel (ou a borda) pela janela vale **na hora** — ou a janela diz que só vale ao
-      reiniciar o serviço. Hoje o pedido grava a configuração e não diz nada: a janela volta a
-      mostrar o papel que está rodando, o clique parece não ter pegado, e a máquina muda de papel
-      em silêncio na próxima subida. Foi assim que o notebook de teste virou servidor
 
 ### 1.4. Observabilidade e configuração
-- [ ] `tracing` com escritor sem bloqueio
-- [ ] Configuração `toml` com escrita atômica
-- [ ] Caminhos de sistema por plataforma ([02, §7](docs/02-arquitetura.md))
-- [ ] Relatório de diagnóstico por lista de campos permitidos
+- [x] `tracing` com escritor sem bloqueio — por fila (`tracing-appender`); o serviço do Windows
+      registra em `%ProgramData%\InputRemote\logs`, um arquivo por dia, sete guardados; no Linux
+      segue para o `journald` ([log 20](docs/logs/20-atualizar-sem-reiniciar-e-o-balanco.md))
+- [x] Configuração `toml` com escrita atômica — arquivo temporário e `rename`, e a identidade
+      gravada do mesmo jeito, com `0600` no Linux
+      ([log 20](docs/logs/20-atualizar-sem-reiniciar-e-o-balanco.md))
+- [~] Caminhos de sistema por plataforma ([02, §7](docs/02-arquitetura.md)) — o estado vai para
+      `%ProgramData%\InputRemote` no serviço do Windows e para `/var/lib/inputremote` no Linux, mas
+      não na divisão da especificação: a configuração do Linux deveria estar em `/etc/inputremote`,
+      e a identidade e os pares do Windows numa subpasta `state\`. Mudar agora exige migrar
+      instalações existentes ([log 20](docs/logs/20-atualizar-sem-reiniciar-e-o-balanco.md))
+- [x] Relatório de diagnóstico por lista de campos permitidos — o do serviço é um formato fechado
+      de campos, sem nada do que foi digitado
+      ([log 20](docs/logs/20-atualizar-sem-reiniciar-e-o-balanco.md))
 
 ### 1.5. Instalação
 - [x] Nomes de executável conforme [00](docs/00-indice.md): `inputremote-ui`, não `ir-ui`
@@ -174,6 +183,11 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       (`windows-service`), então o `StartService` do instalador conclui em vez de estourar o
       tempo; fora do SCM, o mesmo binário cai para primeiro plano
       ([log 14](docs/logs/14-servico-de-ponta-a-ponta.md))
+- [~] Atualizar por cima sem reiniciar o Windows — o instalador desliga o Restart Manager, que
+      via o agente (sem janela, como SYSTEM) em uso antes de o serviço parar e pedia reinício; e o
+      serviço agora só se declara parado depois de soltar tudo e dispensar o agente. Compilado e
+      testado; falta a pessoa instalar por cima e confirmar que não pede reinício
+      ([log 20](docs/logs/20-atualizar-sem-reiniciar-e-o-balanco.md))
 - [~] Unidade `systemd` no Linux — o RPM agora traz o serviço **e** a unidade, que roda como
       root (é quem tem `/dev/uinput`). Falta a regra `udev` e a política D-Bus, que só fazem
       sentido junto com o usuário dedicado do endurecimento
@@ -278,9 +292,10 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [ ] `[H]` 10.000 travessias sem tecla presa
 
 ## Etapa 6 — Entrada no Linux
-- [~] Injeção por `uinput`, três dispositivos — implementada e compilada no Fedora de destino,
-      mas ainda **não exercitada** numa máquina Linux com ambiente gráfico; é o primeiro ponto a
-      investigar se o ponteiro não se mexer no teste físico
+- [~] Injeção por `uinput` — no notebook de teste com GNOME, os dispositivos `InputRemote Keyboard`
+      e `InputRemote Pointer` já aparecem registrados (a especificação fala em três; aparecem dois).
+      Falta ver ponteiro e teclado reagirem de verdade, o que só acontece com o par conectado e a
+      travessia feita ([log 20](docs/logs/20-atualizar-sem-reiniciar-e-o-balanco.md))
 - [ ] Captura por `InputCapture` + `libei`
 - [ ] Integração com `logind`
 - [ ] Filtro de auto-recaptura por dispositivo de origem
@@ -305,8 +320,9 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 > **Fora de ordem, e de propósito.** A interface foi adiantada porque ela é o que revela se o
 > contrato de `ir-ipc` serve — e revelou: três campos e um pedido faltavam
 > ([log 08](docs/logs/08-ir-ipc.md)). Ela nasceu contra o `ServicoSimulado` e hoje fala com o
-> serviço de verdade pelo canal de controle ([log 14](docs/logs/14-servico-de-ponta-a-ponta.md)),
-> caindo para o simulado — e avisando — quando ele não está no ar.
+> serviço de verdade pelo canal de controle ([log 14](docs/logs/14-servico-de-ponta-a-ponta.md)).
+> Sem o serviço, ela diz o motivo e reconecta sozinha; o simulado só entra com `--simulado`
+> ([log 17](docs/logs/17-a-janela-que-volta-e-o-grupo-que-vale-na-hora.md)).
 
 - [x] Linguagem visual única em `ui/tema.slint`; tema claro e escuro seguindo o do sistema
 - [x] Telas de estado, pareamento e preferências, com voltar explícito em vez de abas

@@ -15,9 +15,10 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::mpsc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
+use tokio::sync::watch;
 use windows_service::service::{
     ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus, ServiceType,
 };
@@ -30,6 +31,12 @@ const NOME: &str = "InputRemote";
 /// O código que o SCM devolve quando um executável comum (não lançado por ele) tenta se
 /// registrar. É como sabemos que estamos rodando à mão, e não como serviço.
 const NAO_E_SERVICO: i32 = 1063; // ERROR_FAILED_SERVICE_CONTROLLER_CONNECT
+
+/// Quanto o serviço espera a parada limpa antes de se declarar parado mesmo assim.
+///
+/// Folgado para soltar tudo e dispensar o agente, e curto o bastante para o SCM e o instalador não
+/// acharem que o serviço travou.
+const PRAZO_DE_PARADA: Duration = Duration::from_secs(5);
 
 /// Tenta rodar como serviço do SCM.
 ///
@@ -81,29 +88,50 @@ fn rodar_servico() -> Result<()> {
         service_control_handler::register(NOME, tratador).context("registrando controles")?;
 
     let aceitos = ServiceControlAccept::STOP | ServiceControlAccept::PRESHUTDOWN;
-    reportar(status, ServiceState::Running, aceitos)?;
+    reportar(status, ServiceState::Running, aceitos, Duration::ZERO)?;
 
     // O serviço roda numa runtime própria, numa thread à parte, para esta poder esperar o sinal
-    // de parada do SCM sem bloquear o laço.
-    let trabalho = std::thread::spawn(|| {
-        let _ = crate::executar_bloqueante();
+    // de parada do SCM sem bloquear o laço. O canal de parada é o que deixa o laço sair limpo.
+    let (pedir_parada, parada) = watch::channel(false);
+    let trabalho = std::thread::spawn(move || {
+        let _ = crate::executar_bloqueante(parada);
     });
 
-    // Espera o SCM (ou a queda do próprio trabalho) e então reporta parado.
+    // Espera o SCM (ou a queda do próprio trabalho).
     while parar_rx.recv_timeout(Duration::from_millis(500)).is_err() {
         if trabalho.is_finished() {
             break;
         }
     }
-    reportar(status, ServiceState::Stopped, ServiceControlAccept::empty())?;
+
+    // Só se declara parado depois de soltar tudo. Declarar antes deixaria o agente vivo além do
+    // "parado" — e é nesse intervalo que um instalador tenta trocar o arquivo dele.
+    reportar(
+        status,
+        ServiceState::StopPending,
+        ServiceControlAccept::empty(),
+        PRAZO_DE_PARADA,
+    )?;
+    let _ = pedir_parada.send(true);
+    let limite = Instant::now() + PRAZO_DE_PARADA;
+    while !trabalho.is_finished() && Instant::now() < limite {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    reportar(
+        status,
+        ServiceState::Stopped,
+        ServiceControlAccept::empty(),
+        Duration::ZERO,
+    )?;
     Ok(())
 }
 
-/// Reporta um estado ao SCM.
+/// Reporta um estado ao SCM, com quanto tempo ele deve esperar pelo próximo.
 fn reportar(
     status: service_control_handler::ServiceStatusHandle,
     estado: ServiceState,
     aceitos: ServiceControlAccept,
+    espera: Duration,
 ) -> Result<()> {
     status
         .set_service_status(ServiceStatus {
@@ -112,7 +140,7 @@ fn reportar(
             controls_accepted: aceitos,
             exit_code: ServiceExitCode::Win32(0),
             checkpoint: 0,
-            wait_hint: Duration::default(),
+            wait_hint: espera,
             process_id: None,
         })
         .context("reportando estado ao SCM")?;

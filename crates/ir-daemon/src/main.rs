@@ -21,7 +21,7 @@ use ir_net::{Endpoint, bind};
 use ir_proto::peer::{Capabilities, MachineName, PrivilegedInputLevel};
 use ir_proto::screens::ScreenLayout;
 use ir_session::{LocalIdentity, Role};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tracing::info;
 // Só o caminho sem agente (Linux) relata backend de entrada indisponível.
 #[cfg(not(windows))]
@@ -41,22 +41,26 @@ fn main() -> Result<()> {
             return Ok(());
         }
     }
-    executar_bloqueante()
+    // Em primeiro plano ninguém pede parada por este canal — o processo acaba com o console —, mas
+    // o emissor precisa continuar vivo: um canal sem emissor seria lido como pedido de parada.
+    let (_emissor_de_parada, parada) = watch::channel(false);
+    executar_bloqueante(parada)
 }
 
-/// Monta a runtime `tokio` e roda o serviço até o fim. É o caminho de primeiro plano, e também
-/// o que a tarefa do serviço chama por dentro.
-pub(crate) fn executar_bloqueante() -> Result<()> {
+/// Monta a runtime `tokio` e roda o serviço até o fim, ou até `parada` pedir. É o caminho de
+/// primeiro plano, e também o que a tarefa do serviço chama por dentro.
+pub(crate) fn executar_bloqueante(parada: watch::Receiver<bool>) -> Result<()> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .context("criando a runtime")?;
-    runtime.block_on(executar())
+    runtime.block_on(executar(parada))
 }
 
 /// O corpo do serviço: carrega estado, sobe rede, entrada e o canal de controle, e roda o ator.
-async fn executar() -> Result<()> {
-    init_tracing();
+async fn executar(parada: watch::Receiver<bool>) -> Result<()> {
+    // O guarda esvazia a fila do registro ao sair; soltá-lo antes perderia as últimas linhas.
+    let _registro = init_tracing();
 
     let dir = config::data_dir();
     let mut cfg = config::load_config(&dir).context("carregando configuração")?;
@@ -101,15 +105,15 @@ async fn executar() -> Result<()> {
     daemon.connect_if_possible();
     // O agente nasce junto com o serviço; o laço periódico só cuida de ressubi-lo se ele cair.
     daemon.garantir_agente();
-    let confirm_rx = spawn_stdin_reader();
 
     daemon
         .run(Entradas {
             net_events: net.events,
             capture: capture_rx,
-            confirm: confirm_rx,
+            confirm: spawn_stdin_reader(),
             pedidos: canais.pedidos,
             fatos: canais.fatos,
+            parada,
         })
         .await;
     Ok(())
@@ -148,14 +152,60 @@ fn abrir_canais() -> Result<Canais> {
     })
 }
 
-/// Configura o `tracing`, com nível de `RUST_LOG` ou `info` por padrão.
-fn init_tracing() {
+/// Quantos arquivos de registro diários o serviço do Windows guarda.
+#[cfg(windows)]
+const DIAS_DE_REGISTRO: usize = 7;
+
+/// Configura o registro, com nível de `RUST_LOG` ou `info` por padrão, sem bloquear quem registra.
+///
+/// O escritor é de fila: uma linha nunca espera o disco ou o console, porque quem registra pode ser
+/// o laço da sessão, que bate a cada 5 ms. O guarda devolvido esvazia a fila ao sair, e precisa
+/// viver até o fim.
+fn init_tracing() -> tracing_appender::non_blocking::WorkerGuard {
+    let (destino, terminal) = destino_do_registro();
+    let (escritor, guarda) = tracing_appender::non_blocking(destino);
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
+        .with_writer(escritor)
+        // Cor só num terminal de verdade: num arquivo ou no `journald`, os códigos de cor viram
+        // lixo no meio de cada linha.
+        .with_ansi(terminal)
         .init();
+    guarda
+}
+
+/// Para onde vai o registro, e se o destino é um terminal.
+///
+/// Como serviço do Windows, para `%ProgramData%\InputRemote\logs`: ninguém lê a saída padrão de um
+/// serviço, e um serviço que falha sem deixar rastro não tem como ser diagnosticado. Em primeiro
+/// plano, e no Linux — onde o `journald` já guarda a saída do serviço —, para a saída padrão.
+fn destino_do_registro() -> (Box<dyn std::io::Write + Send>, bool) {
+    #[cfg(windows)]
+    {
+        if lancador::como_servico()
+            && let Some(arquivo) = arquivo_de_registro()
+        {
+            return (Box::new(arquivo), false);
+        }
+    }
+    let terminal = std::io::IsTerminal::is_terminal(&std::io::stdout());
+    (Box::new(std::io::stdout()), terminal)
+}
+
+/// O arquivo de registro do serviço do Windows, com um arquivo por dia e os mais velhos apagados.
+#[cfg(windows)]
+fn arquivo_de_registro() -> Option<tracing_appender::rolling::RollingFileAppender> {
+    use tracing_appender::rolling::{RollingFileAppender, Rotation};
+    RollingFileAppender::builder()
+        .rotation(Rotation::DAILY)
+        .filename_prefix("inputremote")
+        .filename_suffix("log")
+        .max_log_files(DIAS_DE_REGISTRO)
+        .build(config::data_dir().join("logs"))
+        .ok()
 }
 
 /// Vincula o socket UDP local na porta dada e registra o endereço.

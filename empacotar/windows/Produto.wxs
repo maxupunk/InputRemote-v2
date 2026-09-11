@@ -41,6 +41,16 @@
     <Property Id="ARPHELPLINK" Value="https://github.com/inputremote/inputremote" />
     <Property Id="WIXUI_INSTALLDIR" Value="PASTAINSTALACAO" />
 
+    <!-- Sem o Restart Manager. Ele confere arquivos em uso ANTES de o instalador parar o servico,
+         encontra o agente (que roda como SYSTEM na sessao do usuario, sem janela, e que nenhum
+         "fechar programa" alcanca) e conclui que so reiniciando. Na ordem real da instalacao o
+         servico para primeiro (ServiceControl Stop), o agente sai sozinho quando o canal dele
+         fecha, e os arquivos ja estao livres quando chega a hora de troca-los. Sem o Restart
+         Manager, o instalador volta a checar so programas com janela: a interface aberta ainda
+         aparece para o usuario fechar, que e o comportamento certo. Foi o pedido de reinicio que
+         impediu atualizar o servico numa maquina que nao podia ser reiniciada. -->
+    <Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
+
     <!-- O icone da entrada em Aplicativos. Vem do arquivo, e nao extraido do executavel:
          extrair pegaria o primeiro tamanho que aparecesse, e a lista de programas usa 32 px. -->
     <Icon Id="icone.ico" SourceFile="$(var.Recursos)\icone.ico" />

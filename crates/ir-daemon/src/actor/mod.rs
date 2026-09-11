@@ -21,7 +21,10 @@ use tracing::{error, info, warn};
 use crate::config::{Config, PinnedPeer, encode_key};
 
 mod agente;
+#[cfg(test)]
+mod bancada;
 mod papel;
+mod parada;
 mod pareamento;
 mod partes;
 mod pedidos;
@@ -145,6 +148,7 @@ impl Daemon {
             mut confirm,
             mut pedidos,
             mut fatos,
+            mut parada,
         } = entradas;
         // Bate a sessão a cada 5 ms: é o que faz os prazos (heartbeat, snapshot, retransmissão,
         // queda por tempo) vencerem, sem gerenciar temporizadores um a um.
@@ -175,6 +179,11 @@ impl Daemon {
                     if let Some(fato) = fato {
                         self.on_fato(fato);
                     }
+                }
+                // Parar, ou quem podia pedir parada foi embora: nos dois casos, sair limpo.
+                _ = parada.changed() => {
+                    self.encerrar().await;
+                    break;
                 }
             }
         }

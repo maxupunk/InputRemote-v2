@@ -34,6 +34,8 @@ pub(crate) struct Entradas {
     pub(crate) pedidos: UnboundedReceiver<PedidoRecebido>,
     /// Fatos do agente.
     pub(crate) fatos: UnboundedReceiver<FatoDoAgente>,
+    /// O pedido de parada do serviço.
+    pub(crate) parada: tokio::sync::watch::Receiver<bool>,
 }
 
 /// O que o ator precisa para nascer.

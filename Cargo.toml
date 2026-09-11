@@ -47,6 +47,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "
 mdns-sd = "0.11"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
 
 # Ferramentas de desenvolvimento (xtask) e binários
 anyhow = "1.0"

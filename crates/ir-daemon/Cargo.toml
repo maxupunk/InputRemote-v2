@@ -22,6 +22,9 @@ ir-ipc.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+# O registro por fila: uma linha de log nunca espera disco nem console, e como serviço do Windows
+# vai para arquivo — a saída padrão de um serviço não chega a lugar nenhum.
+tracing-appender.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 toml.workspace = true
