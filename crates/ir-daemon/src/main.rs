@@ -20,7 +20,7 @@ use anyhow::{Context, Result};
 use ir_net::{Endpoint, bind};
 use ir_proto::peer::{Capabilities, MachineName, PrivilegedInputLevel};
 use ir_proto::screens::ScreenLayout;
-use ir_session::{Input, LocalIdentity, Role, Session, SessionConfig, Timestamp};
+use ir_session::{LocalIdentity, Role};
 use tokio::sync::mpsc;
 use tracing::info;
 // Só o caminho sem agente (Linux) relata backend de entrada indisponível.
@@ -59,9 +59,9 @@ async fn executar() -> Result<()> {
     init_tracing();
 
     let dir = config::data_dir();
-    let cfg = config::load_config(&dir).context("carregando configuração")?;
+    let mut cfg = config::load_config(&dir).context("carregando configuração")?;
     let identity = Arc::new(config::load_identity(&dir).context("carregando identidade")?);
-    let role = cfg.session_role()?;
+    let role = actor::papel_na_subida(&mut cfg, &dir)?;
     let edge = cfg.edge()?;
     info!(
         "InputRemote daemon — papel {role}, impressão digital {}",
@@ -75,13 +75,13 @@ async fn executar() -> Result<()> {
     let net = Endpoint::spawn(Arc::clone(&socket), Arc::clone(&identity));
 
     let (capturer, injector, capture_rx) = build_io(role);
-    let session = build_session(role, edge, &identity, &cfg);
+    let identidade = identidade_local(&identity);
     let peer_addr = cfg.peer_addr.as_deref().and_then(|a| a.parse().ok());
 
     let canais = abrir_canais()?;
 
     let mut daemon = Daemon::new(Parts {
-        session,
+        session: actor::nova_sessao(role, edge, identidade.clone()),
         net: net.commands.clone(),
         injector,
         capturer,
@@ -94,6 +94,7 @@ async fn executar() -> Result<()> {
         nome: ir_ipc::Nome::coagido(&hostname()),
         edge,
         agente: canais.agente,
+        identidade_local: identidade,
     });
 
     feed_screens(&mut daemon, screen);
@@ -269,29 +270,19 @@ fn segurar_canal(cap_tx: mpsc::UnboundedSender<ir_input::CaptureEvent>) {
     });
 }
 
-/// Monta a sessão a partir da configuração e da identidade.
-fn build_session(
-    role: Role,
-    edge: ir_proto::screens::Edge,
-    identity: &ir_crypto::Identity,
-    _cfg: &config::Config,
-) -> Session {
-    let capabilities = Capabilities {
-        privileged_input: PrivilegedInputLevel::UnlockedOnly,
-        ..Capabilities::default()
-    };
-    let name = MachineName::coagido(&hostname());
-    let local = LocalIdentity {
+/// Quem esta máquina é, do ponto de vista do protocolo.
+///
+/// O ator guarda esta identidade, e não só a usa na subida: trocar papel ou borda recria a sessão,
+/// e a nova precisa nascer com a mesma.
+fn identidade_local(identity: &ir_crypto::Identity) -> LocalIdentity {
+    LocalIdentity {
         machine: machine_id_from(identity),
-        name,
-        capabilities,
-    };
-    let config = if role == Role::Server {
-        SessionConfig::server(edge)
-    } else {
-        SessionConfig::client(edge)
-    };
-    Session::new(config, local)
+        name: MachineName::coagido(&hostname()),
+        capabilities: Capabilities {
+            privileged_input: PrivilegedInputLevel::UnlockedOnly,
+            ..Capabilities::default()
+        },
+    }
 }
 
 /// Deriva um id de máquina estável dos primeiros bytes da chave pública.
@@ -301,11 +292,7 @@ fn machine_id_from(identity: &ir_crypto::Identity) -> ir_proto::ids::MachineId {
 
 fn feed_screens(daemon: &mut Daemon, screen: (u32, u32)) {
     if let Ok(layout) = ScreenLayout::single(screen.0, screen.1) {
-        let now = Timestamp::from_micros(0);
-        daemon
-            .session
-            .step(now, Input::LocalScreens(layout), &mut daemon.out);
-        daemon.apply_commands();
+        daemon.definir_telas(layout);
     }
 }
 

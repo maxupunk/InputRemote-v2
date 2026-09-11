@@ -131,12 +131,15 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       ([log 17](docs/logs/17-a-janela-que-volta-e-o-grupo-que-vale-na-hora.md))
 - [~] Autorização em três níveis de [04, §5](docs/04-seguranca.md) — declarada no contrato; a
       imposição depende de o transporte ler a elevação do token do cliente, ainda não feita
-- [ ] A troca de papel pela janela só é aceita onde o papel funciona — hoje um Linux aceita virar
-      servidor, grava, e no próximo reinício sobe num papel sem captura, em silêncio
-      ([log 18](docs/logs/18-a-prova-no-notebook-e-a-troca-de-papel.md))
-- [ ] A janela diz quando uma troca só vale depois de reiniciar o serviço — hoje ela fica pendente
-      e invisível, e apareceu quase três horas depois do clique
-      ([log 18](docs/logs/18-a-prova-no-notebook-e-a-troca-de-papel.md))
+- [x] A troca de papel pela janela só é aceita onde o papel funciona: o serviço recusa com
+      `Falha::PapelIndisponivel` sem gravar nada, e um servidor gravado numa plataforma sem
+      captura sobe como cliente e tem o arquivo corrigido — verificado no Linux, onde a recusa
+      existe ([log 18](docs/logs/18-a-prova-no-notebook-e-a-troca-de-papel.md),
+      [log 19](docs/logs/19-a-troca-que-vale-na-hora.md))
+- [x] Trocar papel ou borda vale na hora, em vez de ficar pendente até o serviço reiniciar: a
+      sessão é recriada pelo mesmo caminho que solta tudo em toda queda. A borda tinha o mesmo
+      defeito, pior — a janela mostrava a nova e a travessia usava a velha
+      ([log 19](docs/logs/19-a-troca-que-vale-na-hora.md))
 - [x] `ir-daemon`: binário sobe, aceita IPC, pareia pela interface, encerra limpo
 - [x] `ir-agent`: binário conecta, reporta pronto, captura e injeta na sessão do usuário, e
       encerra com o serviço — exercitado de verdade: o serviço lança, o agente conecta, informa a

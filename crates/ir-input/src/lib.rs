@@ -169,6 +169,18 @@ pub fn open_injector() -> Result<Box<dyn Injector>> {
     }
 }
 
+/// Se esta plataforma sabe capturar o teclado e o mouse locais — isto é, se esta máquina pode ser
+/// a que tem o teclado.
+///
+/// É o mesmo fato que [`start_capture`] expressa ao falhar com [`InputError::Unsupported`], dito
+/// **antes** de tentar: quem decide o papel da máquina precisa saber disso sem instalar ganchos
+/// para descobrir. No Windows a captura existe (ganchos de baixo nível, no agente); no Linux ainda
+/// não — ela é o portal `InputCapture` + `libei`, da Fase 2 ([06, §3](../../../docs/06-linux.md)).
+#[must_use]
+pub const fn capture_supported() -> bool {
+    cfg!(windows)
+}
+
 /// Começa a capturar, entregando os eventos por `sink`.
 ///
 /// # Errors
@@ -189,5 +201,22 @@ pub fn start_capture(sink: Sender<CaptureEvent>) -> Result<Box<dyn Capturer>> {
         // largá-la fecha o canal na hora, em vez de deixar quem escuta esperando para sempre.
         drop(sink);
         Err(InputError::Unsupported)
+    }
+}
+
+// Só onde a captura não existe: no Windows, `start_capture` instala ganchos de verdade na sessão
+// de quem roda o teste, e um teste de unidade não tem o direito de fazer isso.
+#[cfg(all(test, not(windows)))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unsupported_capture_is_declared_before_trying() {
+        // As duas respostas precisam concordar: quem decide o papel da máquina pergunta a
+        // `capture_supported`, e quem liga a entrada chama `start_capture`. Se divergirem, o
+        // serviço aceita um papel que depois não consegue exercer.
+        let (sink, _recebidos) = std::sync::mpsc::channel();
+        assert!(!capture_supported());
+        assert!(matches!(start_capture(sink), Err(InputError::Unsupported)));
     }
 }

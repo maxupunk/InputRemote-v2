@@ -55,7 +55,10 @@ impl Daemon {
                 pressed: pressionado,
             },
             // Quem sabe o tamanho da tela do usuário é quem está na sessão dele.
-            FatoDoAgente::TelasMudaram(arranjo) => Input::LocalScreens(arranjo),
+            FatoDoAgente::TelasMudaram(arranjo) => {
+                self.definir_telas(arranjo);
+                return;
+            }
             FatoDoAgente::InjecaoRecusada { desktop } => {
                 warn!(desktop, "o sistema recusou a injeção do agente");
                 return;

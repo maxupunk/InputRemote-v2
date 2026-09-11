@@ -19,7 +19,7 @@ use ir_session::{Phase, Role};
 use tracing::{error, info};
 
 use super::Daemon;
-use crate::config::decode_key;
+use crate::config::{Config, decode_key};
 use crate::ipc::PedidoRecebido;
 
 impl Daemon {
@@ -54,8 +54,9 @@ impl Daemon {
                     .pin_carrier(portador.map(Portador::no_protocolo));
                 Resposta::Feito
             }
-            Pedido::DefinirBorda(borda) => self.definir_borda(borda),
-            Pedido::DefinirPapel(papel) => self.definir_papel(papel),
+            // As duas trocas valem na hora: a sessão é refeita com o valor novo (`super::papel`).
+            Pedido::DefinirBorda(borda) => self.trocar_borda(borda.no_protocolo()),
+            Pedido::DefinirPapel(papel) => self.trocar_papel(role_de(papel)),
             Pedido::Diagnostico => Resposta::Diagnostico(self.diagnostico()),
             // A tela de bloqueio é N2: depende do agente no desktop seguro, que ainda não entra.
             // O curinga cobre também variantes futuras do contrato ainda não tratadas aqui.
@@ -93,46 +94,26 @@ impl Daemon {
 
     /// Esquece o par gravado.
     fn esquecer_par(&mut self) -> Resposta {
-        self.config.peers.clear();
-        info!("par esquecido pela interface");
-        self.gravar_configuracao()
+        let mut nova = self.config.clone();
+        nova.peers.clear();
+        let resposta = self.persistir(nova);
+        if resposta == Resposta::Feito {
+            info!("par esquecido pela interface");
+        }
+        resposta
     }
 
-    /// Troca a borda de travessia (vale na próxima sessão).
-    fn definir_borda(&mut self, borda: Borda) -> Resposta {
-        self.edge = borda.no_protocolo();
-        let texto = edge_para_texto(self.edge);
-        texto.clone_into(&mut self.config.peer_edge);
-        info!(
-            borda = texto,
-            "borda de travessia trocada pela interface; vale na próxima sessão"
-        );
-        self.gravar_configuracao()
-    }
-
-    /// Troca o papel desta máquina (vale ao reiniciar o serviço).
-    fn definir_papel(&mut self, papel: Papel) -> Resposta {
-        let texto = match papel {
-            Papel::Servidor => "server",
-            Papel::Cliente => "client",
-        };
-        texto.clone_into(&mut self.config.role);
-        // Registrado em nível alto: o papel só muda de fato quando o serviço reinicia, e sem esta
-        // linha uma máquina que sobe com outro papel não deixa rastro de quem o trocou, nem quando.
-        info!(
-            papel = texto,
-            "papel desta máquina trocado pela interface; vale quando o serviço reiniciar"
-        );
-        self.gravar_configuracao()
-    }
-
-    /// Grava a configuração e responde à interface.
+    /// Grava a configuração nova e **só então** a adota.
     ///
-    /// Um ponto só para as três ações que gravam, e que registra **por que** a gravação falhou:
-    /// antes cada uma respondia "falha interna" e descartava o erro, e o registro não dizia nada.
-    fn gravar_configuracao(&self) -> Resposta {
-        match self.config.save(&self.data_dir) {
-            Ok(()) => Resposta::Feito,
+    /// Um ponto só para toda ação que grava. A ordem é o que importa: se a gravação falha, nem o
+    /// arquivo nem a memória mudam, e os dois nunca divergem — antes a memória mudava primeiro, e
+    /// uma gravação que falhasse deixava o serviço usando um valor que o próximo reinício perderia.
+    pub(super) fn persistir(&mut self, nova: Config) -> Resposta {
+        match nova.save(&self.data_dir) {
+            Ok(()) => {
+                self.config = nova;
+                Resposta::Feito
+            }
             Err(erro) => {
                 error!(%erro, "não foi possível gravar a configuração");
                 Resposta::Falha(Falha::Interna)
@@ -229,12 +210,10 @@ const fn portador_de(carrier: Carrier) -> Portador {
     }
 }
 
-/// O texto de configuração para uma borda.
-const fn edge_para_texto(edge: Edge) -> &'static str {
-    match edge {
-        Edge::Left => "left",
-        Edge::Right => "right",
-        Edge::Top => "top",
-        Edge::Bottom => "bottom",
+/// O papel da interface, no vocabulário da sessão.
+const fn role_de(papel: Papel) -> Role {
+    match papel {
+        Papel::Servidor => Role::Server,
+        Papel::Cliente => Role::Client,
     }
 }

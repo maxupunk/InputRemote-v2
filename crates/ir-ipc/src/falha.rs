@@ -44,6 +44,13 @@ pub enum Falha {
     /// para o pedido falhar com uma razão e uma instrução em vez de um "falha interna" genérico.
     #[error("o serviço do InputRemote não está respondendo")]
     ServicoIndisponivel,
+    /// O papel pedido não funciona nesta plataforma.
+    ///
+    /// Hoje é o de servidor num Linux, que ainda não captura a entrada local. Aceitar a troca
+    /// gravaria um papel em que nada funciona — e foi exatamente isso que aconteceu, em silêncio,
+    /// antes desta falha existir.
+    #[error("este computador ainda não pode ter o teclado e o mouse")]
+    PapelIndisponivel,
 }
 
 impl Falha {
@@ -72,6 +79,10 @@ impl Falha {
                 "Confira se o serviço do InputRemote está em execução. A janela reconecta sozinha \
                  quando ele voltar."
             }
+            Self::PapelIndisponivel => {
+                "Neste computador, por enquanto, só funciona o papel de controlado. Use o outro \
+                 computador como o que tem o teclado e o mouse."
+            }
         }
     }
 }
@@ -91,6 +102,7 @@ mod tests {
             Falha::Interna,
             Falha::SemPermissao,
             Falha::ServicoIndisponivel,
+            Falha::PapelIndisponivel,
         ];
         for falha in falhas {
             assert!(!falha.to_string().is_empty(), "{falha:?} sem descrição");
@@ -118,6 +130,7 @@ mod tests {
             (Falha::Interna, 5),
             (Falha::SemPermissao, 6),
             (Falha::ServicoIndisponivel, 7),
+            (Falha::PapelIndisponivel, 8),
         ];
         for (falha, indice) in esperado {
             let bytes = postcard::to_allocvec(&falha).expect("serializa");

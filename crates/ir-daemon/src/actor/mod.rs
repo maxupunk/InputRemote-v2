@@ -12,8 +12,8 @@ use ir_ipc::{Aviso, ComandoDoAgente, Maquina, Nome};
 use ir_net::{ConnectMode, NetCommand, NetEvent};
 use ir_proto::carrier::Carrier;
 use ir_proto::input::PointerDelta;
-use ir_proto::screens::Edge;
-use ir_session::{CommandBatch, Input, LinkDown, Phase, Session, Timestamp};
+use ir_proto::screens::{Edge, ScreenLayout};
+use ir_session::{CommandBatch, Input, LinkDown, LocalIdentity, Phase, Session, Timestamp};
 use tokio::sync::broadcast;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tracing::{error, info, warn};
@@ -21,10 +21,12 @@ use tracing::{error, info, warn};
 use crate::config::{Config, PinnedPeer, encode_key};
 
 mod agente;
+mod papel;
 mod pareamento;
 mod partes;
 mod pedidos;
 
+pub(crate) use papel::{nova_sessao, papel_na_subida};
 pub(crate) use partes::{Entradas, Parts};
 
 /// A entrada de captura, já convertida para o canal do ator.
@@ -70,6 +72,10 @@ pub(crate) struct Daemon {
     agente: broadcast::Sender<ComandoDoAgente>,
     /// Se há agente conectado e pronto para capturar e injetar.
     agente_pronto: bool,
+    /// Quem esta máquina é, para recriar a sessão numa troca de papel ou de borda.
+    identidade_local: LocalIdentity,
+    /// O último arranjo de telas conhecido, para a sessão recriada nascer sabendo onde ficam.
+    ultimo_arranjo: Option<ScreenLayout>,
 }
 
 /// A cada quantas batidas de 5 ms se tenta reconectar. 600 × 5 ms = 3 s.
@@ -316,6 +322,15 @@ impl Daemon {
         if dx != 0 || dy != 0 {
             self.drive(Input::LocalPointer(PointerDelta { dx, dy }));
         }
+    }
+
+    /// O arranjo de telas desta máquina chegou, ou mudou.
+    ///
+    /// Guardado, e não só repassado: se a sessão for recriada numa troca de papel ou de borda, a
+    /// nova precisa nascer sabendo onde ficam as telas, senão a primeira travessia não acha a borda.
+    pub(crate) fn definir_telas(&mut self, arranjo: ScreenLayout) {
+        self.ultimo_arranjo = Some(arranjo.clone());
+        self.drive(Input::LocalScreens(arranjo));
     }
 
     /// Inicia a conexão como iniciador, se houver par e endereço.

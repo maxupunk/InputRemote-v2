@@ -4,6 +4,7 @@
 //! estado compartilhado — [ADR-0004](../../../docs/adr/0004-nucleo-sans-io.md).
 
 mod client;
+mod consultas;
 mod frames;
 mod link;
 mod server;
@@ -118,48 +119,6 @@ impl Session {
         self.pinned = carrier;
     }
 
-    /// Em que ponto a sessão está.
-    #[must_use]
-    pub const fn phase(&self) -> Phase {
-        self.phase
-    }
-
-    /// O portador de entrada em uso.
-    #[must_use]
-    pub const fn carrier(&self) -> Option<Carrier> {
-        self.carrier
-    }
-
-    /// O par, depois do handshake.
-    #[must_use]
-    pub const fn peer(&self) -> Option<&PeerInfo> {
-        self.peer.as_ref()
-    }
-
-    /// O papel desta máquina.
-    #[must_use]
-    pub const fn role(&self) -> Role {
-        self.config.role
-    }
-
-    /// O que está pressionado, do ponto de vista desta máquina.
-    #[must_use]
-    pub const fn input_state(&self) -> &InputState {
-        &self.input_state
-    }
-
-    /// Onde o ponteiro está nesta máquina.
-    #[must_use]
-    pub const fn pointer(&self) -> Point {
-        self.pointer
-    }
-
-    /// A posição do ponteiro em coordenadas cruas, para a periferia que não conhece `Point`.
-    #[must_use]
-    pub const fn pointer_xy(&self) -> (i32, i32) {
-        (self.pointer.x, self.pointer.y)
-    }
-
     /// Sincroniza o ponteiro com a posição **absoluta** real da máquina, sem detectar travessia.
     ///
     /// O servidor rastreia a posição acumulando deltas; se o ponto de partida não for o cursor
@@ -172,12 +131,6 @@ impl Session {
             .local_screens
             .as_ref()
             .map_or(point, |desktop| desktop.nearest_valid(point));
-    }
-
-    /// A última ida e volta medida até o par, se já houve alguma.
-    #[must_use]
-    pub const fn last_rtt(&self) -> Option<crate::time::Millis> {
-        self.last_rtt
     }
 
     /// Processa um evento.
@@ -310,12 +263,6 @@ impl Session {
                 .ack_for(channel)
                 .map(|ack| ir_proto::frame::ChannelAck::new(channel, ack))
         })
-    }
-
-    /// A sequência que este canal usaria em seguida. Só para teste e diagnóstico.
-    #[must_use]
-    pub const fn next_sequence(&self, channel: ChannelId) -> ir_proto::frame::Sequence {
-        self.seqs.peek(channel)
     }
 }
 

@@ -11,7 +11,7 @@ use ir_input::{Capturer, Injector};
 use ir_ipc::{Aviso, ComandoDoAgente, FatoDoAgente, Maquina, Nome};
 use ir_net::{NetCommand, NetEvent};
 use ir_proto::screens::Edge;
-use ir_session::{CommandBatch, Phase, Session};
+use ir_session::{CommandBatch, LocalIdentity, Phase, Session};
 use tokio::sync::broadcast;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
@@ -64,6 +64,8 @@ pub(crate) struct Parts {
     pub(crate) edge: Edge,
     /// Emissor de comandos para o agente.
     pub(crate) agente: broadcast::Sender<ComandoDoAgente>,
+    /// Quem esta máquina é, guardada para recriar a sessão numa troca de papel ou de borda.
+    pub(crate) identidade_local: LocalIdentity,
 }
 
 impl Daemon {
@@ -93,6 +95,8 @@ impl Daemon {
             last_phase: Phase::Offline,
             agente: parts.agente,
             agente_pronto: false,
+            identidade_local: parts.identidade_local,
+            ultimo_arranjo: None,
         }
     }
 }
