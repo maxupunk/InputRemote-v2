@@ -63,6 +63,9 @@ fn rodar_servico() -> Result<()> {
     // O estado do serviço é da máquina: sem `IR_DATA_DIR` à mão, fica em `%ProgramData%`, que o
     // SYSTEM sabe escrever e nenhum usuário comum adultera.
     garantir_data_dir();
+    // A partir daqui o lançador sabe que está na sessão 0, e que alcançar a sessão do usuário
+    // exige o caminho do token em vez de um processo filho comum.
+    crate::lancador::marcar_como_servico();
 
     let (parar_tx, parar_rx) = mpsc::channel();
     let tratador = move |controle| match controle {

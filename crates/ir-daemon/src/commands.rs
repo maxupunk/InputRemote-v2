@@ -5,6 +5,7 @@
 //! [02, §4](../../../docs/02-arquitetura.md).
 
 use ir_input::InjectEvent;
+use ir_ipc::ComandoDoAgente;
 use ir_net::NetCommand;
 use ir_proto::carrier::Carrier;
 use ir_session::{Command, Injection, Notice};
@@ -47,6 +48,14 @@ impl Daemon {
     }
 
     fn inject(&mut self, injection: Injection) {
+        // Com agente de pé (o caso do Windows), quem toca no teclado é ele: o serviço está na
+        // sessão 0 e o `SendInput` dele não chegaria ao desktop de ninguém.
+        if let Some(agente) = self.comandos_do_agente() {
+            if let Some(comando) = to_agent_command(injection) {
+                let _ = agente.send(comando);
+            }
+            return;
+        }
         let Some(injector) = self.injector.as_mut() else {
             return; // o servidor não injeta
         };
@@ -60,18 +69,32 @@ impl Daemon {
     }
 
     fn release_all(&mut self) {
+        if let Some(agente) = self.comandos_do_agente() {
+            let _ = agente.send(ComandoDoAgente::SoltarTudo);
+            return;
+        }
         if let Some(injector) = self.injector.as_mut() {
             let _ = injector.release_all();
         }
     }
 
     fn suppress(&self, on: bool) {
+        if let Some(agente) = self.comandos_do_agente() {
+            let _ = agente.send(ComandoDoAgente::SuprimirEntradaLocal(on));
+            return;
+        }
         if let Some(capturer) = self.capturer.as_ref() {
             capturer.set_suppress(on);
         }
     }
 
     fn warp(&self, position: ir_proto::input::PointerPosition) {
+        if let Some(agente) = self.comandos_do_agente() {
+            // A posição vai **normalizada**, e quem a converte em pixels é o agente: o tamanho
+            // da tela do usuário só é conhecido de dentro da sessão dele.
+            let _ = agente.send(ComandoDoAgente::PrenderPonteiro(position));
+            return;
+        }
         if let Some(capturer) = self.capturer.as_ref() {
             let (w, h) = self.screen;
             let x = i32::try_from(u32::from(position.x) * w / 65_535).unwrap_or(0);
@@ -79,6 +102,23 @@ impl Daemon {
             capturer.warp_pointer(x, y);
         }
     }
+}
+
+/// Converte um comando de injeção da sessão no comando que o agente entende.
+fn to_agent_command(injection: Injection) -> Option<ComandoDoAgente> {
+    Some(match injection {
+        Injection::Key { usage, pressed } => ComandoDoAgente::Tecla {
+            usage,
+            pressionada: pressed,
+        },
+        Injection::Button { button, pressed } => ComandoDoAgente::Botao {
+            botao: button,
+            pressionado: pressed,
+        },
+        Injection::Wheel(delta) => ComandoDoAgente::Roda(delta),
+        Injection::Pointer(position) => ComandoDoAgente::Ponteiro(position),
+        _ => return None,
+    })
 }
 
 /// Converte um comando de injeção da sessão no evento do backend de entrada.

@@ -9,7 +9,7 @@ use ir_ipc::{Aviso, ParaInterface, Pedido};
 use tokio::sync::broadcast;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use super::escuta::{Conexao, Escuta};
 use super::{PedidoRecebido, quadros};
@@ -23,6 +23,9 @@ pub(crate) async fn servir(
     loop {
         match escuta.aceitar().await {
             Ok(conexao) => {
+                // Registrado em nível alto de propósito: é como se confirma, no diagnóstico, que
+                // a janela achou o serviço em vez de ter caído para o simulado em silêncio.
+                info!("interface conectada");
                 let pedidos = pedidos.clone();
                 let avisos = avisos.subscribe();
                 tokio::spawn(atender(conexao, pedidos, avisos));
@@ -109,7 +112,7 @@ mod tests {
     use ir_ipc::{Pedido, Resposta};
     use tokio::sync::mpsc;
 
-    use super::super::escuta::Escuta;
+    use super::super::escuta::{Acesso, Escuta};
     use super::*;
 
     /// Um endereço de teste único para esta execução, para dois testes não colidirem.
@@ -168,7 +171,8 @@ mod tests {
     #[tokio::test]
     async fn um_pedido_recebe_resposta_e_um_aviso_empurrado_chega() {
         let endereco = endereco_de_teste("controle");
-        let escuta = Escuta::abrir(&endereco).expect("abre o ponto de escuta");
+        let escuta =
+            Escuta::abrir(&endereco, Acesso::UsuarioInterativo).expect("abre o ponto de escuta");
         let (pedido_tx, pedido_rx) = mpsc::unbounded_channel();
         let (avisos, _) = broadcast::channel(16);
         ator_de_mentira(pedido_rx);

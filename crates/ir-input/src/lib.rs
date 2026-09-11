@@ -175,7 +175,6 @@ pub fn open_injector() -> Result<Box<dyn Injector>> {
 ///
 /// [`InputError::Unsupported`] onde não há backend de captura; [`InputError`] em falha ao
 /// instalar os ganchos.
-#[allow(unused_variables)]
 pub fn start_capture(sink: Sender<CaptureEvent>) -> Result<Box<dyn Capturer>> {
     #[cfg(windows)]
     {
@@ -185,6 +184,10 @@ pub fn start_capture(sink: Sender<CaptureEvent>) -> Result<Box<dyn Capturer>> {
     {
         // No Linux o papel de servidor é o portal `InputCapture` + `libei`, que é Fase 2
         // ([06, §3](../../../docs/06-linux.md)). Aqui a captura ainda não existe.
+        //
+        // O canal é descartado explicitamente: quem chamou entregou a ponta de escrita, e
+        // largá-la fecha o canal na hora, em vez de deixar quem escuta esperando para sempre.
+        drop(sink);
         Err(InputError::Unsupported)
     }
 }

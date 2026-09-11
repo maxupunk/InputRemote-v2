@@ -9,6 +9,8 @@ mod commands;
 mod config;
 mod ipc;
 #[cfg(windows)]
+mod lancador;
+#[cfg(windows)]
 mod service;
 
 use std::io::BufRead;
@@ -20,9 +22,12 @@ use ir_proto::peer::{Capabilities, MachineName, PrivilegedInputLevel};
 use ir_proto::screens::ScreenLayout;
 use ir_session::{Input, LocalIdentity, Role, Session, SessionConfig, Timestamp};
 use tokio::sync::mpsc;
-use tracing::{info, warn};
+use tracing::info;
+// Só o caminho sem agente (Linux) relata backend de entrada indisponível.
+#[cfg(not(windows))]
+use tracing::warn;
 
-use crate::actor::{CaptureRx, Daemon, Parts};
+use crate::actor::{CaptureRx, Daemon, Entradas, Parts};
 
 /// Ponto de entrada.
 ///
@@ -73,14 +78,7 @@ async fn executar() -> Result<()> {
     let session = build_session(role, edge, &identity, &cfg);
     let peer_addr = cfg.peer_addr.as_deref().and_then(|a| a.parse().ok());
 
-    // O canal de controle: a interface pareia e observa o estado por ele. Sobe antes do ator
-    // para o emissor de avisos já existir quando o ator nascer.
-    let (pedido_tx, pedido_rx) = mpsc::unbounded_channel();
-    let avisos = ipc::iniciar_controle(pedido_tx).context("subindo o canal de controle")?;
-    info!(endereco = %ipc::endereco_de_controle(), "canal de controle no ar");
-
-    let machine = ir_ipc::Maquina(machine_id_from(&identity).0);
-    let nome = ir_ipc::Nome::coagido(&hostname());
+    let canais = abrir_canais()?;
 
     let mut daemon = Daemon::new(Parts {
         session,
@@ -91,20 +89,62 @@ async fn executar() -> Result<()> {
         peer_addr,
         data_dir: dir,
         config: cfg,
-        avisos,
-        machine,
-        nome,
+        avisos: canais.avisos,
+        machine: ir_ipc::Maquina(machine_id_from(&identity).0),
+        nome: ir_ipc::Nome::coagido(&hostname()),
         edge,
+        agente: canais.agente,
     });
 
     feed_screens(&mut daemon, screen);
     daemon.connect_if_possible();
+    // O agente nasce junto com o serviço; o laço periódico só cuida de ressubi-lo se ele cair.
+    daemon.garantir_agente();
     let confirm_rx = spawn_stdin_reader();
 
     daemon
-        .run(net.events, capture_rx, confirm_rx, pedido_rx)
+        .run(Entradas {
+            net_events: net.events,
+            capture: capture_rx,
+            confirm: confirm_rx,
+            pedidos: canais.pedidos,
+            fatos: canais.fatos,
+        })
         .await;
     Ok(())
+}
+
+/// Os dois canais de IPC do serviço, já no ar.
+///
+/// Dois transportes distintos, de propósito: a interface **não** pode pedir injeção de entrada
+/// ([04, §5](../../../docs/04-seguranca.md)), e vocabulários que não se misturam são o que torna
+/// essa garantia estrutural em vez de combinada.
+struct Canais {
+    avisos: tokio::sync::broadcast::Sender<ir_ipc::Aviso>,
+    agente: tokio::sync::broadcast::Sender<ir_ipc::ComandoDoAgente>,
+    pedidos: mpsc::UnboundedReceiver<ipc::PedidoRecebido>,
+    fatos: mpsc::UnboundedReceiver<ir_ipc::FatoDoAgente>,
+}
+
+/// Sobe os dois canais antes do ator, para os emissores já existirem quando ele nascer.
+///
+/// O canal do agente sobe mesmo no Linux, onde nenhum agente conecta: manter o receptor de
+/// fatos vivo é o que impede o laço do ator de girar recebendo `None` sem parar.
+fn abrir_canais() -> Result<Canais> {
+    let (pedido_tx, pedidos) = mpsc::unbounded_channel();
+    let avisos = ipc::iniciar_controle(pedido_tx).context("subindo o canal de controle")?;
+    info!(endereco = %ipc::endereco_de_controle(), "canal de controle no ar");
+
+    let (fato_tx, fatos) = mpsc::unbounded_channel();
+    let agente = ipc::iniciar_agente(fato_tx).context("subindo o canal do agente")?;
+    info!(endereco = %ipc::endereco_do_agente(), "canal do agente no ar");
+
+    Ok(Canais {
+        avisos,
+        agente,
+        pedidos,
+        fatos,
+    })
 }
 
 /// Configura o `tracing`, com nível de `RUST_LOG` ou `info` por padrão.
@@ -166,6 +206,16 @@ type Io = (
 /// pior dos mundos — nem sobe, nem diz por quê.
 fn build_io(role: Role) -> Io {
     let (cap_tx, cap_rx) = mpsc::unbounded_channel();
+    #[cfg(windows)]
+    {
+        // No Windows quem captura e injeta é o **agente**, na sessão do usuário. O serviço não
+        // toca em entrada: na sessão 0 ele não enxerga o teclado de ninguém, e um backend local
+        // aqui competiria com o do agente e duplicaria cada evento.
+        let _ = role;
+        segurar_canal(cap_tx);
+        (None, None, cap_rx)
+    }
+    #[cfg(not(windows))]
     if role == Role::Server {
         // Ponte da captura (thread std) para o canal do ator (tokio).
         let (std_tx, std_rx) = std::sync::mpsc::channel();
@@ -194,6 +244,7 @@ fn build_io(role: Role) -> Io {
 }
 
 /// Ponte da captura: repassa cada evento da thread `std` da captura para o canal do ator.
+#[cfg(not(windows))]
 fn bridge_captura(
     std_rx: std::sync::mpsc::Receiver<ir_input::CaptureEvent>,
     cap_tx: mpsc::UnboundedSender<ir_input::CaptureEvent>,

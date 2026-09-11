@@ -117,13 +117,21 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Transporte do canal de controle: named pipe no Windows / socket Unix, enquadrado por
       `ir_ipc::codec`, com o cliente da interface (`ServicoReal`) e um teste de ida e volta
       ([log 14](docs/logs/14-servico-de-ponta-a-ponta.md))
-- [~] Endurecimento do transporte: SDDL restrito no *pipe* e `0660 root:inputremote` no socket —
-      hoje o *pipe* usa o descritor padrão (basta com serviço e interface sob o mesmo usuário) e
-      o socket nasce `0660`; o SDDL para o serviço SYSTEM é da etapa de instalação
+- [x] Cada canal declara quem pode abri-lo: SDDL explícito no *pipe* do Windows e
+      `0660 root:inputremote` no socket do Linux. O de controle aceita o usuário interativo, o do
+      agente só o serviço — provado em execução com usuário comum não elevado
+      ([log 16](docs/logs/16-o-servico-trancou-a-propria-janela.md))
+- [ ] A janela reconecta ao serviço sozinha — hoje ela só conecta ao abrir: se o serviço reinicia
+      (atualização de pacote, queda), ela fica sem conexão até ser fechada e reaberta; e se abriu
+      com o serviço fora do ar, fica no simulado para sempre, mesmo depois de ele subir
 - [~] Autorização em três níveis de [04, §5](docs/04-seguranca.md) — declarada no contrato; a
       imposição depende de o transporte ler a elevação do token do cliente, ainda não feita
 - [x] `ir-daemon`: binário sobe, aceita IPC, pareia pela interface, encerra limpo
-- [ ] `ir-agent`: binário conecta, reporta pronto, encerra com o serviço
+- [x] `ir-agent`: binário conecta, reporta pronto, captura e injeta na sessão do usuário, e
+      encerra com o serviço — exercitado de verdade: o serviço lança, o agente conecta, informa a
+      tela da sessão e se reporta pronto ([log 15](docs/logs/15-agente-de-sessao.md))
+- [x] Transporte do canal do agente, separado do da interface, e o serviço lançando o agente na
+      sessão de console (`CreateProcessAsUserW` + `TokenUIAccess`)
 - [x] `ir-ui`: janela abre, acha o serviço de verdade e pareia por ele; cai para o simulado se
       ele não está no ar
 
@@ -141,13 +149,16 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Assinatura Authenticode com certificado autoassinado, para teste e uso local
 - [x] Manifesto com impressão digital, estado da assinatura e o que **falta** no pacote
 - [x] Ícone no `.exe`, na entrada de Aplicativos e no tema `hicolor` do Linux
-- [x] Linux: RPM do Fedora 44, construído dentro do sistema de destino
+- [x] Linux: RPM do Fedora 44, construído dentro do sistema de destino — leva a interface **e** o
+      serviço; conferir o conteúdo do pacote (e não só o fato de ele sair) foi o que revelou que
+      até então ele levava só a interface ([log 15](docs/logs/15-agente-de-sessao.md))
 - [x] Registro e remoção do serviço no Windows — `inputremote-daemon` responde ao SCM
       (`windows-service`), então o `StartService` do instalador conclui em vez de estourar o
       tempo; fora do SCM, o mesmo binário cai para primeiro plano
       ([log 14](docs/logs/14-servico-de-ponta-a-ponta.md))
-- [ ] Unidade `systemd` + regra `udev` + política D-Bus no Linux — entram no RPM junto com o
-      serviço, que é quem os usa
+- [~] Unidade `systemd` no Linux — o RPM agora traz o serviço **e** a unidade, que roda como
+      root (é quem tem `/dev/uinput`). Falta a regra `udev` e a política D-Bus, que só fazem
+      sentido junto com o usuário dedicado do endurecimento
 - [ ] Assinatura com certificado de verdade e GPG no RPM ([Etapa 10](#etapa-10--qualidade-e-lançamento))
 
 ---
@@ -239,6 +250,9 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Injeção absoluta de ponteiro e por scancode (`SendInput`)
 - [x] Captura exercitada de verdade na sessão desbloqueada (477 eventos, deltas corretos)
 - [~] Raw Input para deltas de alta resolução — hoje os deltas vêm do gancho; refinamento posterior
+- [x] Agente de sessão: o serviço o lança na sessão de console e ele captura e injeta lá, que é
+      o que faz o serviço instalado alcançar a área de trabalho do usuário (N1)
+      ([log 15](docs/logs/15-agente-de-sessao.md))
 - [ ] Agente com thread por desktop ([ADR-0008](docs/adr/0008-agente-com-thread-por-desktop.md)) — é o que leva de N1 a N2/N3
 - [ ] Nenhum gancho no desktop `Winlogon`, verificado por teste
 - [ ] `SendSAS` opcional na instalação
@@ -246,7 +260,9 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [ ] `[H]` 10.000 travessias sem tecla presa
 
 ## Etapa 6 — Entrada no Linux
-- [ ] Injeção por `uinput`, três dispositivos
+- [~] Injeção por `uinput`, três dispositivos — implementada e compilada no Fedora de destino,
+      mas ainda **não exercitada** numa máquina Linux com ambiente gráfico; é o primeiro ponto a
+      investigar se o ponteiro não se mexer no teste físico
 - [ ] Captura por `InputCapture` + `libei`
 - [ ] Integração com `logind`
 - [ ] Filtro de auto-recaptura por dispositivo de origem
@@ -268,12 +284,11 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 
 ## Etapa 9 — Interface
 
-> **Fora de ordem, e de propósito.** A regra 5 diz que uma etapa com item aberto bloqueia a
-> próxima, e a Etapa 1.3 ainda tem transporte pendente. A interface foi adiantada porque ela é o
-> que revela se o contrato de `ir-ipc` serve — e revelou: três campos e um pedido faltavam
-> ([log 08](docs/logs/08-ir-ipc.md)). Ela roda contra `ServicoSimulado`, e os itens que dependem
-> do serviço de
-> verdade continuam abertos ou em `[~]`.
+> **Fora de ordem, e de propósito.** A interface foi adiantada porque ela é o que revela se o
+> contrato de `ir-ipc` serve — e revelou: três campos e um pedido faltavam
+> ([log 08](docs/logs/08-ir-ipc.md)). Ela nasceu contra o `ServicoSimulado` e hoje fala com o
+> serviço de verdade pelo canal de controle ([log 14](docs/logs/14-servico-de-ponta-a-ponta.md)),
+> caindo para o simulado — e avisando — quando ele não está no ar.
 
 - [x] Linguagem visual única em `ui/tema.slint`; tema claro e escuro seguindo o do sistema
 - [x] Telas de estado, pareamento e preferências, com voltar explícito em vez de abas

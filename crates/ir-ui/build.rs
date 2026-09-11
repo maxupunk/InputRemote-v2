@@ -41,7 +41,12 @@ fn embutir_icone() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Fora do Windows nao ha recurso a embutir.
+///
+/// Devolve `Result` mesmo sem ter como falhar porque a assinatura precisa casar com a da versao
+/// do Windows: e isso que mantem o `main` identico nos dois, em vez de um `cfg` no meio dele.
 #[cfg(not(windows))]
+#[allow(clippy::unnecessary_wraps)]
 fn embutir_icone() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }

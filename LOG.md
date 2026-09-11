@@ -39,3 +39,5 @@ quê. Um registro que se reescreve não é registro.
 | 12 | 2026-09-10 | [O ícone, e a janela preta que abria atrás](docs/logs/12-icone-e-janela-sem-console.md) |
 | 13 | 2026-09-10 | [A pilha completa: do pareamento cifrado à sessão de pé](docs/logs/13-pilha-completa-mouse-cruzando.md) |
 | 14 | 2026-09-10 | [O serviço de ponta a ponta: IPC, pareamento pela janela e o serviço que sobe](docs/logs/14-servico-de-ponta-a-ponta.md) |
+| 15 | 2026-09-10 | [O agente de sessão: o serviço alcança a sessão do usuário](docs/logs/15-agente-de-sessao.md) |
+| 16 | 2026-09-11 | [O serviço trancou a própria janela do lado de fora](docs/logs/16-o-servico-trancou-a-propria-janela.md) |

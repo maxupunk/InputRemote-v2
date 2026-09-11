@@ -94,12 +94,26 @@ pub enum FatoDoAgente {
         /// `true` para pressionado.
         pressionado: bool,
     },
-    /// O ponteiro local se moveu.
+    /// O ponteiro local se moveu, em deslocamento relativo.
+    ///
+    /// Enviado enquanto o controle está no par: o cursor local fica preso, e o que interessa é
+    /// só o quanto ele tentou andar.
     PonteiroLocal {
         /// Deslocamento horizontal.
         dx: i32,
         /// Deslocamento vertical.
         dy: i32,
+    },
+    /// O ponteiro local está nesta posição absoluta de tela.
+    ///
+    /// Enviado enquanto o controle é local. É **absoluta**, e não relativa, porque o serviço
+    /// precisa saber onde o cursor realmente está para disparar a travessia na borda certa;
+    /// acumular deltas a partir de uma origem arbitrária faria a borda cair no lugar errado.
+    PonteiroAbsoluto {
+        /// Posição horizontal, em pixels de tela.
+        x: i32,
+        /// Posição vertical, em pixels de tela.
+        y: i32,
     },
     /// A roda local girou.
     RodaLocal(WheelDelta),
@@ -107,6 +121,12 @@ pub enum FatoDoAgente {
     Emergencia,
     /// O arranjo de telas mudou.
     TelasMudaram(ir_proto::screens::ScreenLayout),
+    /// O agente está saindo, ou a conexão com ele caiu.
+    ///
+    /// O serviço precisa saber para parar de contar com ele: enquanto não houver agente, não há
+    /// quem injete nem quem capture nesta máquina, e insistir em mandar comandos para o vazio
+    /// deixaria a interface dizendo que está tudo bem quando não está.
+    Encerrou,
     /// A injeção foi recusada pelo sistema.
     ///
     /// É o sintoma do endurecimento de janeiro de 2026 quando as três origens confiáveis não

@@ -8,7 +8,7 @@ use std::net::SocketAddr;
 use std::time::Instant;
 
 use ir_input::{CaptureEvent, Capturer, Injector};
-use ir_ipc::{Aviso, Maquina, Nome};
+use ir_ipc::{Aviso, ComandoDoAgente, Maquina, Nome};
 use ir_net::{ConnectMode, NetCommand, NetEvent};
 use ir_proto::carrier::Carrier;
 use ir_proto::input::PointerDelta;
@@ -19,9 +19,13 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tracing::{error, info, warn};
 
 use crate::config::{Config, PinnedPeer, encode_key};
-use crate::ipc::PedidoRecebido;
 
+mod agente;
+mod pareamento;
+mod partes;
 mod pedidos;
+
+pub(crate) use partes::{Entradas, Parts};
 
 /// A entrada de captura, já convertida para o canal do ator.
 pub(crate) type CaptureRx = UnboundedReceiver<CaptureEvent>;
@@ -39,7 +43,11 @@ pub(crate) struct Daemon {
     data_dir: std::path::PathBuf,
     config: Config,
     pending_peer: Option<ir_crypto::PublicKey>,
-    awaiting_confirm: bool,
+    /// Desde quando há um código de pareamento na tela esperando a comparação.
+    ///
+    /// Um instante, e não um `bool`: o código vale dois minutos, e sem saber quando ele apareceu
+    /// não há como fazer o prazo valer ([`pareamento`]).
+    pareamento_desde: Option<Instant>,
     /// Se a próxima posição absoluta deve **semear** o ponteiro (sem atravessar) em vez de virar
     /// movimento. Ligado ao estabelecer e ao retomar o controle, para o cursor real e o modelo da
     /// sessão começarem no mesmo ponto.
@@ -58,67 +66,16 @@ pub(crate) struct Daemon {
     edge: Edge,
     /// A última fase informada às interfaces, para só avisar quando muda de verdade.
     last_phase: Phase,
+    /// Por onde o serviço manda comandos ao agente.
+    agente: broadcast::Sender<ComandoDoAgente>,
+    /// Se há agente conectado e pronto para capturar e injetar.
+    agente_pronto: bool,
 }
 
 /// A cada quantas batidas de 5 ms se tenta reconectar. 600 × 5 ms = 3 s.
 const RECONNECT_TICKS: u32 = 600;
 
-/// O que o ator precisa para nascer.
-pub(crate) struct Parts {
-    /// A sessão já configurada.
-    pub(crate) session: Session,
-    /// Canal de comandos para o endpoint de rede.
-    pub(crate) net: UnboundedSender<NetCommand>,
-    /// Injetor (cliente) ou nada.
-    pub(crate) injector: Option<Box<dyn Injector>>,
-    /// Capturador (servidor) ou nada.
-    pub(crate) capturer: Option<Box<dyn Capturer>>,
-    /// Tamanho da tela local, em pixels.
-    pub(crate) screen: (u32, u32),
-    /// Endereço do par, se conhecido.
-    pub(crate) peer_addr: Option<SocketAddr>,
-    /// Diretório de estado.
-    pub(crate) data_dir: std::path::PathBuf,
-    /// A configuração corrente.
-    pub(crate) config: Config,
-    /// Emissor de avisos para as interfaces.
-    pub(crate) avisos: broadcast::Sender<Aviso>,
-    /// Esta máquina, já no vocabulário da interface.
-    pub(crate) machine: Maquina,
-    /// O nome desta máquina.
-    pub(crate) nome: Nome,
-    /// A borda que dá para o par.
-    pub(crate) edge: Edge,
-}
-
 impl Daemon {
-    /// Monta o ator.
-    #[must_use]
-    pub(crate) fn new(parts: Parts) -> Self {
-        Self {
-            session: parts.session,
-            out: CommandBatch::with_capacity(32),
-            start: Instant::now(),
-            net: parts.net,
-            injector: parts.injector,
-            capturer: parts.capturer,
-            screen: parts.screen,
-            peer_addr: parts.peer_addr,
-            data_dir: parts.data_dir,
-            config: parts.config,
-            pending_peer: None,
-            awaiting_confirm: false,
-            seed_pointer: true,
-            linked: false,
-            ticks: 0,
-            avisos: parts.avisos,
-            machine: parts.machine,
-            nome: parts.nome,
-            edge: parts.edge,
-            last_phase: Phase::Offline,
-        }
-    }
-
     /// O instante corrente, do relógio monotônico. Nunca lido dentro da sessão.
     fn now(&self) -> Timestamp {
         let micros = u64::try_from(self.start.elapsed().as_micros()).unwrap_or(u64::MAX);
@@ -138,7 +95,10 @@ impl Daemon {
         // A cada ~3 s, tenta se recuperar do que estiver caído, para a ordem de subida das duas
         // máquinas não importar e uma falha transitória não exigir reiniciar à mão.
         if self.ticks.is_multiple_of(RECONNECT_TICKS) {
+            // Antes de reconectar: um código vencido é o que libera a reconexão de novo.
+            self.vencer_pareamento_se_preciso();
             self.reconnect_if_needed();
+            self.garantir_agente();
         }
         self.drive(Input::Tick);
         self.notar_estado();
@@ -155,7 +115,7 @@ impl Daemon {
 
     /// Retoma a conexão conforme o que está caído.
     fn reconnect_if_needed(&mut self) {
-        if self.awaiting_confirm {
+        if self.aguardando_confirmacao() {
             return; // no meio de um pareamento; não atrapalhar
         }
         if self.linked {
@@ -164,20 +124,22 @@ impl Daemon {
             if self.session.phase() == Phase::Offline {
                 self.drive(Input::CarrierUp(Carrier::Udp));
             }
-        } else {
-            // Sem enlace: se somos o iniciador (temos endereço), tenta conectar de novo.
+        } else if self.peer_addr.is_some() {
+            // Sem enlace e com endereço: somos o iniciador, e tentamos de novo. Sem endereço não
+            // há o que tentar — e dizer isso a cada 3 s só enchia o diário do sistema.
             self.connect_if_possible();
         }
     }
 
     /// Roda o ator até os canais fecharem.
-    pub(crate) async fn run(
-        mut self,
-        mut net_events: UnboundedReceiver<NetEvent>,
-        mut capture: CaptureRx,
-        mut confirm: UnboundedReceiver<String>,
-        mut pedidos: UnboundedReceiver<PedidoRecebido>,
-    ) {
+    pub(crate) async fn run(mut self, entradas: Entradas) {
+        let Entradas {
+            mut net_events,
+            mut capture,
+            mut confirm,
+            mut pedidos,
+            mut fatos,
+        } = entradas;
         // Bate a sessão a cada 5 ms: é o que faz os prazos (heartbeat, snapshot, retransmissão,
         // queda por tempo) vencerem, sem gerenciar temporizadores um a um.
         let mut ticker = tokio::time::interval(std::time::Duration::from_millis(5));
@@ -203,6 +165,11 @@ impl Daemon {
                         self.on_pedido(pedido);
                     }
                 }
+                fato = fatos.recv() => {
+                    if let Some(fato) = fato {
+                        self.on_fato(fato);
+                    }
+                }
             }
         }
     }
@@ -218,6 +185,8 @@ impl Daemon {
             NetEvent::LinkDown(reason) => {
                 info!(reason, "enlace de rede caiu");
                 self.linked = false;
+                // Um código na tela sem enlace por baixo não tem mais o que confirmar.
+                self.abandonar_pareamento_pendente();
                 self.drive(Input::CarrierDown {
                     carrier: Carrier::Udp,
                     reason: LinkDown::TransportFailed,
@@ -231,7 +200,7 @@ impl Daemon {
 
     fn on_pairing_code(&mut self, code: [u8; 6], peer_static: ir_crypto::PublicKey) {
         self.pending_peer = Some(peer_static);
-        self.awaiting_confirm = true;
+        self.pareamento_desde = Some(Instant::now());
         let digits: String = code.iter().map(|d| char::from(b'0' + d)).collect();
         info!("código de pareamento: {digits}");
         println!("\n=== CÓDIGO DE PAREAMENTO: {digits} ===");
@@ -245,7 +214,7 @@ impl Daemon {
 
     fn on_confirm(&mut self, line: &str) {
         let trimmed = line.trim();
-        if !self.awaiting_confirm || trimmed.is_empty() {
+        if !self.aguardando_confirmacao() || trimmed.is_empty() {
             // Uma linha vazia (Enter solto) não é resposta: ignorar, não recusar.
             return;
         }
@@ -255,19 +224,16 @@ impl Daemon {
 
     /// A resposta à comparação do código, venha do terminal ou da interface.
     fn confirmar(&mut self, yes: bool) {
-        if !self.awaiting_confirm {
+        if !self.aguardando_confirmacao() {
             return;
         }
-        self.awaiting_confirm = false;
+        self.pareamento_desde = None;
         info!("confirmação recebida: {}", if yes { "sim" } else { "não" });
         let _ = self.net.send(NetCommand::ConfirmPairing(yes));
         if !yes {
             // Códigos diferentes ou recusa: não há par, e a interface precisa saber que o
             // pareamento terminou sem sucesso para sair da tela de comparação.
-            self.pending_peer = None;
-            let _ = self
-                .avisos
-                .send(Aviso::PareamentoConcluido { sucesso: false });
+            self.encerrar_pareamento_sem_sucesso();
         }
     }
 

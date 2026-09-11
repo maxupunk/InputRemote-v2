@@ -2625,7 +2625,13 @@ dependencies = [
 name = "ir-agent"
 version = "0.1.0-dev"
 dependencies = [
+ "anyhow",
+ "ir-input",
+ "ir-ipc",
  "ir-proto",
+ "serde",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2653,11 +2659,13 @@ dependencies = [
  "ir-net",
  "ir-proto",
  "ir-session",
+ "libc",
  "serde",
  "tokio",
  "toml 0.9.12+spec-1.1.0",
  "tracing",
  "tracing-subscriber",
+ "windows 0.62.2",
  "windows-service",
 ]
 

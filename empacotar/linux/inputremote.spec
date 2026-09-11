@@ -11,7 +11,11 @@
 
 Name:           inputremote
 Version:        0.1.0
-Release:        0.1.dev%{?dist}
+# O carimbo vem de `construir-rpm.sh`, e existe por um motivo concreto: enquanto a versao de
+# desenvolvimento nao muda, dois pacotes diferentes teriam a mesma NEVR -- e `dnf install` sobre
+# uma NEVR ja instalada nao faz nada, sai com sucesso e deixa o pacote velho no lugar. O sintoma e
+# "instalei e continua igual", que e o pior tipo de falha: silenciosa e com cara de sucesso.
+Release:        0.1.dev%{?carimbo}%{?dist}
 Summary:        Compartilha teclado e mouse entre dois computadores
 
 License:        MIT
@@ -41,26 +45,51 @@ BuildRequires:  desktop-file-utils
 # icone generico, que e o mesmo que nao ter icone.
 Requires:       hicolor-icon-theme
 
+# O grupo `inputremote` e criado na instalacao: e ele que alcanca o canal de controle do servico,
+# e sem ele a janela do usuario nao conversa com o servico (docs/02-arquitetura.md, secao 7).
+Requires(pre):  shadow-utils
+
 %description
 O ponteiro atravessa a borda da tela e passa a controlar o outro computador. Um teclado e um
 mouse servem os dois.
 
-Este pacote traz apenas a interface de configuracao. O servico privilegiado e o agente de
-sessao, que sao o que de fato injeta teclado e mouse, ainda nao foram implementados: sem eles a
-interface abre em modo de demonstracao, contra um servico simulado, e avisa isso na propria
-janela. Nada e digitado em computador nenhum.
+Este pacote traz a interface de configuracao e o servico privilegiado, que e quem injeta teclado
+e mouse por /dev/uinput -- o caminho que funciona tambem no greeter, na tela de bloqueio e no
+console.
+
+No Linux nao ha agente de sessao: a injecao por uinput entra abaixo do compositor, e o proprio
+servico a faz. O agente existe so no Windows, onde um servico na sessao 0 nao alcanca a area de
+trabalho do usuario.
+
+O servico nao sobe sozinho depois de instalado. Habilite com:
+
+    sudo systemctl enable --now inputremote
+
+%pre
+# Um grupo de sistema, sem usuario nenhum dentro. Quem for operar a maquina entra nele de
+# proposito -- e isso e uma decisao registrada do administrador, nao permissao frouxa.
+getent group inputremote >/dev/null || groupadd -r inputremote
+exit 0
 
 %prep
 %autosetup -n %{name}-%{version}
 
 %build
 export CARGO_NET_OFFLINE=false
-cargo build --release --locked --bin inputremote-ui
+# A interface e o servico. O agente nao entra: no Linux quem injeta e o proprio servico, por
+# uinput (docs/06-linux.md, secao 2).
+cargo build --release --locked --bin inputremote-ui --bin inputremote-daemon
 
 %install
 install -Dpm 0755 target/release/inputremote-ui %{buildroot}%{_bindir}/inputremote-ui
+install -Dpm 0755 target/release/inputremote-daemon %{buildroot}%{_bindir}/inputremote-daemon
 install -Dpm 0644 empacotar/linux/inputremote.desktop \
         %{buildroot}%{_datadir}/applications/%{name}.desktop
+
+# Caminho escrito por extenso, e nao por `%{_unitdir}`: a macro vem de `systemd-rpm-macros`, e
+# depender dela so para saber uma pasta fixa acrescentaria um BuildRequires por nada.
+install -Dpm 0644 empacotar/linux/inputremote.service \
+        %{buildroot}%{_prefix}/lib/systemd/system/%{name}.service
 
 # Um arquivo por tamanho, no lugar que o tema de icones procura. Um PNG grande sozinho obrigaria
 # cada lancador a reduzir por conta propria, e cada um reduz de um jeito.
@@ -76,9 +105,14 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %license LICENSE
 %doc README.md PROGRESSO.md
 %{_bindir}/inputremote-ui
+%{_bindir}/inputremote-daemon
+%{_prefix}/lib/systemd/system/%{name}.service
 %{_datadir}/applications/%{name}.desktop
 %{_datadir}/icons/hicolor/*/apps/%{name}.png
 
 %changelog
+* Thu Sep 11 2026 InputRemote <inputremote@example.invalid> - 0.1.0-0.1.dev
+- O servico entra no pacote, com unidade systemd. A interface deixa de ser so demonstracao.
+
 * Thu Sep 10 2026 InputRemote <inputremote@example.invalid> - 0.1.0-0.1.dev
 - Primeiro pacote: apenas a interface, em modo de demonstracao.

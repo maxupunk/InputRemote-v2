@@ -34,7 +34,12 @@ tar -C /tmp/fonte -czf "$HOME/rpmbuild/SOURCES/${pasta}.tar.gz" "${pasta}"
 cp "/fonte/empacotar/linux/inputremote.spec" "$HOME/rpmbuild/SPECS/"
 
 echo "==> rpmbuild -bb"
-rpmbuild -bb "$HOME/rpmbuild/SPECS/inputremote.spec"
+# Cada construcao sai com um release proprio, para uma instalacao por cima ser de fato uma
+# atualizacao. Sem isto, duas construcoes diferentes tem a mesma NEVR e o `dnf install` da segunda
+# nao substitui nada -- e quem instalou fica com o binario antigo achando que atualizou.
+carimbo=".$(date -u +%Y%m%d%H%M%S)"
+echo "    carimbo desta construcao: ${carimbo}"
+rpmbuild -bb --define "carimbo ${carimbo}" "$HOME/rpmbuild/SPECS/inputremote.spec"
 
 echo "==> copiando o resultado para /saida"
 mkdir -p /saida

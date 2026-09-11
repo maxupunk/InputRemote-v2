@@ -133,15 +133,83 @@ O MSI instala o daemon como serviço do Windows (sobe com a máquina, como SYSTE
 agora **conclui** — o serviço registra no Gerenciador de Serviços e responde ao "iniciar" do
 instalador. Depois de instalado, a janela pareia pelo serviço, igual ao primeiro plano.
 
-> **Ressalva do serviço instalado:** rodando como SYSTEM na sessão 0, o serviço ainda **não passa
-> teclado e mouse** para a sessão do usuário — isso depende do **agente**, que é a próxima etapa.
-> Até lá, o caminho que passa entrada de verdade é o **primeiro plano** descrito acima. O serviço
-> instalado sobe e pareia; a passagem de entrada aguarda o agente.
+Quem passa teclado e mouse é o **agente**, que o serviço lança sozinho dentro da sessão do
+usuário — um serviço na sessão 0 não alcança a área de trabalho de ninguém. Você não precisa
+iniciá-lo: o serviço o sobe e, se ele cair, o ressobe em poucos segundos.
+
+> **O que ainda não foi exercitado:** o lançamento entre sessões e a passagem de entrada com o
+> serviço instalado ainda não foram rodados numa máquina de verdade — são justamente os dois
+> itens do primeiro teste físico. Se algo não passar, o caminho em **primeiro plano** descrito
+> acima é o de referência, e o diagnóstico em Preferências diz se o agente está de pé.
+
+## Instalar no Linux (RPM)
+
+O pacote traz a **interface e o serviço**. O serviço não sobe sozinho depois de instalado:
+
+```bash
+sudo dnf install ./dist/inputremote-0.1.0-*.rpm
+sudo usermod -aG inputremote "$USER"   # sem isto a janela não fala com o serviço
+sudo systemctl enable --now inputremote
+sudo systemctl status inputremote      # confira que está "active (running)"
+journalctl -u inputremote -f           # é aqui que aparecem as linhas da tabela abaixo
+```
+
+**Reinicie o computador** depois do `usermod`. Sair e entrar na sessão **não basta** no GNOME: o
+gerenciador da sessão (`systemd --user`) sobrevive ao logout enquanto houver qualquer outra sessão
+sua aberta — um terminal por SSH, por exemplo —, e os programas da nova sessão gráfica nascem dele,
+com os grupos de antes. A janela continua sem acesso, e a faixa amarela continua lá.
+
+Se não quiser reiniciar agora, abra a janela já com o grupo, por um terminal:
+
+```bash
+sg inputremote -c inputremote-ui
+```
+
+Cuidado ao conferir com `id` num terminal: um terminal novo pode mostrar o grupo mesmo quando a
+sessão gráfica ainda não o tem. O que vale é o grupo do processo da janela.
+
+A configuração do serviço fica em `/var/lib/inputremote/config.toml` — edite `role`,
+`peer_edge`, `port` e `screen_width`/`screen_height` como na seção 2, e reinicie com
+`sudo systemctl restart inputremote`.
+
+> No Linux **não há agente**: a injeção por `uinput` entra abaixo do compositor, e quem a faz é o
+> próprio serviço. O agente existe só no Windows, onde um serviço na sessão 0 não alcança a área
+> de trabalho do usuário.
+>
+> **Por que o grupo.** O serviço roda como root (é quem tem `/dev/uinput`), então o socket de
+> controle nasceria `root:root` e a janela — que roda sem privilégio — levaria "permissão
+> negada" e cairia para o simulado. Em vez de abrir o socket para todo mundo, ele fica
+> `0660 root:inputremote`: quem opera a máquina entra nesse grupo de propósito, e o acesso vira
+> uma decisão registrada do administrador.
+>
+> Se preferir não mexer em grupos, dá para **parear pelo terminal**: o `journalctl` mostra o
+> código de seis dígitos, e o serviço aceita `s` pela entrada padrão quando rodado à mão com
+> `sudo`.
+
+## Como saber que está funcionando
+
+Suba o serviço com `RUST_LOG=info` e procure estas linhas, nesta ordem. Cada uma diz que uma
+peça entrou no lugar, e a **primeira que faltar** é onde está o problema:
+
+| Linha no registro | O que ela confirma |
+|---|---|
+| `canal de controle no ar` | a janela tem por onde falar com o serviço |
+| `canal do agente no ar` | o agente tem por onde conectar |
+| `agente lançado pid=…` | o serviço conseguiu criar o processo do agente |
+| `agente conectado` | o agente achou o serviço |
+| `agente pronto desktops=[…]` | o agente está capturando e pronto para injetar |
+| `tela da sessão do usuário largura=… altura=…` | a resolução veio de dentro da sessão (confira se é a sua) |
+| `interface conectada` | a janela achou o serviço — **se não aparecer, ela está no simulado** |
+| `código de pareamento: NNNNNN` | compare com a outra tela antes de confirmar |
+| `par gravado` | o par foi fixado; das próximas vezes não pede código |
+| `sessão estabelecida … carrier=udp` | as duas máquinas estão de pé e falando |
+
+Depois disso, encoste o ponteiro na borda configurada. Se o agente cair, o serviço registra
+`o agente saiu` e o ressobe em poucos segundos.
 
 ## O que ainda não está aqui
 
-- **Agente na sessão do usuário:** o que falta para o serviço instalado passar teclado e mouse.
-- **Tela de bloqueio (N2/N3):** precisa do agente no desktop seguro e da assinatura de código.
+- **Tela de bloqueio (N2/N3):** precisa da thread por desktop no agente e da assinatura de código.
 - **Bluetooth:** o portador principal do projeto; hoje só a rede UDP está implementada.
 - **Descoberta automática (mDNS) na janela:** por ora, **Procurar** mostra o par configurado em
   `peer_addr`; a descoberta na rede é um refinamento posterior.

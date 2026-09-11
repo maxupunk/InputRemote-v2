@@ -9,9 +9,14 @@ sem nunca disputar espaço com o ponteiro.
 
 Windows e Linux/Wayland. Escrito em Rust.
 
-> **Estado: especificação.** Nenhuma linha de código de produção foi escrita ainda.
-> A Etapa 0 (provas de conceito em hardware real) precisa passar antes da Etapa 1.
-> Ver [docs/08-plano-de-implementacao.md](docs/08-plano-de-implementacao.md).
+> **Estado: nível N1 implementado.** O teclado e o mouse atravessam de um computador para o
+> outro na sessão desbloqueada, com pareamento cifrado e comparação de um código de seis dígitos
+> nas duas telas. Os três processos existem — serviço, agente de sessão e interface —, a janela
+> pareia pelo próprio serviço, e os instaladores dos dois sistemas saem num comando.
+>
+> **O primeiro teste entre duas máquinas de verdade ainda não foi feito.** O que já foi
+> exercitado, e o que falta, está em [USAR.md](USAR.md) e em
+> [PROGRESSO.md](PROGRESSO.md); a tela de bloqueio (N2/N3) continua pendente.
 
 > ⚠ **Risco aberto e conhecido.** Em janeiro de 2026 o Windows passou a recusar entrada
 > injetada nas telas de credencial, salvo de teclado físico, de aplicação com UIAccess ou

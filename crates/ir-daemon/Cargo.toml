@@ -32,5 +32,24 @@ toml.workspace = true
 [target.'cfg(windows)'.dependencies]
 windows-service = "0.7"
 
+# Só o que o lançamento do agente na sessão do usuário exige: token, sessão de console e
+# criação de processo. Nada de entrada — quem captura e injeta é o agente.
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    # O descritor de segurança dos canais de IPC, escrito em SDDL: é o que decide quem pode
+    # falar com o serviço, e sem ele o padrão do SYSTEM tranca a própria interface do lado de fora.
+    "Win32_Security_Authorization",
+    "Win32_System_RemoteDesktop",
+    "Win32_System_Threading",
+]
+
+# Só para entregar o socket de controle ao grupo que a interface do usuário alcança. O serviço
+# roda como root, e sem isso o socket nasce root:root — trancando a própria janela do lado de fora.
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+
 [lints]
 workspace = true

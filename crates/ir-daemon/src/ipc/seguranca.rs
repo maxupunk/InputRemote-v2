@@ -1,0 +1,111 @@
+//! Quem pode falar com o serviço, escrito como descritor de segurança.
+//!
+//! Este módulo existe por causa de um defeito concreto: um *named pipe* criado por um processo
+//! `LocalSystem` com o descritor **padrão** não dá acesso ao usuário interativo. O serviço subia,
+//! o canal existia, e a janela levava "acesso negado" ao abrir — caindo para o modo de
+//! demonstração sem que nada no sistema parecesse errado.
+//!
+//! A correção não é afrouxar tudo: são **dois** canais, com dois descritores diferentes
+//! ([04, §5](../../../docs/04-seguranca.md)).
+//!
+//! - O de **controle** aceita o usuário interativo: é a janela dele, e ela precisa perguntar o
+//!   estado e conduzir o pareamento.
+//! - O do **agente** não aceita ninguém além do serviço e dos administradores. Ele carrega
+//!   injeção de entrada; se um processo qualquer do usuário pudesse abri-lo, qualquer programa
+//!   que ele rodasse poderia digitar no prompt de UAC.
+
+#![allow(unsafe_code)]
+
+use anyhow::{Context, Result};
+use windows::Win32::Foundation::{HLOCAL, LocalFree};
+use windows::Win32::Security::Authorization::{
+    ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+};
+use windows::Win32::Security::{PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES};
+use windows::core::{HSTRING, PCWSTR};
+
+/// Um descritor de segurança vivo, pronto para ser passado à criação do *pipe*.
+///
+/// Guarda a memória que o Windows alocou e a devolve ao ser descartado. Precisa continuar vivo
+/// enquanto o ponto de escuta existir: cada instância nova do *pipe* é criada com ele de novo.
+pub(crate) struct Descritor {
+    descritor: PSECURITY_DESCRIPTOR,
+    atributos: SECURITY_ATTRIBUTES,
+}
+
+// SAFETY: o descritor é um bloco de memória próprio, criado aqui e só lido pelo Windows na
+// criação do pipe. Não há referência a estado de thread nem aliasing compartilhado.
+unsafe impl Send for Descritor {}
+
+impl core::fmt::Debug for Descritor {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("Descritor")
+    }
+}
+
+impl Descritor {
+    /// Monta um descritor a partir de uma cadeia SDDL.
+    ///
+    /// # Errors
+    ///
+    /// Erro do Windows se o SDDL for inválido — o que é defeito de programação, não de ambiente.
+    pub(crate) fn de_sddl(sddl: &str) -> Result<Self> {
+        let texto = HSTRING::from(sddl);
+        let mut descritor = PSECURITY_DESCRIPTOR::default();
+        // SAFETY: `texto` vive até o fim da chamada e é terminado em nulo; `descritor` é um
+        // destino válido. A memória devolvida é liberada em `Drop`.
+        unsafe {
+            ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                PCWSTR(texto.as_ptr()),
+                SDDL_REVISION_1,
+                std::ptr::from_mut(&mut descritor),
+                None,
+            )
+        }
+        .with_context(|| format!("interpretando o SDDL `{sddl}`"))?;
+
+        let atributos = SECURITY_ATTRIBUTES {
+            nLength: u32::try_from(size_of::<SECURITY_ATTRIBUTES>()).unwrap_or(0),
+            lpSecurityDescriptor: descritor.0,
+            bInheritHandle: false.into(),
+        };
+        Ok(Self {
+            descritor,
+            atributos,
+        })
+    }
+
+    /// Cria uma instância do *pipe* protegida por este descritor.
+    ///
+    /// A criação mora aqui, e não em [`super::escuta`], para o `unsafe` ficar confinado ao módulo
+    /// que já o declara ([09, §4](../../../docs/09-padroes-de-codigo.md)). Quem chama recebe uma
+    /// função comum.
+    ///
+    /// # Errors
+    ///
+    /// Erro do sistema se o nome já estiver em uso ou o processo não puder criar o *pipe*.
+    pub(crate) fn criar_pipe(
+        &mut self,
+        nome: &str,
+        primeira: bool,
+    ) -> std::io::Result<tokio::net::windows::named_pipe::NamedPipeServer> {
+        use tokio::net::windows::named_pipe::ServerOptions;
+
+        let mut opcoes = ServerOptions::new();
+        opcoes.first_pipe_instance(primeira);
+        let atributos = std::ptr::from_mut(&mut self.atributos).cast();
+        // SAFETY: `atributos` aponta para a `SECURITY_ATTRIBUTES` deste descritor, que vive
+        // enquanto `self` viver, e o Windows só a lê durante esta chamada.
+        unsafe { opcoes.create_with_security_attributes_raw(nome, atributos) }
+    }
+}
+
+impl Drop for Descritor {
+    fn drop(&mut self) {
+        // SAFETY: a memória veio de `ConvertStringSecurityDescriptorToSecurityDescriptorW`, que
+        // a documentação manda liberar com `LocalFree`, e não é mais usada.
+        unsafe {
+            let _ = LocalFree(Some(HLOCAL(self.descritor.0)));
+        }
+    }
+}

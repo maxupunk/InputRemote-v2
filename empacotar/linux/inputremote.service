@@ -1,0 +1,36 @@
+[Unit]
+Description=InputRemote - compartilha teclado e mouse com outro computador
+Documentation=https://github.com/inputremote/inputremote
+# A rede e o portador de hoje. Sem ela o servico ate sobe, mas nao acha o par.
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/inputremote-daemon
+# Um servico de entrada que morre deixa o outro computador sem controle. Ressobe sozinho, com
+# folga suficiente para nao entrar em laco de reinicio se a falha for de configuracao.
+Restart=on-failure
+RestartSec=3
+
+# O estado pertence a maquina, nao ao usuario (docs/02-arquitetura.md, secao 7). O systemd cria
+# as duas pastas com o dono certo, e o servico nao precisa se preocupar com isso.
+StateDirectory=inputremote
+RuntimeDirectory=inputremote
+RuntimeDirectoryMode=0755
+Environment=IR_DATA_DIR=/var/lib/inputremote
+Environment=RUST_LOG=info
+
+# A injecao acontece por /dev/uinput, que e o caminho que funciona no greeter, na tela de
+# bloqueio e no console (docs/06-linux.md, secao 2). E por isso que este servico e privilegiado:
+# quem injeta entrada precisa deste dispositivo.
+DeviceAllow=/dev/uinput rw
+
+# Endurecimento do que nao e necessario. Nao ha como ser mais restritivo sem perder o uinput.
+NoNewPrivileges=yes
+ProtectHome=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictRealtime=yes
+
+[Install]
+WantedBy=multi-user.target

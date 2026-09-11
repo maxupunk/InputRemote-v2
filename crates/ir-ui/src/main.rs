@@ -31,7 +31,45 @@ fn main() -> Result<(), slint::PlatformError> {
     // finge estar ligada é pior que uma que diz claramente que não está.
     let servico: Rc<dyn Servico> = match ServicoReal::conectar() {
         Ok(real) => Rc::new(real),
-        Err(_) => Rc::new(ServicoSimulado::new()),
+        Err(erro) => {
+            // O motivo **não** pode ser engolido. A faixa de demonstração diz que o serviço não
+            // respondeu; só esta linha diz por quê, e a diferença entre "não existe" e "permissão
+            // negada" é a diferença entre dois problemas sem nada em comum.
+            explicar(&erro);
+            Rc::new(ServicoSimulado::new())
+        }
     };
     ir_ui::janela::abrir(servico)
+}
+
+/// Escreve, no erro padrão, por que a interface não achou o serviço — e o que fazer.
+fn explicar(erro: &std::io::Error) {
+    let onde = ir_ui::real::endereco_do_servico();
+    eprintln!("InputRemote: não consegui falar com o serviço em {onde}");
+    eprintln!("  motivo: {erro}");
+    match erro.kind() {
+        std::io::ErrorKind::NotFound => {
+            eprintln!("  o canal não existe: o serviço não está rodando.");
+            if cfg!(windows) {
+                eprintln!("  confira o serviço \"InputRemote\" em Serviços do Windows.");
+            } else {
+                eprintln!("  suba com: sudo systemctl enable --now inputremote");
+            }
+        }
+        std::io::ErrorKind::PermissionDenied => {
+            eprintln!("  o canal existe, mas este usuário não tem acesso a ele.");
+            if cfg!(windows) {
+                eprintln!("  reinstale a versão atual: o serviço antigo não liberava a interface.");
+            } else {
+                eprintln!("  entre no grupo e reinicie o computador:");
+                eprintln!("    sudo usermod -aG inputremote \"$USER\"");
+                eprintln!("  sair e entrar na sessão não basta no GNOME: o gerenciador da sessão");
+                eprintln!(
+                    "  sobrevive ao logout com os grupos antigos. Sem reiniciar, abra assim:"
+                );
+                eprintln!("    sg inputremote -c inputremote-ui");
+            }
+        }
+        _ => eprintln!("  execute a interface por um terminal para ver esta mensagem inteira."),
+    }
 }

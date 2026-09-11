@@ -8,9 +8,15 @@ e passa a controlar o outro.
 O QUE HA NESTA INSTALACAO
 -------------------------
 
-Leia MANIFESTO.txt, nesta mesma pasta. Ele lista o que entrou, a impressao digital de cada
-arquivo, o estado da assinatura e -- o que mais importa neste momento do projeto -- o que NAO
-entrou.
+Tres programas, e voce so precisa abrir um:
+
+  inputremote-daemon.exe   o servico. Sobe com a maquina, e e o dono do estado.
+  inputremote-agent.exe    o agente de sessao. O servico o lanca sozinho dentro da sua sessao,
+                           e e ele quem digita e move o ponteiro. Nao inicie a mao.
+  inputremote-ui.exe       a janela de configuracao, no menu iniciar.
+
+MANIFESTO.txt, nesta mesma pasta, lista a impressao digital de cada arquivo e o estado da
+assinatura.
 
 
 COMO ABRIR
@@ -18,10 +24,23 @@ COMO ABRIR
 
 Menu iniciar > InputRemote.
 
-Enquanto o servico do InputRemote nao existir, ou nao estiver respondendo, uma faixa amarela no
-alto da janela avisa que aquilo e uma demonstracao: os dados sao simulados e nada e digitado em
-computador nenhum. Da para percorrer o fluxo inteiro -- procurar, comparar o codigo de seis
-digitos, conectar, escolher a borda, mexer nas preferencias, ver o diagnostico.
+Se uma faixa amarela aparecer no alto da janela, ela NAO achou o servico: os dados sao simulados
+e nada e digitado em computador nenhum. Nesse caso confira o servico "InputRemote" em
+Servicos do Windows -- ele deveria estar em execucao.
+
+Com o servico respondendo, a janela pareia de verdade: procurar, comparar o codigo de seis
+digitos nas duas telas, confirmar nas duas, escolher a borda e ver o diagnostico.
+
+
+PRIMEIRO USO
+------------
+
+Pareie os dois computadores antes de mais nada. O codigo de seis digitos aparece nas duas telas
+e precisa ser conferido em voz alta: codigos diferentes significam que alguem pode estar no meio
+da conexao, e nesse caso nao se pareia por aquela rede.
+
+Depois de pareado, encoste o ponteiro na borda configurada e ele atravessa. Para voltar, encoste
+na borda oposta do outro computador.
 
 
 COMO REMOVER

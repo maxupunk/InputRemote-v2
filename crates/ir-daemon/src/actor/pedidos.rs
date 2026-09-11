@@ -151,7 +151,9 @@ impl Daemon {
                 .map(|_| ir_ipc::MotivoDoPortador::RedeComoAlternativa),
             latencia: None,
             nivel_privilegiado: Nivel::SoDesbloqueado,
-            agente_pronto: self.injector.is_some() || self.capturer.is_some(),
+            // Pronto para digitar: ou o agente está de pé (Windows), ou o serviço injeta direto
+            // por `uinput` (Linux). Sem um dos dois, nada é digitado nesta máquina.
+            agente_pronto: self.agente_pronto || self.injector.is_some() || self.capturer.is_some(),
             bloqueio_permitido: false,
             ultima_queda: None,
         }
