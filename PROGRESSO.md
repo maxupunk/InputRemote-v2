@@ -139,6 +139,10 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       sessão de console (`CreateProcessAsUserW` + `TokenUIAccess`)
 - [x] `ir-ui`: janela abre, acha o serviço de verdade e pareia por ele; sem o serviço, diz o
       motivo e o que fazer, e entra sozinha quando ele sobe. O simulado só com `--simulado`
+- [ ] Trocar o papel (ou a borda) pela janela vale **na hora** — ou a janela diz que só vale ao
+      reiniciar o serviço. Hoje o pedido grava a configuração e não diz nada: a janela volta a
+      mostrar o papel que está rodando, o clique parece não ter pegado, e a máquina muda de papel
+      em silêncio na próxima subida. Foi assim que o notebook de teste virou servidor
 
 ### 1.4. Observabilidade e configuração
 - [ ] `tracing` com escritor sem bloqueio

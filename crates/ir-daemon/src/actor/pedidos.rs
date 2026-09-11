@@ -16,6 +16,7 @@ use ir_net::{ConnectMode, NetCommand};
 use ir_proto::carrier::Carrier;
 use ir_proto::screens::Edge;
 use ir_session::{Phase, Role};
+use tracing::{error, info};
 
 use super::Daemon;
 use crate::config::decode_key;
@@ -93,20 +94,20 @@ impl Daemon {
     /// Esquece o par gravado.
     fn esquecer_par(&mut self) -> Resposta {
         self.config.peers.clear();
-        if self.config.save(&self.data_dir).is_err() {
-            return Resposta::Falha(Falha::Interna);
-        }
-        Resposta::Feito
+        info!("par esquecido pela interface");
+        self.gravar_configuracao()
     }
 
     /// Troca a borda de travessia (vale na próxima sessão).
     fn definir_borda(&mut self, borda: Borda) -> Resposta {
         self.edge = borda.no_protocolo();
-        edge_para_texto(self.edge).clone_into(&mut self.config.peer_edge);
-        if self.config.save(&self.data_dir).is_err() {
-            return Resposta::Falha(Falha::Interna);
-        }
-        Resposta::Feito
+        let texto = edge_para_texto(self.edge);
+        texto.clone_into(&mut self.config.peer_edge);
+        info!(
+            borda = texto,
+            "borda de travessia trocada pela interface; vale na próxima sessão"
+        );
+        self.gravar_configuracao()
     }
 
     /// Troca o papel desta máquina (vale ao reiniciar o serviço).
@@ -116,10 +117,27 @@ impl Daemon {
             Papel::Cliente => "client",
         };
         texto.clone_into(&mut self.config.role);
-        if self.config.save(&self.data_dir).is_err() {
-            return Resposta::Falha(Falha::Interna);
+        // Registrado em nível alto: o papel só muda de fato quando o serviço reinicia, e sem esta
+        // linha uma máquina que sobe com outro papel não deixa rastro de quem o trocou, nem quando.
+        info!(
+            papel = texto,
+            "papel desta máquina trocado pela interface; vale quando o serviço reiniciar"
+        );
+        self.gravar_configuracao()
+    }
+
+    /// Grava a configuração e responde à interface.
+    ///
+    /// Um ponto só para as três ações que gravam, e que registra **por que** a gravação falhou:
+    /// antes cada uma respondia "falha interna" e descartava o erro, e o registro não dizia nada.
+    fn gravar_configuracao(&self) -> Resposta {
+        match self.config.save(&self.data_dir) {
+            Ok(()) => Resposta::Feito,
+            Err(erro) => {
+                error!(%erro, "não foi possível gravar a configuração");
+                Resposta::Falha(Falha::Interna)
+            }
         }
-        Resposta::Feito
     }
 
     /// O relatório de diagnóstico, já pronto para copiar.
