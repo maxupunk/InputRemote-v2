@@ -5,14 +5,19 @@
 //! A tradução entre o estado interno e o [`ir_ipc::Estado`] publicado acontece no ator, não
 //! aqui — este módulo só move bytes.
 
-use ir_ipc::{Aviso, ParaInterface, Pedido};
+use std::time::Duration;
+
+use ir_ipc::{Aviso, Falha, ParaInterface, Pedido, Resposta};
 use tokio::sync::broadcast;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 use tracing::{debug, info, warn};
 
-use super::escuta::{Conexao, Escuta};
+use super::escuta::{Chamada, Conexao, Escuta};
 use super::{PedidoRecebido, quadros};
+
+/// Quanto tempo se espera o primeiro pedido de uma interface recusada, para responder a ele.
+const ESPERA_DO_RECUSADO: Duration = Duration::from_secs(2);
 
 /// Aceita conexões para sempre, uma tarefa por cliente.
 pub(crate) async fn servir(
@@ -22,13 +27,21 @@ pub(crate) async fn servir(
 ) {
     loop {
         match escuta.aceitar().await {
-            Ok(conexao) => {
+            Ok((conexao, Chamada::Permitida)) => {
                 // Registrado em nível alto de propósito: é como se confirma, no diagnóstico, que
-                // a janela achou o serviço em vez de ter caído para o simulado em silêncio.
+                // a janela achou o serviço em vez de ficar de fora em silêncio.
                 info!("interface conectada");
                 let pedidos = pedidos.clone();
                 let avisos = avisos.subscribe();
                 tokio::spawn(atender(conexao, pedidos, avisos));
+            }
+            Ok((conexao, Chamada::Negada { uid })) => {
+                warn!(
+                    uid,
+                    "interface recusada: o usuário não pertence ao grupo `inputremote`; libere com \
+                     `usermod -aG inputremote <usuário>`, que vale na conexão seguinte"
+                );
+                tokio::spawn(recusar(conexao));
             }
             Err(erro) => {
                 warn!(%erro, "falha ao aceitar conexão de controle");
@@ -89,6 +102,21 @@ async fn atender(
     debug!("conexão de controle encerrada");
 }
 
+/// Responde ao primeiro pedido de uma interface recusada com a razão da recusa, e fecha.
+///
+/// Fechar mudo deixaria a janela sem saber a diferença entre "o serviço caiu" e "você não tem
+/// permissão" — e as duas pedem ações que não têm nada em comum. A recusa vai como resposta ao
+/// primeiro pedido, e não por conta própria, para caber no pedido-resposta que a janela já espera.
+async fn recusar(conexao: Conexao) {
+    let (mut leitura, mut escrita) = tokio::io::split(conexao);
+    let primeiro =
+        tokio::time::timeout(ESPERA_DO_RECUSADO, quadros::ler::<_, Pedido>(&mut leitura)).await;
+    if matches!(primeiro, Ok(Ok(Some(_)))) {
+        let msg = ParaInterface::Resposta(Resposta::Falha(Falha::SemPermissao));
+        let _ = quadros::escrever(&mut escrita, &msg).await;
+    }
+}
+
 /// Encaminha um pedido ao ator e devolve a resposta. `false` se a conexão deve encerrar.
 async fn responder(
     pedidos: &UnboundedSender<PedidoRecebido>,
@@ -109,7 +137,6 @@ async fn responder(
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
-    use ir_ipc::{Pedido, Resposta};
     use tokio::sync::mpsc;
 
     use super::super::escuta::{Acesso, Escuta};

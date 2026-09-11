@@ -16,7 +16,7 @@ use ir_ipc::status::Papel;
 use ir_ipc::vocabulario::Portador;
 use ir_ipc::{Aviso, Estado, Pedido, Resposta};
 use ir_ui::ponte;
-use ir_ui::servico::Servico;
+use ir_ui::servico::{Servico, Situacao};
 use ir_ui::simulado::ServicoSimulado;
 
 /// Teto de passos para as esperas. Generoso, e finito: um teste que gira para sempre por causa de
@@ -262,5 +262,5 @@ fn o_diagnostico_traz_o_que_diagnostica_e_nada_do_que_foi_digitado() {
 fn o_simulado_se_declara_simulado() {
     // A janela mostra um aviso baseado nisto. Se o simulado mentisse, o usuário acreditaria que o
     // produto está funcionando.
-    assert!(ServicoSimulado::new().simulado());
+    assert_eq!(ServicoSimulado::new().situacao(), Situacao::Simulado);
 }

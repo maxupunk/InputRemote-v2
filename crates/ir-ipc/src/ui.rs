@@ -14,6 +14,9 @@ use serde::{Deserialize, Serialize};
 use crate::status::Estado;
 use crate::vocabulario::{Borda, Maquina, Portador};
 
+/// O que pode dar errado num pedido. Mora em [`crate::falha`], e continua alcançável por aqui.
+pub use crate::falha::Falha;
+
 /// Que privilégio um pedido exige.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Autoridade {
@@ -143,55 +146,6 @@ pub enum Resposta {
     Diagnostico(String),
     /// Não deu, e aqui está o porquê.
     Falha(Falha),
-}
-
-/// O que pode dar errado num pedido.
-///
-/// Toda variante tem uma frase que diz **o que fazer agora** — a terceira parte que
-/// [09, §5](../../../docs/09-padroes-de-codigo.md) exige e que a maioria dos produtos esquece.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
-#[non_exhaustive]
-pub enum Falha {
-    /// Falta privilégio.
-    #[error("esta ação precisa de permissão de administrador")]
-    PrecisaElevacao,
-    /// O pedido não faz sentido no estado atual.
-    #[error("esta ação não faz sentido agora")]
-    ForaDeContexto,
-    /// O par indicado não existe.
-    #[error("esse computador não está pareado")]
-    ParDesconhecido,
-    /// O pareamento expirou sem confirmação.
-    #[error("o código expirou")]
-    PareamentoExpirou,
-    /// O usuário disse que os códigos não conferem.
-    #[error("os códigos não conferiam")]
-    CodigosDiferentes,
-    /// Falha interna do serviço.
-    #[error("falha interna do serviço")]
-    Interna,
-}
-
-impl Falha {
-    /// O que o usuário deve fazer agora.
-    #[must_use]
-    pub const fn o_que_fazer(self) -> &'static str {
-        match self {
-            Self::PrecisaElevacao => {
-                "Feche e abra o InputRemote como administrador para concluir esta ação."
-            }
-            Self::ForaDeContexto => "Confira o estado da conexão e tente de novo.",
-            Self::ParDesconhecido => "Pareie o computador antes de configurá-lo.",
-            Self::PareamentoExpirou => "Comece o pareamento de novo; o código vale 2 minutos.",
-            Self::CodigosDiferentes => {
-                "Códigos diferentes significam que alguém pode estar no meio da conexão. \
-                 Não pareie por esta rede e procure ajuda."
-            }
-            Self::Interna => {
-                "Exporte o diagnóstico em Preferências e abra um relato com ele anexado."
-            }
-        }
-    }
 }
 
 /// Uma mensagem do serviço para a interface, no fluxo de bytes do canal de controle.
@@ -333,39 +287,6 @@ mod tests {
     fn as_autoridades_sao_ordenadas_por_poder() {
         assert!(Autoridade::Elevado > Autoridade::Configurar);
         assert!(Autoridade::Configurar > Autoridade::Ler);
-    }
-
-    #[test]
-    fn toda_falha_diz_o_que_fazer() {
-        let falhas = [
-            Falha::PrecisaElevacao,
-            Falha::ForaDeContexto,
-            Falha::ParDesconhecido,
-            Falha::PareamentoExpirou,
-            Falha::CodigosDiferentes,
-            Falha::Interna,
-        ];
-        for falha in falhas {
-            assert!(!falha.to_string().is_empty(), "{falha:?} sem descrição");
-            let acao = falha.o_que_fazer();
-            assert!(!acao.is_empty(), "{falha:?} não diz o que fazer");
-            // Uma instrução tem verbo. É o mínimo para ser acionável.
-            assert!(
-                acao.len() > 20,
-                "{falha:?}: `{acao}` é curto demais para instruir"
-            );
-        }
-    }
-
-    #[test]
-    fn codigos_diferentes_avisa_do_risco_em_vez_de_so_pedir_para_repetir() {
-        // Códigos diferentes é o sinal de homem no meio. Dizer "tente de novo" ensinaria o
-        // usuário a insistir exatamente onde ele não deveria.
-        let texto = Falha::CodigosDiferentes.o_que_fazer();
-        assert!(
-            texto.contains("meio"),
-            "o risco precisa estar dito: `{texto}`"
-        );
     }
 
     #[test]

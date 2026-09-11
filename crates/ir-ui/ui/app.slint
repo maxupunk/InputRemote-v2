@@ -101,8 +101,27 @@ export component Janela inherits Window {
             background: Tema.borda;
         }
 
-        // Uma interface que finge estar funcionando é pior que uma que não abre. Quando o
-        // serviço real não está no ar, a janela diz isso na cara.
+        // Sem o serviço, a janela diz o que aconteceu e o que fazer — e continua tentando por
+        // conta própria. Não mostra dado inventado no lugar: quem precisa saber que o serviço
+        // parou não pode ser enganado por uma tela que parece estar funcionando.
+        if Dados.desconectado: Rectangle {
+            background: Tema.fundo;
+
+            VerticalLayout {
+                padding-left: Tema.e4;
+                padding-right: Tema.e4;
+                padding-top: Tema.e3;
+
+                Faixa {
+                    texto: Dados.desconexao + " " + Dados.desconexao-o-que-fazer;
+                    cor: Tema.atencao;
+                    cor-de-fundo: Tema.atencao-suave;
+                }
+            }
+        }
+
+        // A demonstração só existe quando pedida. Mesmo assim, avisa: dado inventado sem aviso é
+        // mentira, ainda que alguém tenha pedido por ele.
         if Dados.simulado: Rectangle {
             background: Tema.atencao-suave;
 
@@ -112,8 +131,8 @@ export component Janela inherits Window {
                 padding-top: Tema.e3;
 
                 Faixa {
-                    texto: "Modo de demonstração: o serviço do InputRemote não está respondendo, "
-                        + "e os dados abaixo são simulados. Nada é injetado em computador nenhum.";
+                    texto: "Modo de demonstração (--simulado): os dados abaixo são inventados. "
+                        + "Nada é injetado em computador nenhum.";
                     cor: Tema.atencao;
                     cor-de-fundo: Tema.atencao-suave;
                 }

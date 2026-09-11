@@ -119,7 +119,9 @@ o caminho normal:
 
 1. Suba o daemon em primeiro plano nas duas máquinas (sem `IR_CONTROL_ENDPOINT`, para a janela
    achar o serviço no canal padrão).
-2. Abra o `inputremote-ui` em cada uma. Se ela achar o serviço, a barra de "serviço simulado" some.
+2. Abra o `inputremote-ui` em cada uma. Se ela achar o serviço, a faixa amarela do topo some. Se o
+   serviço ainda não subiu, a faixa diz isso e o que fazer, e a janela **conecta sozinha** quando
+   ele subir — não precisa fechar e abrir de novo.
 3. Numa delas, **Procurar** mostra o computador configurado em `peer_addr`; escolha-o e comece o
    pareamento. As duas janelas mostram os seis dígitos em caixas.
 4. Confira que são iguais e confirme nas **duas** janelas. Deu certo, o par fica gravado.
@@ -154,19 +156,9 @@ sudo systemctl status inputremote      # confira que está "active (running)"
 journalctl -u inputremote -f           # é aqui que aparecem as linhas da tabela abaixo
 ```
 
-**Reinicie o computador** depois do `usermod`. Sair e entrar na sessão **não basta** no GNOME: o
-gerenciador da sessão (`systemd --user`) sobrevive ao logout enquanto houver qualquer outra sessão
-sua aberta — um terminal por SSH, por exemplo —, e os programas da nova sessão gráfica nascem dele,
-com os grupos de antes. A janela continua sem acesso, e a faixa amarela continua lá.
-
-Se não quiser reiniciar agora, abra a janela já com o grupo, por um terminal:
-
-```bash
-sg inputremote -c inputremote-ui
-```
-
-Cuidado ao conferir com `id` num terminal: um terminal novo pode mostrar o grupo mesmo quando a
-sessão gráfica ainda não o tem. O que vale é o grupo do processo da janela.
+O `usermod` **vale na hora**: não precisa sair da sessão nem reiniciar. Se a janela já estiver
+aberta, ela mostra *"Este usuário não tem permissão para usar o InputRemote nesta máquina"* com o
+comando a rodar, e entra sozinha poucos segundos depois de ele ser rodado.
 
 A configuração do serviço fica em `/var/lib/inputremote/config.toml` — edite `role`,
 `peer_edge`, `port` e `screen_width`/`screen_height` como na seção 2, e reinicie com
@@ -176,11 +168,15 @@ A configuração do serviço fica em `/var/lib/inputremote/config.toml` — edit
 > próprio serviço. O agente existe só no Windows, onde um serviço na sessão 0 não alcança a área
 > de trabalho do usuário.
 >
-> **Por que o grupo.** O serviço roda como root (é quem tem `/dev/uinput`), então o socket de
-> controle nasceria `root:root` e a janela — que roda sem privilégio — levaria "permissão
-> negada" e cairia para o simulado. Em vez de abrir o socket para todo mundo, ele fica
-> `0660 root:inputremote`: quem opera a máquina entra nesse grupo de propósito, e o acesso vira
-> uma decisão registrada do administrador.
+> **Por que o grupo, e por que ele vale na hora.** O serviço roda como root (é quem tem
+> `/dev/uinput`), e quem decide quem pode falar com ele é o próprio serviço: a cada conexão ele lê
+> qual usuário conectou e consulta no banco de usuários se esse usuário pertence ao grupo
+> `inputremote` **agora**. Quem opera a máquina entra no grupo de propósito — o acesso é uma
+> decisão registrada do administrador, não permissão frouxa.
+>
+> Antes, quem decidia era a permissão do arquivo, conferida com os grupos que a sessão gráfica
+> carregava desde o login. No GNOME a sessão sobrevive ao logout, e só reiniciar o computador fazia
+> um grupo novo chegar à janela.
 >
 > Se preferir não mexer em grupos, dá para **parear pelo terminal**: o `journalctl` mostra o
 > código de seis dígitos, e o serviço aceita `s` pela entrada padrão quando rodado à mão com
@@ -199,7 +195,8 @@ peça entrou no lugar, e a **primeira que faltar** é onde está o problema:
 | `agente conectado` | o agente achou o serviço |
 | `agente pronto desktops=[…]` | o agente está capturando e pronto para injetar |
 | `tela da sessão do usuário largura=… altura=…` | a resolução veio de dentro da sessão (confira se é a sua) |
-| `interface conectada` | a janela achou o serviço — **se não aparecer, ela está no simulado** |
+| `interface conectada` | a janela achou o serviço — se não aparecer, a faixa do topo da janela diz por quê |
+| `interface recusada … uid=…` | a janela daquele usuário foi barrada: ele não está no grupo `inputremote` |
 | `código de pareamento: NNNNNN` | compare com a outra tela antes de confirmar |
 | `par gravado` | o par foi fixado; das próximas vezes não pede código |
 | `sessão estabelecida … carrier=udp` | as duas máquinas estão de pé e falando |

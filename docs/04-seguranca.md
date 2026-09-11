@@ -181,9 +181,20 @@ chamador. Três níveis:
 | Parear, remover par, permitir tela de bloqueio, habilitar SAS | **elevação** — token com `Administrators` habilitado |
 | Injetar entrada | **somente o agente**, autenticado por token `SYSTEM` e por segredo de uma via entregue na criação do processo |
 
-**Linux.** Socket `/run/inputremote/control.sock`, `0660 root:inputremote`. Identidade do
-chamador por `SO_PEERCRED`. As operações da terceira linha exigem `polkit`
-(`org.inputremote.pair`, `org.inputremote.lockscreen`).
+**Linux.** Socket `/run/inputremote/control.sock`. Quem decide o acesso é o **serviço**, e não a
+permissão do arquivo: a cada conexão ele lê a identidade do chamador por `SO_PEERCRED` e consulta
+no banco de usuários (`getgrouplist`) se esse usuário pertence ao grupo `inputremote` **naquele
+momento**. Por isso o socket de controle é alcançável por qualquer processo local (`0666`) — o
+portão é a credencial — e o do agente é `0600 root`. root e o usuário dono do serviço sempre
+entram; quem é recusado recebe `SemPermissao` como resposta, e não um fechamento mudo. As
+operações da terceira linha exigem `polkit` (`org.inputremote.pair`,
+`org.inputremote.lockscreen`).
+
+> O controle por permissão de arquivo (`0660 root:inputremote`) foi o primeiro desenho
+> implementado e **NÃO DEVE** voltar. A permissão de arquivo é conferida com os grupos que o
+> processo carrega, e no GNOME a sessão gráfica guarda os grupos do login até a máquina
+> reiniciar: um `usermod` ficava certo no banco e não chegava à janela
+> ([log 17](logs/17-a-janela-que-volta-e-o-grupo-que-vale-na-hora.md)).
 
 O canal do agente é **separado** do canal da interface — pipe e socket distintos, com
 permissões distintas. A interface nunca pode mandar `Inject`, em nenhuma circunstância.

@@ -13,6 +13,7 @@ pub(crate) mod controle;
 mod escuta;
 #[cfg(target_os = "linux")]
 mod grupo;
+mod porteiro;
 pub(crate) mod quadros;
 #[cfg(windows)]
 mod seguranca;

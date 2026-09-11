@@ -8,8 +8,9 @@
 //! O relógio avança em [`Servico::avisos`], que a janela consulta em intervalo fixo. Um passo é um
 //! passo, sempre — então os testes conduzem o tempo sem dormir, e o resultado é determinístico.
 //!
-//! A janela avisa na cara do usuário quando este serviço está em uso ([`Servico::simulado`]). Uma
-//! interface que finge estar funcionando é pior que uma que não abre.
+//! Só entra quando pedido de propósito (`--simulado`), e a janela avisa na cara do usuário quando
+//! ele está em uso ([`Servico::situacao`]). Uma interface que finge estar funcionando é pior que
+//! uma que não abre.
 
 use std::cell::RefCell;
 
@@ -19,7 +20,7 @@ use ir_ipc::status::{
 use ir_ipc::vocabulario::{Clipboard, Maquina, Nivel, Nome, Portador, Recursos};
 use ir_ipc::{Autoridade, Aviso, Candidato, Falha, Pedido, Resposta};
 
-use crate::servico::Servico;
+use crate::servico::{Servico, Situacao};
 
 /// Os seis dígitos que a demonstração mostra.
 const DIGITOS: [u8; 6] = [4, 1, 9, 0, 7, 3];
@@ -275,8 +276,8 @@ impl Servico for ServicoSimulado {
         Autoridade::Elevado
     }
 
-    fn simulado(&self) -> bool {
-        true
+    fn situacao(&self) -> Situacao {
+        Situacao::Simulado
     }
 }
 

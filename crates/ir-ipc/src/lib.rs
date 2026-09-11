@@ -48,14 +48,16 @@
 
 pub mod agent;
 pub mod codec;
+pub mod falha;
 pub mod status;
 pub mod ui;
 pub mod vocabulario;
 
 pub use agent::{ComandoDoAgente, FatoDoAgente};
 pub use codec::{ErroDeCodec, MAX_MENSAGEM, PREFIXO};
+pub use falha::Falha;
 pub use status::{
     Estado, Latencia, LinkState, MotivoDaQueda, MotivoDoPortador, Papel, ParConhecido,
 };
-pub use ui::{Autoridade, Aviso, Candidato, Falha, ParaInterface, Pedido, Resposta};
+pub use ui::{Autoridade, Aviso, Candidato, ParaInterface, Pedido, Resposta};
 pub use vocabulario::{Borda, Maquina, Nivel, Nome, Portador, Recursos};

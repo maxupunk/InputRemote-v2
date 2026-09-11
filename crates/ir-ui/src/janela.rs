@@ -8,7 +8,7 @@
 //! é sinal de que a regra foi duplicada — o serviço já decide, e uma segunda cópia da regra na
 //! interface é a cópia que vai ficar desatualizada.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -19,9 +19,9 @@ use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel, 
 
 use crate::gerado::{Acoes, Dados, EtapaDoPareamento, Janela};
 use crate::ponte;
-use crate::servico::Servico;
+use crate::servico::{Servico, Situacao};
 
-/// De quanto em quanto tempo a interface recolhe avisos.
+/// De quanto em quanto tempo a interface recolhe avisos e confere a ligação com o serviço.
 ///
 /// 200 ms é imperceptível para quem olha a janela e é barato para quem a serve. A interface não
 /// está no caminho da entrada — teclado e mouse não passam por aqui —, então nada exige mais.
@@ -34,6 +34,9 @@ struct Contexto {
     candidatos: RefCell<Vec<Candidato>>,
     /// O par corrente, que os pedidos precisam nomear.
     par: RefCell<Option<Maquina>>,
+    /// A última situação da ligação que a janela mostrou: só se redesenha a faixa quando ela muda,
+    /// e é a mudança para conectado que manda buscar o estado de novo.
+    situacao: Cell<Situacao>,
 }
 
 impl Contexto {
@@ -85,6 +88,36 @@ impl Contexto {
         for aviso in self.servico.avisos() {
             self.tratar(aviso);
         }
+    }
+
+    /// Confere a ligação com o serviço e atualiza a faixa se ela mudou.
+    ///
+    /// Ao voltar a conectar, pede o estado de novo: o que a tela mostrava é de antes da queda, e
+    /// mostrar estado velho como se fosse atual é mentir para o usuário.
+    fn observar_conexao(&self) {
+        let agora = self.servico.situacao();
+        if self.situacao.replace(agora) == agora {
+            return;
+        }
+        self.mostrar_situacao(agora);
+        if agora == Situacao::Conectado {
+            self.sincronizar();
+        }
+    }
+
+    /// Põe a situação da ligação na faixa do topo da janela.
+    fn mostrar_situacao(&self, situacao: Situacao) {
+        let (desconectado, frase, acao) = match situacao {
+            Situacao::Desconectado(motivo) => (true, motivo.frase(), motivo.o_que_fazer()),
+            Situacao::Conectado | Situacao::Simulado => (false, "", ""),
+        };
+        self.com_janela(|janela| {
+            let dados = janela.global::<Dados>();
+            dados.set_simulado(situacao == Situacao::Simulado);
+            dados.set_desconectado(desconectado);
+            dados.set_desconexao(frase.into());
+            dados.set_desconexao_o_que_fazer(acao.into());
+        });
     }
 
     fn tratar(&self, aviso: Aviso) {
@@ -171,28 +204,35 @@ fn seis_vazios() -> ModelRc<SharedString> {
 /// backend gráfico, ou sem servidor de janelas no Linux.
 pub fn abrir(servico: Rc<dyn Servico>) -> Result<(), slint::PlatformError> {
     let janela = Janela::new()?;
+    let situacao = servico.situacao();
     let contexto = Rc::new(Contexto {
         janela: janela.as_weak(),
         servico,
         candidatos: RefCell::new(Vec::new()),
         par: RefCell::new(None),
+        situacao: Cell::new(situacao),
     });
 
     {
         let dados = janela.global::<Dados>();
-        dados.set_simulado(contexto.servico.simulado());
         dados.set_elevado(contexto.servico.autoridade() >= Autoridade::Elevado);
         dados.set_digitos(seis_vazios());
     }
+    contexto.mostrar_situacao(situacao);
 
     ligar_configuracao(&janela, &contexto);
     ligar_pareamento(&janela, &contexto);
     ligar_sessao(&janela, &contexto);
     contexto.sincronizar();
 
+    // A mesma batida recolhe os avisos e mantém a ligação: é consultando o serviço que a
+    // interface percebe uma queda e tenta de novo, sem thread nem temporizador a mais.
     let cronometro = Timer::default();
     let batida = Rc::clone(&contexto);
-    cronometro.start(TimerMode::Repeated, INTERVALO, move || batida.escutar());
+    cronometro.start(TimerMode::Repeated, INTERVALO, move || {
+        batida.escutar();
+        batida.observar_conexao();
+    });
 
     janela.run()
 }

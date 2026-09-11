@@ -43,6 +43,8 @@ pub mod gerado {
     slint::include_modules!();
 }
 
+pub mod conector;
+pub mod conexao;
 pub mod janela;
 pub mod ponte;
 pub mod real;

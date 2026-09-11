@@ -17,7 +17,7 @@ use tokio::sync::broadcast;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::{debug, info, warn};
 
-use super::escuta::{Conexao, Escuta};
+use super::escuta::{Chamada, Conexao, Escuta};
 use super::quadros;
 
 /// Aceita o agente — **um de cada vez**.
@@ -33,7 +33,16 @@ pub(crate) async fn servir(
     let ocupado = Arc::new(AtomicBool::new(false));
     loop {
         match escuta.aceitar().await {
-            Ok(conexao) => {
+            Ok((conexao, Chamada::Negada { uid })) => {
+                // Um processo que não é o serviço tentando abrir o canal que carrega injeção de
+                // entrada. Não há o que explicar a ele: fecha, e fica registrado.
+                warn!(
+                    uid,
+                    "um processo sem permissão tentou abrir o canal do agente; recusado"
+                );
+                drop(conexao);
+            }
+            Ok((conexao, Chamada::Permitida)) => {
                 if ocupado.swap(true, Ordering::SeqCst) {
                     // Já há agente servindo. Fechar na cara é o certo: o segundo percebe o fim
                     // do fluxo e sai sozinho, antes de instalar gancho nenhum.

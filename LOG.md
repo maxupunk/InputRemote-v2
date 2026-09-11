@@ -41,3 +41,4 @@ quê. Um registro que se reescreve não é registro.
 | 14 | 2026-09-10 | [O serviço de ponta a ponta: IPC, pareamento pela janela e o serviço que sobe](docs/logs/14-servico-de-ponta-a-ponta.md) |
 | 15 | 2026-09-10 | [O agente de sessão: o serviço alcança a sessão do usuário](docs/logs/15-agente-de-sessao.md) |
 | 16 | 2026-09-11 | [O serviço trancou a própria janela do lado de fora](docs/logs/16-o-servico-trancou-a-propria-janela.md) |
+| 17 | 2026-09-11 | [A janela que volta sozinha, e o grupo que vale na hora](docs/logs/17-a-janela-que-volta-e-o-grupo-que-vale-na-hora.md) |

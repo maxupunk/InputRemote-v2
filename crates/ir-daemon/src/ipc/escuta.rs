@@ -6,12 +6,20 @@
 //!
 //! # Quem pode conectar é decisão do transporte
 //!
-//! E é decisão explícita, nunca herdada: um *pipe* criado por um serviço `LocalSystem` com o
-//! descritor padrão **não** dá acesso ao usuário interativo, e o sintoma é a janela do próprio
-//! dono da máquina levar "acesso negado" e cair para o modo de demonstração. Cada canal declara
-//! o seu [`Acesso`], e os dois são diferentes de propósito.
+//! E é decisão explícita, nunca herdada. Cada canal declara o seu [`Acesso`], e cada conexão
+//! aceita vem com a [`Chamada`] que diz se quem conectou pode usá-lo.
+//!
+//! - No **Windows**, o descritor de segurança do *pipe* barra quem não pode no próprio sistema, e
+//!   o que chega até aqui já é permitido.
+//! - No **Linux**, o portão é o serviço: ele lê a credencial de quem conectou (`SO_PEERCRED`) e
+//!   consulta a filiação ao grupo no banco de usuários **na hora** ([`super::porteiro`]). A
+//!   permissão do arquivo não serve de portão porque é conferida com os grupos do processo que
+//!   conecta — e no GNOME a sessão gráfica carrega os grupos de quando nasceu, então um `usermod`
+//!   só alcançaria a janela depois de reiniciar a máquina.
 
 use anyhow::{Context, Result};
+
+pub(crate) use super::porteiro::Chamada;
 
 /// Quem pode abrir este ponto de escuta.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,18 +96,22 @@ impl Escuta {
             .with_context(|| format!("criando o pipe {nome}"))
     }
 
-    /// Espera o próximo cliente e devolve a conexão dele.
+    /// Espera o próximo cliente e devolve a conexão dele, com a decisão sobre ela.
     ///
     /// # Errors
     ///
     /// Erro do sistema ao conectar ou ao preparar a instância seguinte do *pipe*.
-    pub(crate) async fn aceitar(&mut self) -> Result<Conexao> {
+    pub(crate) async fn aceitar(&mut self) -> Result<(Conexao, Chamada)> {
         // Espera este cliente, depois já prepara a instância seguinte antes de servir: é o que
         // permite um segundo cliente conectar enquanto o primeiro é atendido.
         self.proximo.connect().await.context("aguardando cliente")?;
         let seguinte = Self::criar(&self.nome, &mut self.seguranca, false)
             .context("preparando o pipe seguinte")?;
-        Ok(std::mem::replace(&mut self.proximo, seguinte))
+        // O descritor de segurança já barrou quem não pode, no próprio sistema.
+        Ok((
+            std::mem::replace(&mut self.proximo, seguinte),
+            Chamada::Permitida,
+        ))
     }
 }
 
@@ -107,6 +119,9 @@ impl Escuta {
 #[cfg(not(windows))]
 pub(crate) struct Escuta {
     listener: tokio::net::UnixListener,
+    acesso: Acesso,
+    /// O usuário que roda o serviço, que sempre pode falar com ele.
+    dono: u32,
 }
 
 #[cfg(not(windows))]
@@ -126,28 +141,52 @@ impl Escuta {
         let _ = std::fs::remove_file(caminho);
         let listener = tokio::net::UnixListener::bind(caminho)
             .with_context(|| format!("vinculando {caminho}"))?;
-        // O canal do agente não tem por que ser alcançável nem pelo grupo; o de controle precisa
-        // do grupo do serviço, que é por onde a interface entra.
+        // O controle fica alcançável por qualquer processo local **de propósito**: quem decide é
+        // o serviço, conferindo a credencial de cada conexão em `aceitar`. Deixar o arquivo decidir
+        // era deixar a decisão com os grupos congelados do processo que conecta. O canal do
+        // agente não tem por que ser alcançável por ninguém além do serviço.
         let modo = match acesso {
             Acesso::Restrito => 0o600,
-            Acesso::UsuarioInterativo => 0o660,
+            Acesso::UsuarioInterativo => 0o666,
         };
-        let _ = std::fs::set_permissions(caminho, std::fs::Permissions::from_mode(modo));
-        // `0660` sozinho não basta: o socket nasce `root:root`, e o grupo precisa ser um a que o
-        // usuário da janela pertença. Sem isto a interface leva "permissão negada".
-        if acesso == Acesso::UsuarioInterativo {
-            super::grupo::dar_ao_grupo(caminho);
-        }
-        Ok(Self { listener })
+        std::fs::set_permissions(caminho, std::fs::Permissions::from_mode(modo))
+            .with_context(|| format!("ajustando a permissão de {caminho}"))?;
+        Ok(Self {
+            listener,
+            acesso,
+            dono: super::grupo::uid_efetivo(),
+        })
     }
 
-    /// Espera o próximo cliente e devolve a conexão dele.
+    /// Espera o próximo cliente e devolve a conexão dele, com a decisão sobre ela.
     ///
     /// # Errors
     ///
     /// Erro de E/S ao aceitar.
-    pub(crate) async fn aceitar(&mut self) -> Result<Conexao> {
+    pub(crate) async fn aceitar(&mut self) -> Result<(Conexao, Chamada)> {
         let (conexao, _) = self.listener.accept().await.context("aceitando conexão")?;
-        Ok(conexao)
+        let chamada = self.avaliar(&conexao);
+        Ok((conexao, chamada))
+    }
+
+    /// Lê quem conectou e pergunta ao porteiro se pode.
+    fn avaliar(&self, conexao: &Conexao) -> Chamada {
+        let Ok(credencial) = conexao.peer_cred() else {
+            // Sem credencial não há como decidir, e na dúvida o canal não abre.
+            return Chamada::Negada { uid: u32::MAX };
+        };
+        let uid = credencial.uid();
+        // A filiação é lida agora, no banco de usuários — não a que o processo herdou ao nascer.
+        let grupos = super::grupo::grupos_do_usuario(uid);
+        let chamador = super::porteiro::Chamador {
+            uid,
+            grupos: &grupos,
+        };
+        super::porteiro::decidir(
+            self.acesso,
+            &chamador,
+            self.dono,
+            super::grupo::gid_do_grupo(super::grupo::GRUPO),
+        )
     }
 }

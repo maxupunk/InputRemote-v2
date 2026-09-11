@@ -117,13 +117,18 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Transporte do canal de controle: named pipe no Windows / socket Unix, enquadrado por
       `ir_ipc::codec`, com o cliente da interface (`ServicoReal`) e um teste de ida e volta
       ([log 14](docs/logs/14-servico-de-ponta-a-ponta.md))
-- [x] Cada canal declara quem pode abri-lo: SDDL explícito no *pipe* do Windows e
-      `0660 root:inputremote` no socket do Linux. O de controle aceita o usuário interativo, o do
-      agente só o serviço — provado em execução com usuário comum não elevado
-      ([log 16](docs/logs/16-o-servico-trancou-a-propria-janela.md))
-- [ ] A janela reconecta ao serviço sozinha — hoje ela só conecta ao abrir: se o serviço reinicia
-      (atualização de pacote, queda), ela fica sem conexão até ser fechada e reaberta; e se abriu
-      com o serviço fora do ar, fica no simulado para sempre, mesmo depois de ele subir
+- [x] Cada canal declara quem pode abri-lo: SDDL explícito no *pipe* do Windows; no Linux, o
+      serviço confere a credencial de quem conecta (`SO_PEERCRED`) contra a filiação ao grupo
+      `inputremote` lida **na hora**, então um `usermod` vale sem sair da sessão nem reiniciar. O de
+      controle aceita o usuário interativo, o do agente só o serviço
+      ([log 16](docs/logs/16-o-servico-trancou-a-propria-janela.md),
+      [log 17](docs/logs/17-a-janela-que-volta-e-o-grupo-que-vale-na-hora.md))
+- [x] A janela reconecta ao serviço sozinha: a ligação tem dono próprio (`conexao`), separado de
+      quem abre o canal (`conector`), e a janela mostra o motivo e o que fazer enquanto espera.
+      Provado de ponta a ponta com *named pipes* reais — serviço derrubado e ressubido, a mesma
+      janela voltou sem ser reaberta — e por testes nos dois sistemas: o serviço sobe depois da
+      janela, cai e volta, recusa por permissão e depois aceita
+      ([log 17](docs/logs/17-a-janela-que-volta-e-o-grupo-que-vale-na-hora.md))
 - [~] Autorização em três níveis de [04, §5](docs/04-seguranca.md) — declarada no contrato; a
       imposição depende de o transporte ler a elevação do token do cliente, ainda não feita
 - [x] `ir-daemon`: binário sobe, aceita IPC, pareia pela interface, encerra limpo
@@ -132,8 +137,8 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       tela da sessão e se reporta pronto ([log 15](docs/logs/15-agente-de-sessao.md))
 - [x] Transporte do canal do agente, separado do da interface, e o serviço lançando o agente na
       sessão de console (`CreateProcessAsUserW` + `TokenUIAccess`)
-- [x] `ir-ui`: janela abre, acha o serviço de verdade e pareia por ele; cai para o simulado se
-      ele não está no ar
+- [x] `ir-ui`: janela abre, acha o serviço de verdade e pareia por ele; sem o serviço, diz o
+      motivo e o que fazer, e entra sozinha quando ele sobe. O simulado só com `--simulado`
 
 ### 1.4. Observabilidade e configuração
 - [ ] `tracing` com escritor sem bloqueio

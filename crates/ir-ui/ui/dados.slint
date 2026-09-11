@@ -74,9 +74,21 @@ export global Dados {
     /// Se este processo tem privilégio para as ações que decidem quem digita.
     in property <bool> elevado: false;
 
-    /// Se o serviço em uso é o simulado. A janela avisa, porque uma interface que finge estar
-    /// funcionando é pior que uma que não abre.
+    /// Se o serviço em uso é o simulado — só quando pedido de propósito, para desenvolver ou
+    /// demonstrar a interface. A janela avisa, porque dado de mentira sem aviso é mentira.
     in property <bool> simulado: false;
+
+    /// Se a janela não está falando com o serviço agora.
+    ///
+    /// Não é modo de demonstração: nada na tela é inventado, e a janela continua tentando —
+    /// reconecta sozinha quando o serviço voltar ou quando a permissão for dada.
+    in property <bool> desconectado: false;
+
+    /// O que aconteceu com a ligação ao serviço, em uma frase.
+    in property <string> desconexao;
+
+    /// O que fazer a respeito. Aparece sempre junto da frase: "não deu" sem "e agora?" não ajuda.
+    in property <string> desconexao-o-que-fazer;
 
     /// A etapa do pareamento.
     in property <EtapaDoPareamento> etapa: EtapaDoPareamento.escolhendo;
