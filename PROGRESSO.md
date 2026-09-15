@@ -227,7 +227,8 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Validação de manifesto e de caminho relativo contra travessia de diretório
 - [x] Ida e volta de quadro em todos os portadores permitidos, e de todos os vetores
 - [x] Teste de tamanho máximo (entrada ≤ 64 B em texto claro)
-- [x] Vetores gravados da versão 1 — 16 quadros, 4 canais
+- [x] Vetores gravados da versão 1 — 17 quadros, 4 canais, incluindo a época da sessão
+      ([log 22](docs/logs/22-a-sessao-que-reiniciava-a-cada-200-ms.md))
 - [x] Byte sobrando, truncamento em todo comprimento e lixo arbitrário não geram pânico
 - [~] Alvo de `cargo fuzz` do decodificador — há varredura determinística no CI de commit;
       o alvo propriamente dito depende de `cargo-fuzz` e fecha junto com a Etapa 2
@@ -273,6 +274,10 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Adeus anunciado em toda queda decidida por este lado
 - [x] Um par emissor/receptor por canal, para retransmissão de clipboard não atrasar `KeyUp`
 - [x] 29 testes da camada isolada + 6 cenários exercendo-a através da sessão inteira
+- [x] Encarnações de sessão: todo quadro carrega a época de quem o enviou, e o que é de uma
+      sessão encerrada não ancora a seguinte, não a derruba e não vira tecla digitada. Os três
+      cenários do laço de ~200 ms falhavam antes da correção e passam depois
+      ([log 22](docs/logs/22-a-sessao-que-reiniciava-a-cada-200-ms.md))
 - [ ] Cobertura ≥ 85% medida em `ir-session` e `ir-proto`
 
 ---
@@ -299,8 +304,11 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       pareamento ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
 - [ ] O handshake de pareamento não é abandonado pela rede antes do prazo do pareamento — hoje cai
       em ~105–110 s, contra os 120 s do ator e os "2 minutos" da tela ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
-- [ ] `[H]` A sessão firma e se mantém sobre Wi-Fi com economia de energia — na bancada ela cai em
-      `Timeout` e se reinicia a cada ~200 ms depois do pareamento ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
+- [ ] `[H]` A sessão firma e se mantém sobre Wi-Fi com economia de energia — na bancada ela caía em
+      `Timeout` e se reiniciava a cada ~200 ms depois do pareamento ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md)).
+      A causa — quadros de uma sessão encerrada ancorando a seguinte — está corrigida e testada
+      ([log 22](docs/logs/22-a-sessao-que-reiniciava-a-cada-200-ms.md)); falta instalar a versão
+      nova nas duas máquinas e verificar no hardware
 - [~] Confiabilidade sobre UDP — a de `ir-session` já existe e é testada; falta o ensaio de perda de 5% ponta a ponta
 - [ ] TCP de dados (só entrada foi implementada; arquivos são Etapa 8)
 - [ ] `[H]` Latência dentro da meta, medida entre duas máquinas

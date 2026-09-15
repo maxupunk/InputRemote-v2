@@ -113,6 +113,34 @@ impl Ack {
     }
 }
 
+/// A encarnação da sessão de quem enviou um quadro.
+///
+/// Cada aperto de mão começa uma encarnação nova, e todo quadro carrega a época dela. É o que
+/// permite a quem recebe descartar o que sobrou de uma sessão que já acabou.
+///
+/// Sem ela, nada no quadro dizia a qual sessão ele pertencia. Um lado que acabara de zerar se
+/// ancorava num quadro velho do par — um `Ping` de número 57 —, e o `Hello` novo, de número 1,
+/// passava a parecer mais velho que a âncora e era descartado calado. Os dois lados ficavam
+/// reiniciando a sessão a cada ~200 ms, para sempre (log 22). E um `KeyDown` velho, guardado na
+/// fila de reordenação, podia ser entregue na sessão nova como tecla digitada agora.
+///
+/// O valor não tem ordem: só importa diferir do da encarnação anterior. Quem escolhe é a sessão,
+/// a partir de uma semente sorteada fora do núcleo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Epoch(pub u32);
+
+impl Epoch {
+    /// A época de um quadro montado fora de uma sessão, como nos testes.
+    pub const ZERO: Self = Self(0);
+
+    /// O número cru.
+    #[must_use]
+    pub const fn get(self) -> u32 {
+        self.0
+    }
+}
+
 /// Uma confirmação, e a qual canal ela se refere.
 ///
 /// O canal é explícito, e **não** é o canal do quadro que a carrega. A razão é direta: o
@@ -155,6 +183,11 @@ pub struct Frame {
     ///
     /// Refere-se ao canal que ela mesma nomeia, não ao canal deste quadro.
     pub ack: Option<ChannelAck>,
+    /// A encarnação da sessão de quem enviou.
+    ///
+    /// No fim, e não no começo: o primeiro byte continua sendo o canal
+    /// (`docs/03-protocolo.md` §4).
+    pub epoch: Epoch,
 }
 
 impl Frame {
@@ -165,6 +198,7 @@ impl Frame {
             message,
             seq,
             ack: None,
+            epoch: Epoch::ZERO,
         }
     }
 
@@ -172,6 +206,13 @@ impl Frame {
     #[must_use]
     pub fn with_ack(mut self, channel: ChannelId, ack: Ack) -> Self {
         self.ack = Some(ChannelAck::new(channel, ack));
+        self
+    }
+
+    /// O mesmo quadro, marcado com a encarnação de quem envia.
+    #[must_use]
+    pub fn in_epoch(mut self, epoch: Epoch) -> Self {
+        self.epoch = epoch;
         self
     }
 

@@ -6,6 +6,7 @@
 mod client;
 mod consultas;
 mod frames;
+mod incarnation;
 mod link;
 mod server;
 pub mod state;
@@ -25,6 +26,7 @@ use crate::reliability::{ReliableChannels, SendOutcome};
 use crate::sequences::Sequences;
 use crate::time::Timestamp;
 
+use incarnation::Incarnations;
 pub use state::{CarrierSet, Clock, LocalIdentity, PeerInfo};
 
 /// A sessão.
@@ -71,6 +73,9 @@ pub struct Session {
     /// Só têm efeito sobre portador de datagrama; sobre stream o portador já garante ordem e
     /// entrega, e as janelas ficam vazias.
     pub(super) reliability: ReliableChannels,
+
+    /// A encarnação desta sessão e a do par, para descartar quadros de sessões que acabaram.
+    pub(super) incarnations: Incarnations,
     pub(super) clock: Clock,
 
     /// A última ida e volta medida até o par.
@@ -105,6 +110,7 @@ impl Session {
             agent_ready: false,
             seqs: Sequences::new(),
             reliability: ReliableChannels::new(),
+            incarnations: Incarnations::new(config.incarnation_seed),
             clock: Clock::default(),
             pending_pointer: PointerDelta::ZERO,
             last_rtt: None,
@@ -219,7 +225,7 @@ impl Session {
         }
 
         let seq = self.seqs.next(channel);
-        let mut frame = Frame::new(message, seq);
+        let mut frame = Frame::new(message, seq).in_epoch(self.incarnations.local());
 
         // Pega uma confirmação para carregar de volta. Aproveitar um quadro que já vai sair é
         // de graça, e é o que evita mandar `AckOnly` na maioria dos casos.

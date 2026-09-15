@@ -28,6 +28,9 @@ tracing-appender.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 toml.workspace = true
+# A semente das épocas de sessão. O núcleo não sorteia nada; o serviço sorteia uma por sessão
+# criada, para uma sessão nova nunca ser confundida com a anterior pelo par (log 22).
+rand.workspace = true
 
 # O despachante do Gerenciador de Serviços (SCM). Só no Windows: é ele quem faz o serviço
 # responder ao "iniciar" do instalador, em vez de o `StartService` estourar o tempo — que é

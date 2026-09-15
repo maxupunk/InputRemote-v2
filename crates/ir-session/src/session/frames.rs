@@ -20,6 +20,13 @@ impl Session {
         frame: Frame,
         out: &mut CommandBatch,
     ) {
+        // Antes de tudo: de qual sessão é este quadro. Um quadro de uma encarnação que já acabou
+        // não prova nada — nem que o par está vivo, nem que o portador serve —, e deixá-lo passar
+        // foi o que ancorou sessões novas em numeração velha (`incarnation`).
+        if !self.admit(now, carrier, &frame, out) {
+            return;
+        }
+
         // Quadro chegando é prova de que o par está vivo, qualquer que seja o conteúdo.
         // Atualizar aqui, antes de qualquer despacho, é o que impede a sessão de cair por
         // tempo enquanto processa uma rajada.

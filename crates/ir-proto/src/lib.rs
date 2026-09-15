@@ -58,7 +58,7 @@ pub use carrier::{Carrier, Delivery};
 pub use channel::{ChannelId, Reliability, Saturation};
 pub use error::{ProtoError, Result};
 pub use frame::Frame;
-pub use frame::{Ack, ChannelAck, Sequence};
+pub use frame::{Ack, ChannelAck, Epoch, Sequence};
 pub use ids::{MachineId, MonitorId, SessionId};
 pub use input::InputState;
 pub use message::Message;

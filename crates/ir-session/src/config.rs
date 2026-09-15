@@ -149,6 +149,14 @@ pub struct SessionConfig {
     pub peer_edge: Edge,
     /// Os prazos.
     pub timings: Timings,
+    /// De onde nascem as épocas desta sessão ([`ir_proto::frame::Epoch`]).
+    ///
+    /// Cada aperto de mão começa uma encarnação nova, e cada quadro carrega a época dela, para
+    /// que o par descarte o que sobrou de uma sessão que já acabou. O núcleo não sorteia nada
+    /// ([ADR-0004](../../../docs/adr/0004-nucleo-sans-io.md)), então a semente vem de fora: o
+    /// serviço sorteia uma a cada sessão criada. Repetir a semente entre duas execuções do
+    /// serviço faria o par tomar a sessão nova pela antiga — o laço que ela existe para impedir.
+    pub incarnation_seed: u32,
 }
 
 impl SessionConfig {
@@ -159,6 +167,7 @@ impl SessionConfig {
             role: Role::Server,
             peer_edge,
             timings: Timings::DEFAULT,
+            incarnation_seed: 0,
         }
     }
 
@@ -172,6 +181,7 @@ impl SessionConfig {
             role: Role::Client,
             peer_edge,
             timings: Timings::DEFAULT,
+            incarnation_seed: 0,
         }
     }
 }

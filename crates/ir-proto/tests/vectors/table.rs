@@ -8,7 +8,7 @@
 #![allow(unreachable_pub)]
 
 use ir_proto::channel::ChannelId;
-use ir_proto::frame::{Ack, Frame, Sequence};
+use ir_proto::frame::{Ack, Epoch, Frame, Sequence};
 use ir_proto::ids::{MachineId, MonitorId};
 use ir_proto::input::{
     Button, HidUsage, InputState, Modifiers, PointerDelta, PointerPosition, WheelDelta,
@@ -106,7 +106,7 @@ fn control_vectors() -> Vec<Vector> {
         v(
             "hello",
             control(Control::Hello(greeting()), 1),
-            "0000010102030405060708090a0b0c0d0e0f100762616e636164610101010102000100",
+            "0000010102030405060708090a0b0c0d0e0f100762616e63616461010101010200010000",
         ),
         v(
             "screens",
@@ -114,7 +114,7 @@ fn control_vectors() -> Vec<Vector> {
                 Control::Screens(ScreenLayout::single(1920, 1080).expect("arranjo válido")),
                 2,
             ),
-            "000201000000800fb808e807010200",
+            "000201000000800fb808e80701020000",
         ),
         v(
             "edge_config",
@@ -124,7 +124,7 @@ fn control_vectors() -> Vec<Vector> {
                 },
                 3,
             ),
-            "0003010300",
+            "000301030000",
         ),
     ]
 }
@@ -142,7 +142,7 @@ fn session_vectors() -> Vec<Vector> {
                 },
                 4,
             ),
-            "00040001b424cdd7020204e00101010400",
+            "00040001b424cdd7020204e0010101040000",
         ),
         v(
             "state_snapshot",
@@ -153,7 +153,7 @@ fn session_vectors() -> Vec<Vector> {
                 },
                 5,
             ),
-            "00060204e001010101b424cdd7020500",
+            "00060204e001010101b424cdd702050000",
         ),
         v(
             "ping",
@@ -163,7 +163,7 @@ fn session_vectors() -> Vec<Vector> {
                 },
                 6,
             ),
-            "0007f7ccd5a2b4c6c8080600",
+            "0007f7ccd5a2b4c6c808060000",
         ),
         v(
             "ack_only",
@@ -174,7 +174,13 @@ fn session_vectors() -> Vec<Vector> {
                     bits: 0x0000_00ff,
                 },
             ),
-            "000907010163ff01",
+            "000907010163ff0100",
+        ),
+        v(
+            "epoch",
+            // A época vai no fim do quadro, em varint: 0x1234_5678 ocupa 5 bytes (log 22).
+            control(Control::Ping { stamp_micros: 1 }, 17).in_epoch(Epoch(0x1234_5678)),
+            "0007011100f8acd19101",
         ),
     ]
 }
@@ -191,7 +197,7 @@ fn input_vectors() -> Vec<Vector> {
                 },
                 8,
             ),
-            "010004210800",
+            "01000421080000",
         ),
         v(
             "key_up",
@@ -202,7 +208,7 @@ fn input_vectors() -> Vec<Vector> {
                 },
                 9,
             ),
-            "0101e701210900",
+            "0101e70121090000",
         ),
         v(
             "button_down",
@@ -213,7 +219,7 @@ fn input_vectors() -> Vec<Vector> {
                 },
                 10,
             ),
-            "010204210a00",
+            "010204210a0000",
         ),
         v(
             "wheel",
@@ -224,12 +230,12 @@ fn input_vectors() -> Vec<Vector> {
                 },
                 11,
             ),
-            "010400ef01210b00",
+            "010400ef01210b0000",
         ),
         v(
             "release_all",
             input(InputMessage::ReleaseAll, 12),
-            "01050c00",
+            "01050c0000",
         ),
     ]
 }
@@ -246,7 +252,7 @@ fn pointer_vectors() -> Vec<Vector> {
                 },
                 13,
             ),
-            "02000dd804210d00",
+            "02000dd804210d0000",
         ),
         v(
             "pointer_position",
@@ -257,7 +263,7 @@ fn pointer_vectors() -> Vec<Vector> {
                 },
                 14,
             ),
-            "020101b424cdd702210e00",
+            "020101b424cdd702210e0000",
         ),
     ]
 }
@@ -274,12 +280,12 @@ fn feedback_vectors() -> Vec<Vector> {
                 },
                 15,
             ),
-            "03000301b424cdd7020f00",
+            "03000301b424cdd7020f0000",
         ),
         v(
             "emergency",
             feedback(Feedback::EmergencyRelease, 16),
-            "03011000",
+            "0301100000",
         ),
     ]
 }

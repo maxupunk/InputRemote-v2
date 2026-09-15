@@ -57,10 +57,13 @@ const fn edge_para_texto(edge: Edge) -> &'static str {
 /// O mesmo ponto para a subida do serviço e para a sessão recriada numa troca: duas maneiras de
 /// montar a sessão acabariam montando duas sessões diferentes.
 pub(crate) fn nova_sessao(papel: Role, edge: Edge, identidade: LocalIdentity) -> Session {
-    let config = match papel {
+    let mut config = match papel {
         Role::Server => SessionConfig::server(edge),
         Role::Client => SessionConfig::client(edge),
     };
+    // Uma semente nova a cada sessão criada — também na recriada por troca de papel ou de borda.
+    // Repetir a anterior faria o par tomar a sessão nova pela antiga (log 22).
+    config.incarnation_seed = rand::random();
     Session::new(config, identidade)
 }
 

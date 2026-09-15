@@ -91,6 +91,11 @@ pub enum LinkDown {
     Suspending,
     /// O usuário mandou parar.
     UserStopped,
+    /// O par começou uma sessão nova sem que a anterior tivesse terminado deste lado.
+    ///
+    /// É o caso do adeus que se perdeu no caminho. Não se avisa o par de nada: ele já está em
+    /// outra sessão, e um adeus desta seria descartado por ser de uma encarnação que acabou.
+    PeerRestarted,
 }
 
 impl LinkDown {
@@ -99,7 +104,7 @@ impl LinkDown {
     pub const fn should_retry(self) -> bool {
         match self {
             Self::PeerClosed(reason) => reason.should_retry(),
-            Self::Timeout | Self::TransportFailed | Self::Suspending => true,
+            Self::Timeout | Self::TransportFailed | Self::Suspending | Self::PeerRestarted => true,
             Self::UserStopped => false,
         }
     }
@@ -113,6 +118,8 @@ impl LinkDown {
             Self::TransportFailed => DisconnectReason::ProtocolError,
             Self::Suspending => DisconnectReason::Suspending,
             Self::UserStopped => DisconnectReason::UserRequested,
+            // Nunca vai ao par; o mais próximo do que aconteceu é uma reconfiguração.
+            Self::PeerRestarted => DisconnectReason::Reconfiguring,
         }
     }
 }
@@ -120,6 +127,12 @@ impl LinkDown {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_peer_that_restarted_is_worth_rejoining() {
+        // O par já está numa sessão nova esperando por nós: desistir seria deixá-lo sozinho.
+        assert!(LinkDown::PeerRestarted.should_retry());
+    }
 
     #[test]
     fn only_a_user_stop_refuses_to_retry() {

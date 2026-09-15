@@ -161,6 +161,21 @@ impl ReliableChannels {
         }
     }
 
+    /// Esvazia só o lado receptor.
+    ///
+    /// O par começou outra encarnação, e o que ele mandou antes não conta mais. O lado emissor
+    /// fica: ele carrega o que **esta** ponta já mandou na encarnação corrente.
+    pub fn reset_receivers(&mut self) {
+        for pair in [
+            &mut self.control,
+            &mut self.input,
+            &mut self.feedback,
+            &mut self.clipboard,
+        ] {
+            pair.receiver = Receiver::new();
+        }
+    }
+
     /// Esvazia tudo. Chamado a cada handshake novo.
     pub fn reset(&mut self) {
         *self = Self::new();

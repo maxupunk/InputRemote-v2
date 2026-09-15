@@ -90,6 +90,10 @@ impl Session {
         // primeiras mensagens da nova.
         self.seqs.reset();
         self.reliability.reset();
+        // Encarnação nova: o par descarta o que ainda estiver voando da anterior, e daqui em
+        // diante só um aperto de mão dele conta.
+        self.incarnations.start_local();
+        self.incarnations.forget_peer();
         self.clock = Clock::started_at(now);
 
         if !self.move_to(Phase::Handshaking, out) {
@@ -189,7 +193,7 @@ impl Session {
         // janela de retransmissão: não haveria quem confirmasse, e mandar por `send` poderia
         // reentrar aqui pela janela cheia.
         if self.phase.is_established()
-            && !matches!(reason, LinkDown::PeerClosed(_))
+            && !matches!(reason, LinkDown::PeerClosed(_) | LinkDown::PeerRestarted)
             && let Some(carrier) = self.carrier
         {
             let farewell = Frame::new(
@@ -197,7 +201,8 @@ impl Session {
                     reason: reason.as_disconnect_reason(),
                 }),
                 Sequence::ZERO,
-            );
+            )
+            .in_epoch(self.incarnations.local());
             out.push(Command::Send {
                 carrier,
                 frame: farewell,
@@ -222,6 +227,7 @@ impl Session {
         self.pending_pointer = ir_proto::input::PointerDelta::ZERO;
         self.seqs.reset();
         self.reliability.reset();
+        self.incarnations.forget_peer();
 
         for timer in [TimerId::Heartbeat, TimerId::Snapshot, TimerId::PointerFlush] {
             out.push(Command::ClearTimer(timer));
@@ -343,7 +349,8 @@ impl Session {
             // uma criaria um buraco que nunca seria preenchido, e tudo depois dela ficaria
             // esperando para sempre.
             let frame = Frame::new(Message::Control(Control::AckOnly), Sequence::ZERO)
-                .with_ack(channel, ack);
+                .with_ack(channel, ack)
+                .in_epoch(self.incarnations.local());
             out.push(Command::Send { carrier, frame });
             sent_any = true;
         }

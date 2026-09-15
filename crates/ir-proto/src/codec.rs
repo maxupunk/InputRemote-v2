@@ -273,7 +273,9 @@ mod tests {
                     cumulative: Sequence(u32::MAX),
                     bits: u32::MAX,
                 },
-            );
+            )
+            // A época no pior caso: numa sessão de verdade ela é sorteada, e ocupa até 5 bytes.
+            .in_epoch(crate::frame::Epoch(u32::MAX));
             let bytes = encode(&frame, Carrier::Udp).unwrap();
             assert!(
                 bytes.len() <= limits::MAX_INPUT_MESSAGE,

@@ -120,6 +120,28 @@ Sem confirmação e sem retransmissão. Carrega `seq: u32`; o receptor descarta 
 mensagem com sequência anterior à última aceita. Perder amostras de movimento é
 invisível; atrasá-las não é.
 
+### 4.3. Encarnações de sessão
+
+Cada aperto de mão começa uma **encarnação** nova da sessão, e todo quadro carrega, **no fim**,
+a `epoch: u32` da encarnação de quem o enviou. O primeiro byte continua sendo o canal.
+
+A época não tem ordem: só precisa diferir da encarnação anterior. Cada ponta a deriva de uma
+semente sorteada pelo serviço a cada sessão criada; o núcleo da sessão não sorteia nada.
+
+Quem recebe decide **antes** de qualquer outra coisa — prova de vida, confirmação, ordenação:
+
+| O quadro é | E a época é | Então |
+|---|---|---|
+| qualquer um | a da sessão corrente do par | segue o caminho normal |
+| `Hello` ou `HelloAck` | nova | o par começou outra sessão; se havia uma de pé, ela é encerrada soltando tudo, e esta ponta recomeça junto |
+| `Hello` ou `HelloAck` | uma das 4 últimas aposentadas | eco atrasado de uma sessão que acabou; descartado |
+| qualquer outro | diferente da corrente | resto de outra sessão; descartado |
+
+Sem isto, o lado que acabara de zerar se ancorava num quadro velho do par, e o `Hello` novo,
+de número 1, parecia mais velho que a âncora e era descartado calado: os dois lados
+reiniciavam a sessão a cada ~200 ms, para sempre. Pior, um `KeyDown` velho guardado na fila de
+reordenação podia ser entregue na sessão nova como tecla digitada agora.
+
 ## 5. Modelo de teclado
 
 A chave física viaja como **HID Usage ID (Usage Page 0x07)**. Não viaja caractere, não
