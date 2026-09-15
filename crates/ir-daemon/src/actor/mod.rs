@@ -30,6 +30,7 @@ mod partes;
 mod pedidos;
 
 pub(crate) use papel::{nova_sessao, papel_na_subida};
+use pareamento::Pareamento;
 pub(crate) use partes::{Entradas, Parts};
 
 /// A entrada de captura, já convertida para o canal do ator.
@@ -48,11 +49,11 @@ pub(crate) struct Daemon {
     data_dir: std::path::PathBuf,
     config: Config,
     pending_peer: Option<ir_crypto::PublicKey>,
-    /// Desde quando há um código de pareamento na tela esperando a comparação.
+    /// O pareamento em andamento, do código na tela até o fim ([`pareamento`]).
     ///
-    /// Um instante, e não um `bool`: o código vale dois minutos, e sem saber quando ele apareceu
-    /// não há como fazer o prazo valer ([`pareamento`]).
-    pareamento_desde: Option<Instant>,
+    /// Vai além do clique em "São iguais": até o outro lado responder, a reconexão não disca por
+    /// cima e o prazo continua valendo (log 25).
+    pareamento: Option<Pareamento>,
     /// Se a próxima posição absoluta deve **semear** o ponteiro (sem atravessar) em vez de virar
     /// movimento. Ligado ao estabelecer e ao retomar o controle, para o cursor real e o modelo da
     /// sessão começarem no mesmo ponto.
@@ -124,8 +125,8 @@ impl Daemon {
 
     /// Retoma a conexão conforme o que está caído.
     fn reconnect_if_needed(&mut self) {
-        if self.aguardando_confirmacao() {
-            return; // no meio de um pareamento; não atrapalhar
+        if self.pareando() {
+            return; // no meio de um pareamento, até ele terminar; discar agora o desmontaria
         }
         if self.linked {
             // O enlace seguro está de pé, mas a sessão caiu (silêncio do par). Reinicia a sessão
@@ -133,9 +134,9 @@ impl Daemon {
             if self.session.phase() == Phase::Offline {
                 self.drive(Input::CarrierUp(Carrier::Udp));
             }
-        } else if self.peer_addr.is_some() {
-            // Sem enlace e com endereço: somos o iniciador, e tentamos de novo. Sem endereço não
-            // há o que tentar — e dizer isso a cada 3 s só enchia o diário do sistema.
+        } else if self.peer_addr.is_some() && self.config.first_peer_key().is_some() {
+            // Sem enlace, com endereço e com par gravado: somos o iniciador, e tentamos de novo.
+            // Sem par gravado não se disca sozinho — parear é pedido do usuário (log 25).
             self.connect_if_possible();
         }
     }
@@ -215,7 +216,10 @@ impl Daemon {
 
     fn on_pairing_code(&mut self, code: [u8; 6], peer_static: ir_crypto::PublicKey) {
         self.pending_peer = Some(peer_static);
-        self.pareamento_desde = Some(Instant::now());
+        self.pareamento = Some(Pareamento {
+            desde: Instant::now(),
+            conferido: false,
+        });
         let digits: String = code.iter().map(|d| char::from(b'0' + d)).collect();
         info!("código de pareamento: {digits}");
         println!("\n=== CÓDIGO DE PAREAMENTO: {digits} ===");
@@ -234,26 +238,37 @@ impl Daemon {
             return;
         }
         let yes = matches!(trimmed.to_lowercase().as_str(), "s" | "sim" | "y" | "yes");
-        self.confirmar(yes);
+        let _ = self.confirmar(yes);
     }
 
     /// A resposta à comparação do código, venha do terminal ou da interface.
-    fn confirmar(&mut self, yes: bool) {
+    ///
+    /// Devolve se havia código esperando a resposta. Um clique num código que já não vale precisa
+    /// virar explicação na janela, e não um "feito" que não muda nada (log 25).
+    fn confirmar(&mut self, yes: bool) -> bool {
         if !self.aguardando_confirmacao() {
-            return;
+            return false;
         }
-        self.pareamento_desde = None;
         info!("confirmação recebida: {}", if yes { "sim" } else { "não" });
         let _ = self.net.send(NetCommand::ConfirmPairing(yes));
-        if !yes {
+        if yes {
+            // Deste lado confere, mas o pareamento só termina quando o outro lado também
+            // confirmar. Até lá ele segue em andamento: com prazo, sem rediscagem por cima, e com
+            // a janela avisada se não chegar ao fim.
+            if let Some(pareamento) = self.pareamento.as_mut() {
+                pareamento.conferido = true;
+            }
+        } else {
             // Códigos diferentes ou recusa: não há par, e a interface precisa saber que o
             // pareamento terminou sem sucesso para sair da tela de comparação.
             self.encerrar_pareamento_sem_sucesso();
         }
+        true
     }
 
     fn on_established(&mut self, peer_static: ir_crypto::PublicKey, peer: SocketAddr) {
         if self.pending_peer.take().is_some() {
+            self.pareamento = None;
             self.save_peer(peer_static, peer);
             // O par foi gravado: a interface fecha a tela de comparação com sucesso.
             let _ = self
@@ -342,17 +357,24 @@ impl Daemon {
         self.drive(Input::LocalScreens(arranjo));
     }
 
-    /// Inicia a conexão como iniciador, se houver par e endereço.
+    /// Reconecta ao par gravado, como iniciador, se houver par e endereço.
+    ///
+    /// Nunca começa um pareamento. Discar para parear sem o usuário pedir punha um código novo na
+    /// tela do outro computador a cada tentativa, e o que ele estava comparando deixava de valer
+    /// (log 25). Parear começa pela janela ([`Pedido::IniciarPareamento`](ir_ipc::Pedido)).
     pub(crate) fn connect_if_possible(&self) {
+        let Some(chave) = self.config.first_peer_key() else {
+            info!("nenhum par gravado; o pareamento começa pela janela");
+            return;
+        };
         let Some(peer) = self.peer_addr else {
             info!("sem endereço de par; aguardando conexão de entrada");
             return;
         };
-        let mode = self
-            .config
-            .first_peer_key()
-            .map_or(ConnectMode::Pair, ConnectMode::Reconnect);
         info!(%peer, "conectando ao par");
-        let _ = self.net.send(NetCommand::Connect { peer, mode });
+        let _ = self.net.send(NetCommand::Connect {
+            peer,
+            mode: ConnectMode::Reconnect(chave),
+        });
     }
 }

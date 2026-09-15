@@ -309,8 +309,14 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       a bancada mostrou que não funciona de ponta a ponta ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
 - [ ] O vencimento do código de pareamento é registrado como vencimento, e não com
       `reason="códigos diferentes"`, que aponta para alguém no meio ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
-- [ ] Investigar `o handshake seguro falhou` registrado no cliente durante uma rediscagem de
-      pareamento ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
+- [x] Investigar `o handshake seguro falhou` registrado no cliente durante uma rediscagem de
+      pareamento ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md)) — era o próprio serviço
+      discando para parear a cada 3 s, por cima do handshake em andamento
+      ([log 25](docs/logs/25-o-pareamento-que-se-desfazia-depois-do-clique.md))
+- [x] Parear só começa pela janela; o pareamento dura do código na tela até o fim, sem rediscagem
+      por cima e com a janela avisada se não terminar; esquecer o par encerra sessão e enlace. Na
+      bancada, "São iguais" chegava ao serviço e o handshake se desfazia 1–3 s depois
+      ([log 25](docs/logs/25-o-pareamento-que-se-desfazia-depois-do-clique.md))
 - [ ] O handshake de pareamento não é abandonado pela rede antes do prazo do pareamento — hoje cai
       em ~105–110 s, contra os 120 s do ator e os "2 minutos" da tela ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
 - [ ] `[H]` A sessão firma e se mantém sobre Wi-Fi com economia de energia — na bancada ela caía em

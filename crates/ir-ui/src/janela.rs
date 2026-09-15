@@ -125,12 +125,17 @@ impl Contexto {
             Aviso::EstadoMudou(estado) => self.aplicar(&estado),
             Aviso::CandidatosEncontrados { candidatos } => self.mostrar_candidatos(candidatos),
             Aviso::CodigoDePareamento { digitos } => self.mostrar_codigo(digitos),
-            Aviso::PareamentoConcluido { sucesso } => {
-                self.etapa(if sucesso {
-                    EtapaDoPareamento::Concluido
-                } else {
-                    EtapaDoPareamento::Falhou
-                });
+            Aviso::PareamentoConcluido { sucesso: true } => {
+                self.etapa(EtapaDoPareamento::Concluido);
+                self.sincronizar();
+            }
+            Aviso::PareamentoConcluido { sucesso: false } => {
+                // Uma recusa que a própria janela pediu já está na tela com o motivo certo, e o
+                // aviso que chega atrás dela não pode trocá-lo por um genérico. Fora isso, a
+                // falha precisa de texto: um cartão de erro vazio é o mesmo que nenhuma reação.
+                if self.etapa_atual() != Some(EtapaDoPareamento::Falhou) {
+                    self.falha_no_pareamento(Falha::PareamentoInterrompido);
+                }
                 self.sincronizar();
             }
             // Reconciliação de teclas é ruído para o usuário: ela aparece no diagnóstico, onde
@@ -171,6 +176,13 @@ impl Contexto {
 
     fn etapa(&self, etapa: EtapaDoPareamento) {
         self.com_janela(|janela| janela.global::<Dados>().set_etapa(etapa));
+    }
+
+    /// A etapa que a tela de pareamento mostra agora.
+    fn etapa_atual(&self) -> Option<EtapaDoPareamento> {
+        self.janela
+            .upgrade()
+            .map(|janela| janela.global::<Dados>().get_etapa())
     }
 
     /// O par que os pedidos precisam nomear, ou um recado dizendo que não há par.
@@ -300,9 +312,16 @@ fn ligar_pareamento(janela: &Janela, contexto: &Rc<Contexto>) {
     acoes.on_confirmar_pareamento(move |conferiu| {
         // A recusa vai para a tela de pareamento, e não para o recado da janela: o usuário está
         // dentro de um fluxo, e tirá-lo dali para mostrar um aviso avulso perderia o contexto.
-        match alvo.servico.pedir(Pedido::ConfirmarPareamento { conferiu }) {
-            Resposta::Falha(falha) => alvo.falha_no_pareamento(falha),
-            _ => alvo.sincronizar(),
+        if let Resposta::Falha(falha) = alvo.servico.pedir(Pedido::ConfirmarPareamento { conferiu })
+        {
+            alvo.falha_no_pareamento(falha);
+        } else {
+            // Deste lado confere; falta o outro computador. Ficar na comparação depois do clique
+            // fazia parecer que o botão não tinha funcionado (log 25).
+            if conferiu {
+                alvo.etapa(EtapaDoPareamento::Esperando);
+            }
+            alvo.sincronizar();
         }
     });
 

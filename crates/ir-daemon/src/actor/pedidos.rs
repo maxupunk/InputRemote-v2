@@ -16,7 +16,7 @@ use ir_net::{ConnectMode, NetCommand};
 use ir_proto::carrier::Carrier;
 use ir_proto::screens::Edge;
 use ir_session::{Phase, Role};
-use tracing::{error, info};
+use tracing::error;
 
 use super::Daemon;
 use crate::config::{Config, decode_key};
@@ -41,8 +41,14 @@ impl Daemon {
             }
             Pedido::IniciarPareamento { candidato } => self.iniciar_pareamento(&candidato),
             Pedido::ConfirmarPareamento { conferiu } => {
-                self.confirmar(conferiu);
-                Resposta::Feito
+                if !self.confirmar(conferiu) {
+                    // O código já não vale: venceu, ou o enlace caiu. Dizer isso, e não "feito".
+                    Resposta::Falha(Falha::PareamentoInterrompido)
+                } else if conferiu {
+                    Resposta::Feito
+                } else {
+                    Resposta::Falha(Falha::CodigosDiferentes)
+                }
             }
             Pedido::Encerrar => {
                 let _ = self.net.send(NetCommand::Disconnect);
@@ -91,17 +97,6 @@ impl Daemon {
             mode: ConnectMode::Pair,
         });
         Resposta::Feito
-    }
-
-    /// Esquece o par gravado.
-    fn esquecer_par(&mut self) -> Resposta {
-        let mut nova = self.config.clone();
-        nova.peers.clear();
-        let resposta = self.persistir(nova);
-        if resposta == Resposta::Feito {
-            info!("par esquecido pela interface");
-        }
-        resposta
     }
 
     /// Grava a configuração nova e **só então** a adota.

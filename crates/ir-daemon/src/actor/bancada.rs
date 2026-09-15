@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir_ipc::{ComandoDoAgente, Maquina, Nome};
+use ir_net::NetCommand;
 use ir_proto::ids::MachineId;
 use ir_proto::peer::{Capabilities, MachineName};
 use ir_proto::screens::Edge;
@@ -29,6 +30,8 @@ pub(super) struct Bancada {
     pub(super) dir: PathBuf,
     /// O que o serviço mandou para o agente.
     pub(super) agente: broadcast::Receiver<ComandoDoAgente>,
+    /// O que o serviço mandou para a rede.
+    pub(super) rede: mpsc::UnboundedReceiver<NetCommand>,
 }
 
 impl Bancada {
@@ -39,7 +42,7 @@ impl Bancada {
             role: texto_do_papel(papel).to_owned(),
             ..Config::default()
         };
-        let (net, _) = mpsc::unbounded_channel();
+        let (net, rede) = mpsc::unbounded_channel();
         let (avisos, _) = broadcast::channel(16);
         let (agente, receptor_do_agente) = broadcast::channel(16);
         let daemon = Daemon::new(Parts {
@@ -62,6 +65,7 @@ impl Bancada {
             daemon,
             dir,
             agente: receptor_do_agente,
+            rede,
         }
     }
 }

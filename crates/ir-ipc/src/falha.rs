@@ -57,6 +57,12 @@ pub enum Falha {
     /// deixou a bancada com os dois lados dizendo "esquerda" (log 24).
     #[error("a borda é escolhida no computador que tem o teclado e o mouse")]
     BordaDoServidor,
+    /// O pareamento não chegou ao fim: o outro computador não respondeu, ou o código já não vale.
+    ///
+    /// Sem esta, um clique em "São iguais" num pareamento que já tinha caído não mudava nada na
+    /// tela, e parecia que o botão não funcionava (log 25).
+    #[error("o pareamento não chegou ao fim")]
+    PareamentoInterrompido,
 }
 
 impl Falha {
@@ -93,6 +99,10 @@ impl Falha {
                 "Troque a borda no computador que tem o teclado e o mouse. Este acompanha sozinho, \
                  sem reconectar."
             }
+            Self::PareamentoInterrompido => {
+                "Comece o pareamento de novo por um dos computadores e compare o código novo nas \
+                 duas telas."
+            }
         }
     }
 }
@@ -114,6 +124,7 @@ mod tests {
             Falha::ServicoIndisponivel,
             Falha::PapelIndisponivel,
             Falha::BordaDoServidor,
+            Falha::PareamentoInterrompido,
         ];
         for falha in falhas {
             assert!(!falha.to_string().is_empty(), "{falha:?} sem descrição");
@@ -143,6 +154,7 @@ mod tests {
             (Falha::ServicoIndisponivel, 7),
             (Falha::PapelIndisponivel, 8),
             (Falha::BordaDoServidor, 9),
+            (Falha::PareamentoInterrompido, 10),
         ];
         for (falha, indice) in esperado {
             let bytes = postcard::to_allocvec(&falha).expect("serializa");

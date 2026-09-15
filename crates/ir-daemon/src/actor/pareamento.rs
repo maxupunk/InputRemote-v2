@@ -10,9 +10,10 @@
 
 use std::time::{Duration, Instant};
 
-use ir_ipc::Aviso;
+use ir_ipc::{Aviso, Resposta};
 use ir_net::NetCommand;
-use tracing::warn;
+use ir_session::{LinkDown, Phase};
+use tracing::{info, warn};
 
 use super::Daemon;
 
@@ -21,6 +22,18 @@ use super::Daemon;
 /// O mesmo número que a interface mostra ao usuário em [`ir_ipc::Falha::PareamentoExpirou`]:
 /// dois números diferentes para a mesma coisa seriam uma promessa quebrada.
 const PRAZO_DO_PAREAMENTO: Duration = Duration::from_secs(120);
+
+/// Um pareamento em andamento: do código na tela até o fim.
+///
+/// Termina com o par gravado, com o enlace caindo, com a recusa ou no prazo — e não no clique em
+/// "São iguais", que só diz que deste lado confere (log 25).
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Pareamento {
+    /// Quando o código apareceu. O prazo conta daqui.
+    pub(super) desde: Instant,
+    /// Se o usuário já disse que o código confere, e só falta o outro computador.
+    pub(super) conferido: bool,
+}
 
 /// Se um pareamento começado em `desde` já passou do prazo em `agora`.
 ///
@@ -31,29 +44,53 @@ fn expirou(desde: Instant, agora: Instant) -> bool {
 }
 
 impl Daemon {
-    /// Se há um código na tela esperando a comparação.
+    /// Se há um código na tela esperando a comparação do usuário.
     pub(super) const fn aguardando_confirmacao(&self) -> bool {
-        self.pareamento_desde.is_some()
+        matches!(
+            self.pareamento,
+            Some(Pareamento {
+                conferido: false,
+                ..
+            })
+        )
     }
 
-    /// Desiste do pareamento se o código passou do prazo.
+    /// Se há um pareamento em andamento: do código na tela até o fim, com ou sem a resposta do
+    /// usuário.
+    ///
+    /// Não é o mesmo que [`Self::aguardando_confirmacao`]. Depois de "São iguais" o pareamento
+    /// ainda espera o outro computador, e tratá-lo como terminado deixava a reconexão discar por
+    /// cima e a janela sem saber que não deu (log 25).
+    pub(super) const fn pareando(&self) -> bool {
+        self.pareamento.is_some()
+    }
+
+    /// Desiste do pareamento se ele passou do prazo.
     pub(super) fn vencer_pareamento_se_preciso(&mut self) {
-        let Some(desde) = self.pareamento_desde else {
+        let Some(pareamento) = self.pareamento else {
             return;
         };
-        if !expirou(desde, Instant::now()) {
+        if !expirou(pareamento.desde, Instant::now()) {
             return;
         }
-        warn!("o código de pareamento expirou sem confirmação");
-        // Recusar é o que desmonta o handshake do lado da rede e avisa o outro computador, para
-        // ele também sair da tela de comparação em vez de esperar o próprio prazo vencer.
-        let _ = self.net.send(NetCommand::ConfirmPairing(false));
+        if pareamento.conferido {
+            // O usuário já disse que confere, e é o outro lado que não respondeu. Recusar agora
+            // mandaria "códigos diferentes" — o sinal de alguém no meio — por um motivo que não é
+            // esse. Desfazer o enlace basta.
+            warn!("o pareamento conferido não terminou no prazo");
+            let _ = self.net.send(NetCommand::Disconnect);
+        } else {
+            warn!("o código de pareamento expirou sem confirmação");
+            // Recusar é o que desmonta o handshake do lado da rede e avisa o outro computador,
+            // para ele também sair da tela de comparação em vez de esperar o próprio prazo vencer.
+            let _ = self.net.send(NetCommand::ConfirmPairing(false));
+        }
         self.encerrar_pareamento_sem_sucesso();
     }
 
-    /// O enlace caiu com um código na tela: não há mais o que confirmar.
+    /// O enlace caiu no meio do pareamento: não há mais o que confirmar, nem o que esperar.
     pub(super) fn abandonar_pareamento_pendente(&mut self) {
-        if self.aguardando_confirmacao() {
+        if self.pareando() {
             warn!("o enlace caiu no meio do pareamento");
             self.encerrar_pareamento_sem_sucesso();
         }
@@ -61,17 +98,58 @@ impl Daemon {
 
     /// Limpa o pareamento pendente e tira a interface da tela de comparação.
     pub(super) fn encerrar_pareamento_sem_sucesso(&mut self) {
-        self.pareamento_desde = None;
+        self.pareamento = None;
         self.pending_peer = None;
         let _ = self
             .avisos
             .send(Aviso::PareamentoConcluido { sucesso: false });
     }
+
+    /// Esquece o par gravado, e desliga dele na hora.
+    ///
+    /// Só apagar a chave deixava o enlace e a sessão de pé: a janela seguia em "Conectando…" e o
+    /// serviço continuava tentando (log 25). O endereço fica, porque é o candidato que "Procurar"
+    /// oferece para parear de novo — e, sem par gravado, ninguém disca para ele sozinho.
+    pub(super) fn esquecer_par(&mut self) -> Resposta {
+        let mut nova = self.config.clone();
+        nova.peers.clear();
+        let resposta = self.persistir(nova);
+        if resposta != Resposta::Feito {
+            return resposta;
+        }
+        info!("par esquecido pela interface; conexão encerrada");
+        if self.pareando() {
+            self.encerrar_pareamento_sem_sucesso();
+        }
+        if self.session.phase() != Phase::Offline {
+            // Primeiro soltar tudo e avisar o par, pelo enlace que ainda existe; depois derrubá-lo.
+            let agora = self.now();
+            self.session
+                .stop(agora, LinkDown::UserStopped, &mut self.out);
+            self.apply_commands();
+        }
+        self.linked = false;
+        let _ = self.net.send(NetCommand::Disconnect);
+        self.last_phase = self.session.phase();
+        let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
+        resposta
+    }
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
+    use std::net::SocketAddr;
+
+    use ir_crypto::PublicKey;
+    use ir_net::{ConnectMode, NetEvent};
+    use ir_proto::carrier::Carrier;
+    use ir_session::{Input, Role};
+    use tokio::sync::mpsc::UnboundedReceiver;
+
     use super::*;
+    use crate::actor::bancada::Bancada;
+    use crate::config::{PinnedPeer, encode_key};
 
     #[test]
     fn um_codigo_recem_mostrado_ainda_vale() {
@@ -106,5 +184,194 @@ mod tests {
             "a interface diz `{promessa}`, e o prazo aqui é {PRAZO_DO_PAREAMENTO:?}"
         );
         assert_eq!(PRAZO_DO_PAREAMENTO, Duration::from_secs(120));
+    }
+
+    fn chave() -> PublicKey {
+        PublicKey([9; 32])
+    }
+
+    fn endereco() -> SocketAddr {
+        "10.0.0.135:52526".parse().expect("endereço válido")
+    }
+
+    /// Um serviço que já conhece o endereço do outro computador, sem par gravado.
+    fn com_endereco() -> Bancada {
+        let mut bancada = Bancada::nova(Role::Server);
+        bancada.daemon.peer_addr = Some(endereco());
+        bancada
+    }
+
+    fn gravar_par(bancada: &mut Bancada) {
+        bancada.daemon.config.peers = vec![PinnedPeer {
+            pubkey: encode_key(&chave()),
+            addr: None,
+        }];
+    }
+
+    /// O que o serviço mandou para a rede desde a última consulta.
+    fn enviados(rede: &mut UnboundedReceiver<NetCommand>) -> Vec<NetCommand> {
+        let mut comandos = Vec::new();
+        while let Ok(comando) = rede.try_recv() {
+            comandos.push(comando);
+        }
+        comandos
+    }
+
+    fn discou(comandos: &[NetCommand]) -> bool {
+        comandos
+            .iter()
+            .any(|comando| matches!(comando, NetCommand::Connect { .. }))
+    }
+
+    #[test]
+    fn sem_par_gravado_o_servico_nao_disca_sozinho() {
+        // Discar para parear a cada 3 s punha um código novo na tela do outro computador a cada
+        // tentativa, e o código que o usuário estava comparando deixava de valer (log 25).
+        let mut bancada = com_endereco();
+        bancada.daemon.connect_if_possible();
+        bancada.daemon.reconnect_if_needed();
+        assert!(
+            !discou(&enviados(&mut bancada.rede)),
+            "parear só quando o usuário pede"
+        );
+    }
+
+    #[test]
+    fn com_par_gravado_o_servico_tenta_reconectar() {
+        // Proteção: o que já funcionava continua — um par gravado é procurado sozinho.
+        let mut bancada = com_endereco();
+        gravar_par(&mut bancada);
+        bancada.daemon.reconnect_if_needed();
+        let comandos = enviados(&mut bancada.rede);
+        assert!(
+            comandos.iter().any(|comando| matches!(
+                comando,
+                NetCommand::Connect {
+                    mode: ConnectMode::Reconnect(_),
+                    ..
+                }
+            )),
+            "{comandos:?}"
+        );
+    }
+
+    #[test]
+    fn depois_de_conferir_o_codigo_o_servico_nao_disca_por_cima() {
+        // O defeito do notebook: "São iguais" chegava ao serviço, e em até 3 s a reconexão
+        // discava de novo e desmontava o handshake que esperava a resposta do outro lado.
+        let mut bancada = com_endereco();
+        bancada.daemon.on_pairing_code([5, 5, 5, 0, 7, 5], chave());
+        bancada.daemon.confirmar(true);
+        bancada.daemon.reconnect_if_needed();
+
+        let comandos = enviados(&mut bancada.rede);
+        assert!(
+            comandos
+                .iter()
+                .any(|comando| matches!(comando, NetCommand::ConfirmPairing(true)))
+        );
+        assert!(
+            !discou(&comandos),
+            "discar agora desmontaria o pareamento em andamento: {comandos:?}"
+        );
+    }
+
+    #[test]
+    fn se_o_enlace_cai_depois_de_conferir_a_janela_sai_da_espera() {
+        // Sem este aviso, a janela ficava parada na comparação, e o clique parecia não fazer nada.
+        let mut bancada = com_endereco();
+        let mut avisos = bancada.daemon.avisos.subscribe();
+        bancada.daemon.on_pairing_code([3, 3, 4, 5, 8, 9], chave());
+        bancada.daemon.confirmar(true);
+
+        bancada
+            .daemon
+            .on_net(NetEvent::LinkDown("handshake falhou"));
+
+        let mut recebidos = Vec::new();
+        while let Ok(aviso) = avisos.try_recv() {
+            recebidos.push(aviso);
+        }
+        assert!(
+            recebidos
+                .iter()
+                .any(|aviso| matches!(aviso, Aviso::PareamentoConcluido { sucesso: false })),
+            "{recebidos:?}"
+        );
+    }
+
+    #[test]
+    fn um_pareamento_conferido_que_nao_termina_vence_no_prazo_sem_acusar_codigos_diferentes() {
+        let mut bancada = com_endereco();
+        let mut avisos = bancada.daemon.avisos.subscribe();
+        bancada.daemon.on_pairing_code([6, 5, 5, 6, 8, 8], chave());
+        bancada.daemon.confirmar(true);
+        let _ = enviados(&mut bancada.rede);
+        if let Some(pareamento) = bancada.daemon.pareamento.as_mut() {
+            pareamento.desde = Instant::now()
+                .checked_sub(PRAZO_DO_PAREAMENTO + Duration::from_secs(1))
+                .unwrap_or(pareamento.desde);
+        }
+
+        bancada.daemon.vencer_pareamento_se_preciso();
+
+        let comandos = enviados(&mut bancada.rede);
+        assert!(
+            comandos
+                .iter()
+                .any(|comando| matches!(comando, NetCommand::Disconnect)),
+            "o usuário já disse que confere; recusar agora mandaria \"códigos diferentes\": {comandos:?}"
+        );
+        let mut recebidos = Vec::new();
+        while let Ok(aviso) = avisos.try_recv() {
+            recebidos.push(aviso);
+        }
+        assert!(
+            recebidos
+                .iter()
+                .any(|aviso| matches!(aviso, Aviso::PareamentoConcluido { sucesso: false }))
+        );
+    }
+
+    #[test]
+    fn responder_a_um_codigo_que_ja_nao_vale_e_recusado() {
+        // A janela transforma a recusa em explicação, em vez de um clique sem reação.
+        let mut bancada = com_endereco();
+        assert!(!bancada.daemon.confirmar(true), "não há código na tela");
+
+        bancada.daemon.on_pairing_code([1, 2, 7, 0, 3, 0], chave());
+        assert!(bancada.daemon.confirmar(true));
+        assert!(
+            !bancada.daemon.confirmar(true),
+            "o mesmo código não é respondido duas vezes"
+        );
+    }
+
+    #[test]
+    fn esquecer_o_par_encerra_a_conexao_e_nao_tenta_mais() {
+        // O defeito do Windows: depois de esquecer, a janela seguia em "Conectando…".
+        let mut bancada = com_endereco();
+        gravar_par(&mut bancada);
+        bancada.daemon.linked = true;
+        bancada.daemon.drive(Input::CarrierUp(Carrier::Udp));
+        assert_ne!(bancada.daemon.session.phase(), Phase::Offline);
+        let _ = enviados(&mut bancada.rede);
+
+        assert_eq!(bancada.daemon.esquecer_par(), Resposta::Feito);
+
+        assert_eq!(bancada.daemon.session.phase(), Phase::Offline);
+        let comandos = enviados(&mut bancada.rede);
+        assert!(
+            comandos
+                .iter()
+                .any(|comando| matches!(comando, NetCommand::Disconnect)),
+            "o enlace seguro precisa cair: {comandos:?}"
+        );
+        bancada.daemon.reconnect_if_needed();
+        assert!(
+            !discou(&enviados(&mut bancada.rede)),
+            "esquecido, não se procura mais"
+        );
+        assert!(bancada.daemon.estado().par.is_none());
     }
 }

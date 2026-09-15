@@ -86,7 +86,7 @@ impl Daemon {
             data_dir: parts.data_dir,
             config: parts.config,
             pending_peer: None,
-            pareamento_desde: None,
+            pareamento: None,
             seed_pointer: true,
             linked: false,
             ticks: 0,
