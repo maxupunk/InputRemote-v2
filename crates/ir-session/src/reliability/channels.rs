@@ -39,7 +39,7 @@ pub enum Due {
     Idle,
     /// Reenvie estes quadros.
     Retransmit(Vec<Frame>),
-    /// Um canal esgotou as tentativas. Derrube o enlace.
+    /// Um canal passou do prazo sem confirmação. Derrube o enlace.
     GiveUp {
         /// Em qual canal.
         channel: ChannelId,
@@ -128,13 +128,7 @@ impl ReliableChannels {
     /// Varre os canais na ordem de importância: controle primeiro, entrada em seguida. Se
     /// algum desistiu, isso é reportado antes de qualquer retransmissão — não faz sentido
     /// reenviar por um enlace que vai cair.
-    pub fn on_tick(
-        &mut self,
-        now: Timestamp,
-        floor: Millis,
-        ceiling: Millis,
-        max_tries: u8,
-    ) -> Due {
+    pub fn on_tick(&mut self, now: Timestamp, floor: Millis, ceiling: Millis) -> Due {
         const ORDER: [ChannelId; 4] = [
             ChannelId::Control,
             ChannelId::ReliableInput,
@@ -147,7 +141,7 @@ impl ReliableChannels {
             let Some(pair) = self.pair_mut(channel) else {
                 continue;
             };
-            match pair.sender.on_tick(now, floor, ceiling, max_tries) {
+            match pair.sender.on_tick(now, floor, ceiling) {
                 TimeoutOutcome::Idle => {}
                 TimeoutOutcome::Retransmit(frames) => resend.extend(frames),
                 TimeoutOutcome::GiveUp { seq } => return Due::GiveUp { channel, seq },
@@ -324,10 +318,11 @@ mod tests {
         let mut channels = ReliableChannels::new();
         channels.on_sent(ChannelId::ReliableInput, at(0), Sequence(9), &frame(9));
         let mut now = 0u64;
-        for _ in 0..5 {
+        // Até um pouco depois do prazo de 1 s: desistir é por tempo, não por tentativas.
+        for _ in 0..60 {
             now += 20;
             if let Due::GiveUp { channel, seq } =
-                channels.on_tick(at(now), Millis(20), Millis(1000), 5)
+                channels.on_tick(at(now), Millis(20), Millis(1000))
             {
                 assert_eq!(channel, ChannelId::ReliableInput);
                 assert_eq!(seq, Sequence(9));
@@ -357,7 +352,7 @@ mod tests {
             &frame(CONTROL),
         );
 
-        match channels.on_tick(at(50), Millis(20), Millis(1000), 5) {
+        match channels.on_tick(at(50), Millis(20), Millis(1000)) {
             Due::Retransmit(frames) => {
                 let order: Vec<u32> = frames.iter().map(|f| f.seq.get()).collect();
                 assert_eq!(

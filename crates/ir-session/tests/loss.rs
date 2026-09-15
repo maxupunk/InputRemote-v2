@@ -14,6 +14,7 @@ mod common;
 use common::{Pair, Side, is};
 use ir_proto::carrier::Carrier;
 use ir_proto::input::{HidUsage, PointerDelta};
+use ir_session::event::Notice;
 use ir_session::{Input, Phase};
 
 fn engaged() -> Pair {
@@ -185,6 +186,61 @@ fn total_loss_drops_the_link_instead_of_going_on_with_a_gap() {
         pair.any(Side::Server, is::release_all),
         "e ao desistir tem de soltar tudo"
     );
+    assert!(pair.server.input_state().is_released());
+}
+
+#[test]
+fn a_stall_shorter_than_the_promised_second_does_not_drop_the_session() {
+    // O Wi-Fi com economia de energia segura quadros por mais de 100 ms de vez em quando. Isso
+    // tem de virar latência, e não queda: o usuário não pode ver "Desconectado" por causa de um
+    // pico, e o prazo prometido para declarar o par perdido é de 1 s (log 23).
+    let mut pair = engaged();
+    pair.feed(
+        Side::Server,
+        Input::LocalKey {
+            usage: HidUsage(0x04),
+            pressed: true,
+        },
+    );
+    pair.clear_log();
+
+    pair.set_delivery(false);
+    for _ in 0..40 {
+        pair.advance(10); // 400 ms sem nada passar, em nenhum sentido
+    }
+    pair.set_delivery(true);
+    for _ in 0..40 {
+        pair.advance(50); // e 2 s de normalidade depois
+    }
+
+    let dropped = |side: Side| {
+        pair.notices(side)
+            .iter()
+            .any(|notice| matches!(notice, Notice::Disconnected { .. }))
+    };
+    assert!(
+        !dropped(Side::Server),
+        "o servidor derrubou a sessão por um pico de 400 ms"
+    );
+    assert!(
+        !dropped(Side::Client),
+        "o cliente derrubou a sessão por um pico de 400 ms"
+    );
+    assert!(pair.server.phase().is_established());
+    assert!(pair.client.phase().is_established());
+
+    // E a tecla que atravessou o pico continua coerente dos dois lados: soltá-la solta.
+    pair.feed(
+        Side::Server,
+        Input::LocalKey {
+            usage: HidUsage(0x04),
+            pressed: false,
+        },
+    );
+    for _ in 0..10 {
+        pair.advance(25);
+    }
+    assert!(pair.client.input_state().is_released());
     assert!(pair.server.input_state().is_released());
 }
 

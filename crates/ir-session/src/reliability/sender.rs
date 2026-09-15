@@ -1,4 +1,11 @@
 //! O lado emissor: janela, retransmissão e desistência.
+//!
+//! Desistir é **por tempo**, contado do primeiro envio de uma mensagem, e não por número de
+//! tentativas. A versão anterior desistia depois de cinco reenvios com prazo de 20 ms — uns 100 ms
+//! —, e um Wi-Fi com economia de energia, que segura quadros por mais de 100 ms de vez em quando,
+//! derrubava a sessão a cada pico (log 23). Esperar não cria lacuna: a mensagem continua na fila,
+//! em ordem, e só chega mais tarde. O que continua derrubando é o par sumir de verdade: uma
+//! mensagem sem confirmação além do prazo de queda.
 
 use std::collections::VecDeque;
 
@@ -18,6 +25,9 @@ pub const WINDOW: usize = 64;
 struct Pending {
     seq: Sequence,
     frame: Frame,
+    /// Quando saiu pela primeira vez. É daqui que se conta o prazo de desistência.
+    first_sent: Timestamp,
+    /// Quando saiu pela última vez. É daqui que se conta o próximo reenvio.
     sent_at: Timestamp,
     tries: u8,
 }
@@ -42,7 +52,7 @@ pub enum TimeoutOutcome {
     Idle,
     /// Reenvie estes quadros.
     Retransmit(Vec<Frame>),
-    /// Uma mensagem esgotou as tentativas. Derrube o enlace.
+    /// Uma mensagem passou do prazo sem confirmação. Derrube o enlace.
     GiveUp {
         /// A sequência que nunca foi confirmada, para o diagnóstico.
         seq: Sequence,
@@ -90,6 +100,7 @@ impl Sender {
         self.unacked.push_back(Pending {
             seq,
             frame,
+            first_sent: now,
             sent_at: now,
             tries: 1,
         });
@@ -138,28 +149,25 @@ impl Sender {
     }
 
     /// O que a passagem do tempo pede.
-    pub fn on_tick(
-        &mut self,
-        now: Timestamp,
-        floor: Millis,
-        ceiling: Millis,
-        max_tries: u8,
-    ) -> TimeoutOutcome {
-        let rto = self.retransmit_after(floor, ceiling);
-
-        // Desistir vem antes de retransmitir: se alguma mensagem já esgotou as tentativas,
-        // não faz sentido reenviar as outras por um enlace que vai cair.
+    ///
+    /// `floor` é o piso do prazo de retransmissão, e `ceiling` é o prazo de queda: uma mensagem
+    /// sem confirmação por tanto tempo, contado do primeiro envio, derruba o enlace. Até lá ela
+    /// continua sendo reenviada, com a espera dobrando a cada vez.
+    pub fn on_tick(&mut self, now: Timestamp, floor: Millis, ceiling: Millis) -> TimeoutOutcome {
+        // Desistir vem antes de retransmitir: se alguma mensagem já passou do prazo, não faz
+        // sentido reenviar as outras por um enlace que vai cair.
         if let Some(dead) = self
             .unacked
             .iter()
-            .find(|p| p.tries >= max_tries && now.elapsed_at_least(p.sent_at, rto))
+            .find(|pending| now.elapsed_at_least(pending.first_sent, ceiling))
         {
             return TimeoutOutcome::GiveUp { seq: dead.seq };
         }
 
+        let rto = self.retransmit_after(floor, ceiling);
         let mut resend = Vec::new();
         for pending in &mut self.unacked {
-            if now.elapsed_at_least(pending.sent_at, rto) {
+            if now.elapsed_at_least(pending.sent_at, backoff(rto, pending.tries, ceiling)) {
                 pending.tries = pending.tries.saturating_add(1);
                 pending.sent_at = now;
                 resend.push(pending.frame.clone());
@@ -178,4 +186,16 @@ impl Sender {
         self.unacked.clear();
         self.srtt = None;
     }
+}
+
+/// A espera antes de reenviar uma mensagem que já saiu `tries` vezes.
+///
+/// Dobra a cada reenvio — `rto`, `2 × rto`, `4 × rto`… — para que as tentativas se espalhem pelo
+/// prazo inteiro em vez de caberem todas dentro de um único pico de latência. O teto é um quarto
+/// do prazo de queda, e nunca menos que o próprio `rto`: assim sempre há reenvios depois de um
+/// silêncio longo, e a mensagem que se perdeu no pico ainda tem como chegar antes do prazo.
+fn backoff(rto: Millis, tries: u8, ceiling: Millis) -> Millis {
+    let doublings = u32::from(tries.saturating_sub(1)).min(16);
+    let cap = Millis(ceiling.get() / 4).max(rto);
+    rto.times(1u32 << doublings).min(cap)
 }

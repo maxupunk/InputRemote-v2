@@ -298,12 +298,9 @@ impl Session {
         }
 
         let timings = self.config.timings;
-        let due = self.reliability.on_tick(
-            now,
-            timings.min_retransmit,
-            timings.link_timeout,
-            timings.max_retransmits,
-        );
+        let due = self
+            .reliability
+            .on_tick(now, timings.min_retransmit, timings.link_timeout);
 
         match due {
             Due::Idle => {}
@@ -313,7 +310,7 @@ impl Session {
                 }
             }
             Due::GiveUp { .. } => {
-                // Esgotadas as tentativas, prosseguir seguiria com uma lacuna no canal de
+                // Passado o prazo sem confirmação, prosseguir seguiria com uma lacuna no canal de
                 // teclado. Se a mensagem perdida for um `KeyUp`, a tecla fica presa na
                 // máquina do outro — e o usuário não sabe o que aconteceu nem como sair.
                 self.tear_down(now, LinkDown::Timeout, out);

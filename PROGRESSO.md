@@ -274,6 +274,10 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Adeus anunciado em toda queda decidida por este lado
 - [x] Um par emissor/receptor por canal, para retransmissão de clipboard não atrasar `KeyUp`
 - [x] 29 testes da camada isolada + 6 cenários exercendo-a através da sessão inteira
+- [x] Pico de latência vira atraso, e não queda: a espera entre reenvios dobra, e o enlace só
+      cai quando uma mensagem passa de 1 s sem confirmação, contado do primeiro envio. Um
+      travamento de 400 ms no meio do uso não derruba ninguém
+      ([log 23](docs/logs/23-o-pico-de-latencia-que-virava-queda.md))
 - [x] Encarnações de sessão: todo quadro carrega a época de quem o enviou, e o que é de uma
       sessão encerrada não ancora a seguinte, não a derruba e não vira tecla digitada. Os três
       cenários do laço de ~200 ms falhavam antes da correção e passam depois
@@ -306,9 +310,11 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       em ~105–110 s, contra os 120 s do ator e os "2 minutos" da tela ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
 - [ ] `[H]` A sessão firma e se mantém sobre Wi-Fi com economia de energia — na bancada ela caía em
       `Timeout` e se reiniciava a cada ~200 ms depois do pareamento ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md)).
-      A causa — quadros de uma sessão encerrada ancorando a seguinte — está corrigida e testada
-      ([log 22](docs/logs/22-a-sessao-que-reiniciava-a-cada-200-ms.md)); falta instalar a versão
-      nova nas duas máquinas e verificar no hardware
+      As duas causas estão corrigidas e testadas: quadros de uma sessão encerrada ancorando a
+      seguinte ([log 22](docs/logs/22-a-sessao-que-reiniciava-a-cada-200-ms.md)), e a desistência em
+      ~100 ms que transformava pico de latência em queda
+      ([log 23](docs/logs/23-o-pico-de-latencia-que-virava-queda.md)). Falta instalar a versão nova
+      nas duas máquinas e verificar no hardware, com a economia de energia ligada
 - [~] Confiabilidade sobre UDP — a de `ir-session` já existe e é testada; falta o ensaio de perda de 5% ponta a ponta
 - [ ] TCP de dados (só entrada foi implementada; arquivos são Etapa 8)
 - [ ] `[H]` Latência dentro da meta, medida entre duas máquinas

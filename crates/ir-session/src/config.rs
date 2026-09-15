@@ -83,14 +83,10 @@ pub struct Timings {
 
     /// Quanto esperar por confirmação antes de retransmitir, no piso.
     ///
-    /// Origem: `docs/03-protocolo.md` §4.1 — `RTO = max(20 ms, 2 × srtt)`.
+    /// Origem: `docs/03-protocolo.md` §4.1 — `RTO = max(20 ms, 2 × srtt)`, dobrando a cada
+    /// reenvio. Não há contagem de tentativas: o enlace cai quando uma mensagem passa de
+    /// [`Self::link_timeout`] sem confirmação, contado do primeiro envio (log 23).
     pub min_retransmit: Millis,
-
-    /// Quantas retransmissões antes de derrubar o enlace.
-    ///
-    /// Origem: `docs/03-protocolo.md` §4.1. Esgotado o limite, cai — não se prossegue com
-    /// lacuna, porque um `KeyUp` perdido é uma tecla presa.
-    pub max_retransmits: u8,
 
     /// Quanto esperar antes de tentar reconectar.
     ///
@@ -106,7 +102,6 @@ impl Timings {
         snapshot_interval: Millis(250),
         pointer_interval: Millis(8),
         min_retransmit: Millis(20),
-        max_retransmits: 5,
         reconnect_delay: Millis(1000),
     };
 
@@ -119,15 +114,15 @@ impl Timings {
     pub const fn is_coherent(&self) -> bool {
         self.heartbeat.get() > 0
             && self.pointer_interval.get() > 0
-            && self.max_retransmits > 0
+            && self.min_retransmit.get() > 0
             // Ao menos três batidas cabem antes de declarar queda.
             && self.heartbeat.times(3).get() <= self.link_timeout.get()
             // O snapshot não pode ser mais raro que o prazo de queda: ele é a rede de
             // segurança contra tecla presa, e chegar depois da queda não serve.
             && self.snapshot_interval.get() <= self.link_timeout.get()
-            // Retransmitir todas as tentativas tem de caber antes da queda.
-            && self.min_retransmit.times(self.max_retransmits as u32).get()
-                <= self.link_timeout.get()
+            // Cabem ao menos quatro reenvios no piso antes da queda: com menos que isso, um pico
+            // de latência vira queda antes de a retransmissão ter tido chance de reparar.
+            && self.min_retransmit.times(4).get() <= self.link_timeout.get()
     }
 }
 
@@ -236,10 +231,12 @@ mod tests {
     fn retransmissions_must_fit_before_the_link_is_declared_dead() {
         let bad = Timings {
             min_retransmit: Millis(500),
-            max_retransmits: 5,
             ..Timings::DEFAULT
         };
-        assert!(!bad.is_coherent(), "5 × 500 ms passa do prazo de 1 s");
+        assert!(
+            !bad.is_coherent(),
+            "com piso de 500 ms não cabem quatro reenvios antes do prazo de 1 s"
+        );
     }
 
     #[test]
@@ -254,7 +251,7 @@ mod tests {
                 ..Timings::DEFAULT
             },
             Timings {
-                max_retransmits: 0,
+                min_retransmit: Millis::ZERO,
                 ..Timings::DEFAULT
             },
         ] {

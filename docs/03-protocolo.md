@@ -107,9 +107,18 @@ Um mecanismo pequeno e explícito, não uma reimplementação de TCP:
 - toda mensagem de volta carrega `ack: u32` (maior sequência contígua recebida) e
   `ack_bits: u32` (as 32 anteriores, em bitmap);
 - o emissor guarda as não confirmadas numa janela de no máximo 64 mensagens;
-- retransmissão após `RTO = max(20 ms, 2 × srtt)`, com no máximo 5 tentativas;
-- esgotadas as tentativas, o enlace é declarado caído. Não se prossegue com lacuna:
-  um `KeyUp` perdido é uma tecla presa, e cair é melhor que travar.
+- retransmissão após `RTO = max(20 ms, 2 × srtt)`, **dobrando a cada reenvio** até o teto de
+  um quarto do prazo de queda — no piso, 20, 40, 80, 160 e depois 250 ms entre um e outro — e
+  continuando até o prazo, para que a mensagem perdida num pico ainda tenha como chegar;
+- o enlace é declarado caído quando uma mensagem fica **mais de 1 s sem confirmação, contado
+  do primeiro envio** — o mesmo prazo de queda da sessão. Não se prossegue com lacuna: um
+  `KeyUp` perdido é uma tecla presa, e cair é melhor que travar.
+
+Desistir por tempo, e não por contagem de tentativas, é o que separa um pico de latência de um
+par que sumiu. Com prazo fixo de 20 ms e cinco tentativas, a sessão desistia em ~100 ms, e um
+Wi-Fi com economia de energia — que segura quadros por mais de 100 ms de vez em quando —
+derrubava a sessão a cada pico. Esperar não cria lacuna: a mensagem continua na fila, na ordem,
+e só chega mais tarde.
 
 Quando não há tráfego de volta, o receptor manda um `Ack` puro a cada 20 ms enquanto
 houver algo pendente.
