@@ -30,6 +30,12 @@
 //! exceção é [`agent`], o canal que carrega injeção de entrada, onde os tipos do protocolo são
 //! exatamente os certos.
 //!
+//! # Quem conecta abre o canal por [`cliente`]
+//!
+//! A janela e o agente abrem o canal pelo mesmo [`cliente::abrir`]. No Windows ele usa E/S
+//! sobreposta, porque um *named pipe* síncrono trava a escrita de uma thread enquanto outra espera
+//! ler — e os dois processos passam o tempo todo exatamente nessa situação.
+//!
 //! A escolha de nomear em português os tipos deste crate é deliberada: eles descrevem o que o
 //! usuário vê, e a interface que os consome está em português. Os crates de dentro
 //! (`ir-proto`, `ir-session`) usam o vocabulário técnico em inglês, que é o da especificação.
@@ -47,6 +53,7 @@
 )]
 
 pub mod agent;
+pub mod cliente;
 pub mod codec;
 pub mod falha;
 pub mod status;

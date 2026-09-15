@@ -16,7 +16,13 @@
 //!
 //! Os ganchos de baixo nível já rodam numa thread própria com laço de mensagens, e o trabalho
 //! aqui é bloqueante por natureza: uma thread escreve os fatos, a principal lê os comandos. Um
-//! runtime assíncrono não acrescentaria nada e só daria mais uma coisa para dar errado.
+//! runtime assíncrono não acrescentaria nada ao agente e só daria mais uma coisa para dar errado.
+//!
+//! Uma thread lendo e outra escrevendo no mesmo canal é, porém, exatamente o que um *named pipe*
+//! síncrono do Windows não aguenta: a escrita espera a leitura pendente terminar, e o movimento do
+//! mouse capturado só saía quando o serviço mandava algum comando. Por isso o canal é aberto por
+//! [`ir_ipc::cliente`], que usa E/S sobreposta por baixo e entrega aqui um `Read` e um `Write`
+//! bloqueantes como antes (log 21).
 
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
@@ -340,19 +346,9 @@ fn conectar() -> Result<(Escrita, Box<dyn Read + Send>)> {
 }
 
 /// Abre a conexão e devolve as duas metades sobre o mesmo canal duplex.
-#[cfg(windows)]
+///
+/// As duas metades são usadas ao mesmo tempo — a principal presa lendo comandos, a de captura
+/// escrevendo fatos —, e é por isso que o canal vem do cliente compartilhado de `ir-ipc`.
 fn abrir(endereco: &str) -> std::io::Result<(Escrita, Box<dyn Read + Send>)> {
-    use std::fs::OpenOptions;
-    let escrita = OpenOptions::new().read(true).write(true).open(endereco)?;
-    let leitura = escrita.try_clone()?;
-    Ok((Box::new(escrita), Box::new(leitura)))
-}
-
-/// Abre a conexão e devolve as duas metades sobre o mesmo canal duplex.
-#[cfg(not(windows))]
-fn abrir(endereco: &str) -> std::io::Result<(Escrita, Box<dyn Read + Send>)> {
-    use std::os::unix::net::UnixStream;
-    let escrita = UnixStream::connect(endereco)?;
-    let leitura = escrita.try_clone()?;
-    Ok((Box::new(escrita), Box::new(leitura)))
+    ir_ipc::cliente::abrir(endereco)
 }

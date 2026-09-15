@@ -5,10 +5,8 @@
 //! dependente só desta abstração é o que permite testar a reconexão inteira sem serviço, sem
 //! *pipe* e sem sistema operacional específico — os testes entregam um conector próprio.
 
-use std::io::{Read, Write};
-
 /// As duas metades de um canal duplex: por onde se escreve e por onde se lê.
-pub type Duplex = (Box<dyn Write + Send>, Box<dyn Read + Send>);
+pub type Duplex = ir_ipc::cliente::Duplex;
 
 /// Quem sabe abrir um canal até o serviço.
 pub trait Conector: Send {
@@ -99,21 +97,12 @@ fn padrao() -> String {
 }
 
 /// Abre a conexão e devolve as duas metades sobre o mesmo canal duplex.
-#[cfg(windows)]
+///
+/// Pelo cliente compartilhado de `ir-ipc`, e não com `std::fs::File`: no Windows um *named pipe*
+/// síncrono trava a escrita enquanto a thread de leitura espera o serviço falar, e era isso que
+/// congelava a janela ao abrir e ao clicar em "Parear" (log 21).
 fn abrir_canal(endereco: &str) -> std::io::Result<Duplex> {
-    use std::fs::OpenOptions;
-    let escrita = OpenOptions::new().read(true).write(true).open(endereco)?;
-    let leitura = escrita.try_clone()?;
-    Ok((Box::new(escrita), Box::new(leitura)))
-}
-
-/// Abre a conexão e devolve as duas metades sobre o mesmo canal duplex.
-#[cfg(not(windows))]
-fn abrir_canal(endereco: &str) -> std::io::Result<Duplex> {
-    use std::os::unix::net::UnixStream;
-    let escrita = UnixStream::connect(endereco)?;
-    let leitura = escrita.try_clone()?;
-    Ok((Box::new(escrita), Box::new(leitura)))
+    ir_ipc::cliente::abrir(endereco)
 }
 
 #[cfg(test)]

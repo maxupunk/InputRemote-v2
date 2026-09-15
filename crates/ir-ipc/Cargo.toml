@@ -14,5 +14,11 @@ postcard.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 
+# So no Windows: o cliente do canal abre o named pipe com E/S sobreposta, e o `tokio` e quem faz
+# isso sem `unsafe` neste crate. Sem ele, uma thread presa numa leitura trava a escrita de outra
+# (ver `src/cliente.rs`). No Linux o socket Unix da biblioteca padrao basta.
+[target.'cfg(windows)'.dependencies]
+tokio.workspace = true
+
 [lints]
 workspace = true
