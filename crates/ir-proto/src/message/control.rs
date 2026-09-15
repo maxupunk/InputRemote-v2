@@ -26,6 +26,10 @@ pub enum Control {
     /// O arranjo de telas de quem envia, sempre que ele muda.
     Screens(ScreenLayout),
     /// De que lado fica o par, do ponto de vista de quem envia.
+    ///
+    /// Só o servidor envia — ao estabelecer a sessão e a cada troca —, porque a borda é dele: é
+    /// ele quem tem o teclado e o mouse. O cliente usa a borda oposta, e um anúncio que chegue ao
+    /// servidor é ignorado.
     EdgeConfig {
         /// A borda desta tela que dá para a tela do par.
         peer_edge: Edge,

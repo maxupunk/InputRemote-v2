@@ -13,7 +13,7 @@
 )]
 
 use ir_ipc::status::Papel;
-use ir_ipc::vocabulario::Portador;
+use ir_ipc::vocabulario::{Borda, Portador};
 use ir_ipc::{Aviso, Estado, Pedido, Resposta};
 use ir_ui::ponte;
 use ir_ui::servico::{Servico, Situacao};
@@ -218,6 +218,30 @@ fn desligar_a_tela_de_bloqueio_no_cliente_gera_um_impedimento_acionavel() {
         tela.impedimento
     );
     assert_eq!(tela.saude, ponte::SAUDE_ATENCAO);
+}
+
+#[test]
+fn no_computador_controlado_a_borda_nao_se_escolhe() {
+    // A borda é do servidor, e o cliente usa a oposta. A tela esconde a escolha pelo campo
+    // `servidor`, e o serviço recusa o pedido se ele chegar mesmo assim.
+    let servico = ServicoSimulado::new();
+    conectar(&servico);
+    assert!(matches!(
+        servico.pedir(Pedido::DefinirPapel(Papel::Cliente)),
+        Resposta::Feito
+    ));
+    assert!(!ponte::estado_ui(&estado(&servico)).servidor);
+
+    let recusa = servico.pedir(Pedido::DefinirBorda(Borda::Acima));
+    let Resposta::Falha(falha) = recusa else {
+        panic!("o cliente não escolhe a borda, veio {recusa:?}");
+    };
+    assert!(
+        falha.o_que_fazer().contains("teclado e o mouse"),
+        "{}",
+        falha.o_que_fazer()
+    );
+    assert_ne!(estado(&servico).borda_do_par, Borda::Acima);
 }
 
 #[test]

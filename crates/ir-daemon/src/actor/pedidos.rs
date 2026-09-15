@@ -54,7 +54,8 @@ impl Daemon {
                     .pin_carrier(portador.map(Portador::no_protocolo));
                 Resposta::Feito
             }
-            // As duas trocas valem na hora: a sessão é refeita com o valor novo (`super::papel`).
+            // As duas trocas valem na hora (`super::papel`): a de papel refaz a sessão, e a de borda
+            // só a ajusta — e só no servidor, que é quem decide a borda.
             Pedido::DefinirBorda(borda) => self.trocar_borda(borda.no_protocolo()),
             Pedido::DefinirPapel(papel) => self.trocar_papel(role_de(papel)),
             Pedido::Diagnostico => Resposta::Diagnostico(self.diagnostico()),

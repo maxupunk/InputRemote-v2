@@ -6,10 +6,15 @@
 //! Na borda era pior: a janela passava a mostrar a borda nova, e a travessia continuava usando a
 //! velha.
 //!
-//! Agora a troca refaz a sessão com o valor novo. A sessão velha é encerrada pelo caminho que
-//! solta tudo antes de qualquer outra coisa ([`Session::stop`]), a nova nasce com a mesma
+//! Agora a troca de papel refaz a sessão com o valor novo. A sessão velha é encerrada pelo caminho
+//! que solta tudo antes de qualquer outra coisa ([`Session::stop`]), a nova nasce com a mesma
 //! identidade e o mesmo arranjo de telas, e, se havia enlace, o aperto de mão recomeça com o papel
 //! certo. E um papel que a plataforma não sustenta é recusado com o motivo, em vez de gravado.
+//!
+//! A borda é diferente, e não refaz nada ([log 24](../../../../docs/logs/24-a-borda-e-do-servidor.md)).
+//! Refazer a sessão a cada clique mandava ao par um adeus que ainda dizia para não reconectar. E a
+//! borda é do servidor: só ele escolhe, a sessão em uso ajusta a borda e avisa o cliente, e o
+//! cliente grava a oposta.
 
 use std::path::Path;
 
@@ -61,7 +66,7 @@ pub(crate) fn nova_sessao(papel: Role, edge: Edge, identidade: LocalIdentity) ->
         Role::Server => SessionConfig::server(edge),
         Role::Client => SessionConfig::client(edge),
     };
-    // Uma semente nova a cada sessão criada — também na recriada por troca de papel ou de borda.
+    // Uma semente nova a cada sessão criada — também na recriada por troca de papel.
     // Repetir a anterior faria o par tomar a sessão nova pela antiga (log 22).
     config.incarnation_seed = rand::random();
     Session::new(config, identidade)
@@ -119,8 +124,15 @@ impl Daemon {
         resposta
     }
 
-    /// Troca a borda de travessia, e a troca já vale.
+    /// Troca a borda de travessia, e a troca já vale — sem derrubar a sessão.
+    ///
+    /// Só no servidor. A borda é de quem tem o teclado e o mouse: o cliente usa a oposta da que o
+    /// servidor anunciar, e deixar os dois escolherem foi o que deixou a bancada com `left` dos dois
+    /// lados.
     pub(super) fn trocar_borda(&mut self, edge: Edge) -> Resposta {
+        if self.session.role() != Role::Server {
+            return Resposta::Falha(Falha::BordaDoServidor);
+        }
         if edge == self.edge {
             return Resposta::Feito;
         }
@@ -130,9 +142,36 @@ impl Daemon {
         let resposta = self.persistir(nova);
         if resposta == Resposta::Feito {
             info!(borda = texto, "borda trocada pela interface; já valendo");
-            self.recriar_sessao(self.session.role(), edge);
+            self.edge = edge;
+            // A sessão em uso ajusta a borda e avisa o cliente; se o controle estava com ele, volta
+            // antes. Nada de refazer a sessão.
+            self.drive(Input::SetPeerEdge(edge));
+            let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
         }
         resposta
+    }
+
+    /// A sessão passou a usar esta borda: grava, e conta às interfaces.
+    ///
+    /// É o caminho do cliente, que recebe a borda do servidor. No servidor a troca já foi gravada
+    /// por [`Self::trocar_borda`] antes de chegar à sessão, e aqui não sobra nada a fazer.
+    pub(crate) fn adotar_borda(&mut self, edge: Edge) {
+        if edge == self.edge {
+            return;
+        }
+        self.edge = edge;
+        let texto = edge_para_texto(edge);
+        let mut nova = self.config.clone();
+        texto.clone_into(&mut nova.peer_edge);
+        if self.persistir(nova) == Resposta::Feito {
+            info!(borda = texto, "borda anunciada pelo servidor; já valendo");
+        } else {
+            warn!(
+                borda = texto,
+                "borda anunciada pelo servidor vale nesta sessão, mas não foi gravada"
+            );
+        }
+        let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
     }
 
     /// Encerra a sessão em uso e põe no lugar uma nova, com este papel e esta borda.
@@ -193,6 +232,8 @@ impl Daemon {
 mod tests {
     use std::path::PathBuf;
 
+    use ir_session::{Command, Notice};
+
     use super::*;
     use crate::actor::bancada::{Bancada, diretorio};
 
@@ -216,7 +257,7 @@ mod tests {
     #[test]
     fn a_borda_nova_ja_vale_na_sessao_em_uso() {
         // O defeito era a janela mostrar a borda nova e a travessia usar a velha.
-        let (mut daemon, dir) = daemon(Role::Client);
+        let (mut daemon, dir) = daemon(Role::Server);
         assert_eq!(daemon.trocar_borda(Edge::Left), Resposta::Feito);
         assert_eq!(daemon.session.peer_edge(), Edge::Left);
         assert!(
@@ -224,6 +265,55 @@ mod tests {
             "{}",
             gravado(&dir)
         );
+    }
+
+    #[test]
+    fn trocar_a_borda_nao_refaz_a_sessao() {
+        // Refazer mandava ao par um adeus de "encerrada pelo usuário", que ele não reconecta. Aqui
+        // não há enlace: uma sessão refeita voltaria desligada, e a em uso continua no aperto de mão.
+        let (mut daemon, _dir) = daemon(Role::Server);
+        daemon.drive(Input::CarrierUp(Carrier::Udp));
+        assert_eq!(daemon.session.phase(), Phase::Handshaking);
+
+        assert_eq!(daemon.trocar_borda(Edge::Left), Resposta::Feito);
+
+        assert_eq!(
+            daemon.session.phase(),
+            Phase::Handshaking,
+            "a sessão é a mesma"
+        );
+        assert_eq!(daemon.session.peer_edge(), Edge::Left);
+    }
+
+    #[test]
+    fn no_cliente_a_borda_e_do_servidor_e_nada_e_gravado() {
+        let (mut daemon, dir) = daemon(Role::Client);
+        assert_eq!(
+            daemon.trocar_borda(Edge::Left),
+            Resposta::Falha(Falha::BordaDoServidor)
+        );
+        assert_eq!(daemon.session.peer_edge(), Edge::Right, "a sessão não muda");
+        assert!(
+            !dir.join("config.toml").exists(),
+            "uma recusa não pode gravar nada"
+        );
+    }
+
+    #[test]
+    fn o_cliente_grava_a_borda_que_o_servidor_anunciou() {
+        // Sem gravar, o cliente subiria com a borda velha e atravessaria errado até reconectar.
+        let (mut daemon, dir) = daemon(Role::Client);
+        daemon
+            .out
+            .push(Command::Notify(Notice::EdgeChanged { edge: Edge::Left }));
+        daemon.apply_commands();
+
+        assert!(
+            gravado(&dir).contains(r#"peer_edge = "left""#),
+            "{}",
+            gravado(&dir)
+        );
+        assert_eq!(daemon.estado().borda_do_par, ir_ipc::Borda::Esquerda);
     }
 
     #[test]

@@ -51,6 +51,12 @@ pub enum Falha {
     /// antes desta falha existir.
     #[error("este computador ainda não pode ter o teclado e o mouse")]
     PapelIndisponivel,
+    /// A borda só se escolhe no computador que tem o teclado e o mouse.
+    ///
+    /// O controlado usa sozinho a borda oposta à do outro. Deixar os dois escolherem foi o que
+    /// deixou a bancada com os dois lados dizendo "esquerda" (log 24).
+    #[error("a borda é escolhida no computador que tem o teclado e o mouse")]
+    BordaDoServidor,
 }
 
 impl Falha {
@@ -83,6 +89,10 @@ impl Falha {
                 "Neste computador, por enquanto, só funciona o papel de controlado. Use o outro \
                  computador como o que tem o teclado e o mouse."
             }
+            Self::BordaDoServidor => {
+                "Troque a borda no computador que tem o teclado e o mouse. Este acompanha sozinho, \
+                 sem reconectar."
+            }
         }
     }
 }
@@ -103,6 +113,7 @@ mod tests {
             Falha::SemPermissao,
             Falha::ServicoIndisponivel,
             Falha::PapelIndisponivel,
+            Falha::BordaDoServidor,
         ];
         for falha in falhas {
             assert!(!falha.to_string().is_empty(), "{falha:?} sem descrição");
@@ -131,6 +142,7 @@ mod tests {
             (Falha::SemPermissao, 6),
             (Falha::ServicoIndisponivel, 7),
             (Falha::PapelIndisponivel, 8),
+            (Falha::BordaDoServidor, 9),
         ];
         for (falha, indice) in esperado {
             let bytes = postcard::to_allocvec(&falha).expect("serializa");

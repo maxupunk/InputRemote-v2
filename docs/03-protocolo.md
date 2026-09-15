@@ -186,7 +186,7 @@ Nomes definitivos vivem em `ir-proto`. Este é o contrato.
 | `Hello` | versão do protocolo, id da máquina, nome, capacidades |
 | `HelloAck` | versão acordada, capacidades do par |
 | `ScreenLayout` | monitores: id, retângulo, escala, monitor primário |
-| `EdgeConfig` | de que lado fica o par, faixa de travessia |
+| `EdgeConfig` | a borda do servidor que dá para o cliente. Só o servidor envia, ao estabelecer e a cada troca; o cliente usa a oposta, e o servidor ignora um que receba. Trocar a borda não refaz a sessão (log 24) |
 | `EnterScreen` | o controle passou para o par: posição de entrada, borda, estado de modificadores |
 | `LeaveScreen` | o controle voltou: posição de saída, borda |
 | `StateSnapshot` | conjunto completo de teclas e botões pressionados (§7) |

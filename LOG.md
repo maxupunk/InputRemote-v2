@@ -48,3 +48,4 @@ quê. Um registro que se reescreve não é registro.
 | 21 | 2026-09-15 | [A janela que travava no Windows, e o pareamento que nunca fechava](docs/logs/21-a-janela-que-travava-no-windows.md) |
 | 22 | 2026-09-15 | [A sessão que reiniciava a cada 200 ms](docs/logs/22-a-sessao-que-reiniciava-a-cada-200-ms.md) |
 | 23 | 2026-09-15 | [O pico de latência que virava queda](docs/logs/23-o-pico-de-latencia-que-virava-queda.md) |
+| 24 | 2026-09-15 | [A borda é do servidor](docs/logs/24-a-borda-e-do-servidor.md) |

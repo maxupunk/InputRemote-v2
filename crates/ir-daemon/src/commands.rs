@@ -30,7 +30,13 @@ impl Daemon {
             Command::ReleaseAll => self.release_all(),
             Command::SuppressLocalInput(on) => self.suppress(on),
             Command::WarpPointer(position) => self.warp(position),
-            Command::Notify(notice) => log_notice(&notice),
+            Command::Notify(notice) => {
+                log_notice(&notice);
+                // A borda que a sessão passou a usar precisa ir para o arquivo e para a janela.
+                if let Notice::EdgeChanged { edge } = notice {
+                    self.adotar_borda(edge);
+                }
+            }
             // Os temporizadores são otimização (o serviço bate a sessão periodicamente e ela
             // confere os próprios prazos pelo relógio injetado); o curinga cobre variantes
             // futuras do enum não exaustivo.
@@ -147,6 +153,7 @@ fn log_notice(notice: &Notice) {
         }
         Notice::LatencySample(rtt) => debug!(%rtt, "latência medida"),
         Notice::ProtocolError { code, fatal } => warn!(?code, fatal, "erro de protocolo"),
+        Notice::EdgeChanged { edge } => debug!(%edge, "borda em uso"),
         _ => {}
     }
 }

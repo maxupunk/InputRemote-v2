@@ -169,7 +169,8 @@ impl SessionConfig {
     /// Uma configuração de cliente.
     ///
     /// A borda é a que dá de volta para o servidor: se o cliente está à direita, o servidor
-    /// fica à esquerda dele.
+    /// fica à esquerda dele. É só o ponto de partida — a última gravada —, porque quem decide é o
+    /// servidor, e o cliente adota a oposta da dele assim que a sessão sobe.
     #[must_use]
     pub const fn client(peer_edge: Edge) -> Self {
         Self {

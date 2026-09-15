@@ -43,6 +43,7 @@ impl Session {
 
     /// A borda desta tela que dá para a tela do par — a única que atravessa.
     ///
+    /// No servidor é a escolhida pelo usuário; no cliente é a oposta da que o servidor anunciou.
     /// Exposta para quem troca a borda poder confirmar que a sessão **em uso** é a da borda nova:
     /// a periferia já mostrou uma borda enquanto a sessão atravessava por outra.
     #[must_use]

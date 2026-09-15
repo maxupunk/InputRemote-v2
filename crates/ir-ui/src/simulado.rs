@@ -186,6 +186,10 @@ impl Interno {
                 self.estado.papel = papel;
             }
             Pedido::DefinirBorda(borda) => {
+                // Como no serviço de verdade: a borda é do servidor, e o cliente acompanha.
+                if self.estado.papel != Papel::Servidor {
+                    return Resposta::Falha(Falha::BordaDoServidor);
+                }
                 self.estado.borda_do_par = borda;
             }
             Pedido::FixarPortador(portador) => {

@@ -119,6 +119,7 @@ impl Session {
             Control::Screens(layout) => {
                 self.peer_screens = Desktop::from_layout(&layout);
             }
+            Control::EdgeConfig { peer_edge } => self.on_edge_config(peer_edge, out),
             Control::EnterScreen {
                 entering_edge,
                 position,
@@ -142,8 +143,7 @@ impl Session {
                 }
             }
             // `AckOnly` não tem conteúdo: a confirmação viaja no campo `ack` do quadro, e
-            // quem a consome é a camada de confiabilidade sobre UDP. `EdgeConfig` é
-            // informativo — a borda vem das preferências locais, não do par.
+            // quem a consome é a camada de confiabilidade sobre UDP.
             _ => {}
         }
     }

@@ -145,7 +145,7 @@ impl Session {
         });
     }
 
-    fn local_position(&self) -> PointerPosition {
+    pub(super) fn local_position(&self) -> PointerPosition {
         self.local_screens.as_ref().map_or(
             PointerPosition {
                 monitor: MonitorId(0),
@@ -254,7 +254,7 @@ impl Session {
     }
 
     /// Traz o controle de volta para esta máquina, pondo o ponteiro na borda certa.
-    fn take_control_back(&mut self, fraction: u16, out: &mut CommandBatch) {
+    pub(super) fn take_control_back(&mut self, fraction: u16, out: &mut CommandBatch) {
         self.hand_control_back(out);
 
         if let Some(desktop) = self.local_screens.as_ref() {

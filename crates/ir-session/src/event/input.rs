@@ -4,7 +4,7 @@ use ir_proto::carrier::Carrier;
 use ir_proto::frame::Frame;
 use ir_proto::input::{Button, HidUsage, PointerDelta, WheelDelta};
 use ir_proto::message::DisconnectReason;
-use ir_proto::screens::ScreenLayout;
+use ir_proto::screens::{Edge, ScreenLayout};
 
 /// Tudo que pode acontecer com a sessão.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,6 +65,12 @@ pub enum Input {
 
     /// O arranjo de telas desta máquina mudou.
     LocalScreens(ScreenLayout),
+
+    /// O usuário escolheu por qual borda desta tela se chega ao par.
+    ///
+    /// Só vale no servidor, que tem o teclado e o mouse e é a fonte de verdade da borda. O cliente
+    /// não escolhe: ele usa a oposta da que o servidor anunciar.
+    SetPeerEdge(Edge),
 
     /// O agente desta máquina está pronto para injetar.
     AgentReady,

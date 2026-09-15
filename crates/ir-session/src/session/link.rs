@@ -178,6 +178,8 @@ impl Session {
             let layout = desktop.to_layout();
             self.send(now, Message::Control(Control::Screens(layout)), out);
         }
+        // E a borda, que é do servidor: o cliente passa a usar a oposta (`edge`).
+        self.announce_edge(now, out);
 
         self.arm_heartbeat(now, out);
         self.arm_link_timeout(now, out);

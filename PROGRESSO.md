@@ -143,6 +143,11 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       sessão é recriada pelo mesmo caminho que solta tudo em toda queda. A borda tinha o mesmo
       defeito, pior — a janela mostrava a nova e a travessia usava a velha
       ([log 19](docs/logs/19-a-troca-que-vale-na-hora.md))
+- [x] A borda é do servidor: só ele escolhe, e anuncia ao estabelecer e a cada troca
+      (`EdgeConfig`); o cliente usa a oposta e grava, e recusa escolher (`Falha::BordaDoServidor`).
+      Trocar a borda ajusta a sessão em uso em vez de refazê-la — refazer mandava um adeus que
+      dizia ao par para não reconectar. Na bancada, as duas máquinas tinham terminado com `left`
+      ([log 24](docs/logs/24-a-borda-e-do-servidor.md))
 - [x] `ir-daemon`: binário sobe, aceita IPC, pareia pela interface, encerra limpo
 - [x] `ir-agent`: binário conecta, reporta pronto, captura e injeta na sessão do usuário, e
       encerra com o serviço — exercitado de verdade: o serviço lança, o agente conecta, informa a
@@ -313,8 +318,13 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       As duas causas estão corrigidas e testadas: quadros de uma sessão encerrada ancorando a
       seguinte ([log 22](docs/logs/22-a-sessao-que-reiniciava-a-cada-200-ms.md)), e a desistência em
       ~100 ms que transformava pico de latência em queda
-      ([log 23](docs/logs/23-o-pico-de-latencia-que-virava-queda.md)). Falta instalar a versão nova
-      nas duas máquinas e verificar no hardware, com a economia de energia ligada
+      ([log 23](docs/logs/23-o-pico-de-latencia-que-virava-queda.md)). Instalado `c76242c` nas duas:
+      90 s com a economia de energia ligada e picos de 117 ms, sem nenhuma queda, e a primeira ida e
+      volta do controle no hardware. Mas o notebook trocou de ponto de acesso quatro vezes em dois
+      minutos, e com um deles a sessão não firmou ou oscilou ([log 24](docs/logs/24-a-borda-e-do-servidor.md))
+- [ ] A sessão sobrevive à troca de ponto de acesso do Wi-Fi, com silêncios de mais de dez segundos
+      no caminho — hoje cai pelo prazo de 1 s. Falta decidir entre prazo de queda maior e soltar
+      tudo em 1 s mantendo a sessão ([log 24](docs/logs/24-a-borda-e-do-servidor.md))
 - [~] Confiabilidade sobre UDP — a de `ir-session` já existe e é testada; falta o ensaio de perda de 5% ponta a ponta
 - [ ] TCP de dados (só entrada foi implementada; arquivos são Etapa 8)
 - [ ] `[H]` Latência dentro da meta, medida entre duas máquinas
@@ -369,7 +379,8 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 
 - [x] Linguagem visual única em `ui/tema.slint`; tema claro e escuro seguindo o do sistema
 - [x] Telas de estado, pareamento e preferências, com voltar explícito em vez de abas
-- [x] Seletor visual de borda: duas telas desenhadas, no lugar de quatro botões de rádio
+- [x] Seletor visual de borda: duas telas desenhadas, no lugar de quatro botões de rádio — só no
+      computador que tem o teclado e o mouse ([log 24](docs/logs/24-a-borda-e-do-servidor.md))
 - [x] Uma ação em destaque por tela e, no máximo, um impedimento por vez
 - [x] Estado observável de [01, §5](docs/01-visao-e-escopo.md) na tela inicial
 - [x] Nível de capacidade visível sempre, e não escondido em preferências

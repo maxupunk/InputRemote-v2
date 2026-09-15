@@ -3,6 +3,7 @@
 use ir_proto::carrier::Carrier;
 use ir_proto::message::ErrorCode;
 use ir_proto::peer::MachineName;
+use ir_proto::screens::Edge;
 
 use super::LinkDown;
 
@@ -61,6 +62,14 @@ pub enum Notice {
         code: ErrorCode,
         /// Se a sessão terminou por causa dele.
         fatal: bool,
+    },
+    /// A borda que dá para o par mudou, e é esta que vale agora.
+    ///
+    /// No servidor, porque o usuário escolheu; no cliente, porque o servidor anunciou. O serviço
+    /// grava: sem isto, o cliente voltaria à borda velha na próxima subida, até reconectar.
+    EdgeChanged {
+        /// A borda desta tela que dá para a tela do par.
+        edge: Edge,
     },
 }
 

@@ -5,6 +5,7 @@
 
 mod client;
 mod consultas;
+mod edge;
 mod frames;
 mod incarnation;
 mod link;
@@ -162,6 +163,7 @@ impl Session {
             }
             Input::EmergencyRelease => self.on_emergency(now, out),
             Input::LocalScreens(layout) => self.on_local_screens(now, layout, out),
+            Input::SetPeerEdge(edge) => self.on_set_peer_edge(now, edge, out),
             Input::AgentReady => self.agent_ready = true,
             Input::AgentLost => self.on_agent_lost(now, out),
         }

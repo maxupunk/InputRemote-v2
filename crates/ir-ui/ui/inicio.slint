@@ -106,7 +106,9 @@ export component Inicio inherits VerticalLayout {
         }
     }
 
-    if Dados.estado.tem-par: Cartao {
+    // A borda é do computador que tem o teclado e o mouse; o controlado usa sozinho a oposta. Uma
+    // escolha nos dois lados deixou a bancada com as duas telas dizendo "esquerda" (log 24).
+    if Dados.estado.tem-par && Dados.estado.servidor: Cartao {
         EscolhaDeBorda { }
     }
 

@@ -105,9 +105,30 @@ fn identity(name: &str, byte: u8) -> LocalIdentity {
 impl Pair {
     /// Servidor com o par à direita, cliente com o servidor à esquerda.
     pub fn new(server_screens: ScreenLayout, client_screens: ScreenLayout) -> Self {
+        Self::build(Edge::Right, Edge::Left, server_screens, client_screens)
+    }
+
+    /// Duas telas 1920×1080, com a borda que cada lado tem gravada.
+    ///
+    /// Para os cenários em que as duas máquinas discordam de onde fica a outra.
+    pub fn with_edges(server_edge: Edge, client_edge: Edge) -> Self {
+        Self::build(
+            server_edge,
+            client_edge,
+            layout(1920, 1080),
+            layout(1920, 1080),
+        )
+    }
+
+    fn build(
+        server_edge: Edge,
+        client_edge: Edge,
+        server_screens: ScreenLayout,
+        client_screens: ScreenLayout,
+    ) -> Self {
         let mut pair = Self {
-            server: Session::new(SessionConfig::server(Edge::Right), identity("servidor", 1)),
-            client: Session::new(SessionConfig::client(Edge::Left), identity("cliente", 2)),
+            server: Session::new(SessionConfig::server(server_edge), identity("servidor", 1)),
+            client: Session::new(SessionConfig::client(client_edge), identity("cliente", 2)),
             now: Timestamp::from_millis(10_000),
             log: Vec::new(),
             delivering: true,
