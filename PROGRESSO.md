@@ -146,11 +146,25 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] `ir-daemon`: binário sobe, aceita IPC, pareia pela interface, encerra limpo
 - [x] `ir-agent`: binário conecta, reporta pronto, captura e injeta na sessão do usuário, e
       encerra com o serviço — exercitado de verdade: o serviço lança, o agente conecta, informa a
-      tela da sessão e se reporta pronto ([log 15](docs/logs/15-agente-de-sessao.md))
+      tela da sessão e se reporta pronto ([log 15](docs/logs/15-agente-de-sessao.md)). No Windows,
+      até `7c1aea0` o movimento capturado só saía quando o serviço mandava algum comando — o
+      impasse do *pipe* síncrono ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
 - [x] Transporte do canal do agente, separado do da interface, e o serviço lançando o agente na
       sessão de console (`CreateProcessAsUserW` + `TokenUIAccess`)
 - [x] `ir-ui`: janela abre, acha o serviço de verdade e pareia por ele; sem o serviço, diz o
-      motivo e o que fazer, e entra sozinha quando ele sobe. O simulado só com `--simulado`
+      motivo e o que fazer, e entra sozinha quando ele sobe. O simulado só com `--simulado`. No
+      Windows instalado, até `7c1aea0` ela travava ao abrir e ao pedir, e o pareamento nunca
+      fechava. Com `7c1aea0` instalado ela responde em 0,28 s, e o pareamento com o notebook fechou
+      ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
+- [x] Canal de quem conecta sem impasse no Windows: janela e agente abrem o *pipe* por
+      `ir_ipc::cliente`, com E/S sobreposta, porque um *pipe* síncrono trava a escrita enquanto
+      outra thread espera ler. Provado por teste contra *named pipe* real, com um segundo teste
+      mostrando que o jeito antigo trava ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
+- [ ] A janela aberta no meio de um pareamento recebe o código pendente — hoje o código vai por
+      aviso uma vez só, e uma janela que conecta depois fica sem ele até o ciclo seguinte
+      ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
+- [ ] Uma leitura presa termina quando a janela descarta o canal com o serviço vivo — hoje a
+      thread (e o runtime do cliente) ficam até o serviço fechar o *pipe* ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
 
 ### 1.4. Observabilidade e configuração
 - [x] `tracing` com escritor sem bloqueio — por fila (`tracing-appender`); o serviço do Windows
@@ -191,6 +205,10 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [~] Unidade `systemd` no Linux — o RPM agora traz o serviço **e** a unidade, que roda como
       root (é quem tem `/dev/uinput`). Falta a regra `udev` e a política D-Bus, que só fazem
       sentido junto com o usuário dedicado do endurecimento
+- [x] O empacotador acha os binários em `CARGO_TARGET_DIR` quando ele está definido, em vez de
+      empacotar em silêncio os de `target\release` ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
+- [ ] Regra de firewall do serviço no instalador do Windows — sem ela, numa rede Pública o Windows
+      não pode ser chamado, e na bancada só funcionou com ele discando ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
 - [ ] Assinatura com certificado de verdade e GPG no RPM ([Etapa 10](#etapa-10--qualidade-e-lançamento))
 
 ---
@@ -271,7 +289,18 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 ## Etapa 4 — Rede
 - [x] `ir-net`: UDP de entrada cifrado, com o endpoint por canais
 - [x] Pareamento de ponta a ponta testado (dois endpoints em loopback; código igual, confirmação dupla, quadro atravessa)
-- [x] Descoberta mDNS + endereço manual
+- [~] Descoberta mDNS + endereço manual — a descoberta existe em `ir-net` (`discovery.rs`), mas o
+      serviço **não a usa**: o "Procurar" oferece só o `peer_addr` do arquivo de configuração. O
+      endereço manual só existe editando esse arquivo como administrador. Estava marcado como feito;
+      a bancada mostrou que não funciona de ponta a ponta ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
+- [ ] O vencimento do código de pareamento é registrado como vencimento, e não com
+      `reason="códigos diferentes"`, que aponta para alguém no meio ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
+- [ ] Investigar `o handshake seguro falhou` registrado no cliente durante uma rediscagem de
+      pareamento ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
+- [ ] O handshake de pareamento não é abandonado pela rede antes do prazo do pareamento — hoje cai
+      em ~105–110 s, contra os 120 s do ator e os "2 minutos" da tela ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
+- [ ] `[H]` A sessão firma e se mantém sobre Wi-Fi com economia de energia — na bancada ela cai em
+      `Timeout` e se reinicia a cada ~200 ms depois do pareamento ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
 - [~] Confiabilidade sobre UDP — a de `ir-session` já existe e é testada; falta o ensaio de perda de 5% ponta a ponta
 - [ ] TCP de dados (só entrada foi implementada; arquivos são Etapa 8)
 - [ ] `[H]` Latência dentro da meta, medida entre duas máquinas
@@ -337,7 +366,14 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Nenhuma janela de console atrás da interface no build de release
 - [x] Fluxo de pareamento com código de seis dígitos — ligado ao serviço de verdade: a janela
       mostra o código que o pareamento cifrado gera e a confirmação nas duas telas fecha o par
-      ([log 14](docs/logs/14-servico-de-ponta-a-ponta.md))
+      ([log 14](docs/logs/14-servico-de-ponta-a-ponta.md)). No Windows instalado não fechava até
+      `7c1aea0`: o clique ficava preso no *pipe* síncrono ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
+- [ ] Informar o endereço do outro computador pela janela, sem editar arquivo como administrador
+      ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
+- [ ] "Parear" com um pareamento automático já em curso não reinicia o *handshake* nem troca o
+      código das duas telas ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
+- [ ] Botões acessíveis: `accessible-role` e ação padrão, para leitor de tela e automação
+      ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
 - [ ] Preferências avançadas: arranjo de telas, atalho de emergência
 - [ ] Bandeja do sistema
 - [ ] Fechar, matar ou não abrir não altera a sessão

@@ -163,7 +163,14 @@ function Empacotar-Windows([string]$versao, [string]$commit) {
         if ($LASTEXITCODE -ne 0) { throw 'a compilacao falhou' }
     }
 
-    $release = Join-Path $raiz 'target\release'
+    # Onde o cargo pos os binarios. Com `CARGO_TARGET_DIR` definido -- necessario quando o disco do
+    # repositorio esta cheio --, eles NAO estao em `target\release`, e procurar la empacotaria em
+    # silencio os binarios de uma compilacao anterior. Apontado pela sessao paralela (log 21).
+    $release = if ($env:CARGO_TARGET_DIR) {
+        Join-Path $env:CARGO_TARGET_DIR 'release'
+    } else {
+        Join-Path $raiz 'target\release'
+    }
     $binarios = Join-Path $trabalho 'binarios'
     $recursos = Join-Path $trabalho 'recursos'
     foreach ($pasta in @($binarios, $recursos)) {

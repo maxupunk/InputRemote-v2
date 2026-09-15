@@ -45,3 +45,4 @@ quê. Um registro que se reescreve não é registro.
 | 18 | 2026-09-11 | [A prova no notebook, e a troca de papel que ninguém viu](docs/logs/18-a-prova-no-notebook-e-a-troca-de-papel.md) |
 | 19 | 2026-09-11 | [A troca de papel e de borda que vale na hora](docs/logs/19-a-troca-que-vale-na-hora.md) |
 | 20 | 2026-09-11 | [Atualizar sem reiniciar, e o balanço do que falta](docs/logs/20-atualizar-sem-reiniciar-e-o-balanco.md) |
+| 21 | 2026-09-15 | [A janela que travava no Windows, e o pareamento que nunca fechava](docs/logs/21-a-janela-que-travava-no-windows.md) |
