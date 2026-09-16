@@ -86,10 +86,17 @@ impl Daemon {
             let _ = self
                 .avisos
                 .send(ir_ipc::Aviso::PareamentoConcluido { sucesso: true });
-        } else if let Some(fixada) = self.config.first_peer_key()
-            && fixada != chave_do_par
-        {
-            warn!("a chave do par não confere com a fixada — recusando");
+        } else if self.config.first_peer_key() != Some(chave_do_par) {
+            // Sem pareamento em curso, só passa quem já está fixado — e exatamente ele.
+            //
+            // **Não ter chave nenhuma também recusa**, e é essa a parte que faltava. Esquecer um
+            // par apaga a chave fixada, e a partir daí aquele computador precisa de código novo e
+            // de confirmação visual ([04, §3.4](../../../docs/04-seguranca.md)). Antes, a recusa
+            // era "existe fixada **e** difere": com a lista vazia o ramo não disparava, e a
+            // máquina reaceitava em silêncio o par que acabara de ser esquecido — bastava ele
+            // insistir num `Noise_IK`. Também era isso que mantinha `linked` ligado para sempre,
+            // e com ele o laço de sessão que reiniciava a cada segundo.
+            warn!(%de, "sem pareamento em curso e sem chave fixada que confira — recusando");
             if let Some(transporte) = self.transporte(portador) {
                 transporte.desconectar();
             }
@@ -173,5 +180,107 @@ impl Daemon {
         };
         info!(%alvo, %portador, "conectando ao par");
         transporte.conectar(alvo, Some(chave));
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use std::net::SocketAddr;
+
+    use ir_session::Role;
+
+    use super::*;
+    use crate::actor::bancada::{Bancada, Feito};
+    use crate::config::{PinnedPeer, encode_key};
+
+    fn chave() -> PublicKey {
+        PublicKey([9; 32])
+    }
+
+    fn outra_chave() -> PublicKey {
+        PublicKey([4; 32])
+    }
+
+    fn de_onde() -> Endereco {
+        Endereco::Rede(
+            "10.0.0.135:52526"
+                .parse::<SocketAddr>()
+                .expect("endereço válido"),
+        )
+    }
+
+    fn gravar_par(bancada: &mut Bancada) {
+        bancada.daemon.config.peers = vec![PinnedPeer {
+            pubkey: encode_key(&chave()),
+            addr: None,
+        }];
+    }
+
+    fn estabeleceu(bancada: &mut Bancada, chave_do_par: PublicKey) {
+        bancada.daemon.on_fato_do_transporte(Fato::Estabelecido {
+            portador: Carrier::Udp,
+            chave_do_par,
+            de: de_onde(),
+        });
+    }
+
+    #[test]
+    fn sem_par_gravado_o_servico_nao_aceita_quem_liga() {
+        // `docs/04` §3.4: esquecer um par apaga a chave fixada, e a partir daí aquele computador
+        // precisa de código novo e confirmação visual. A recusa era "existe fixada **e** difere",
+        // então com a lista vazia ninguém era recusado: quem insistisse num `Noise_IK` entrava
+        // calado, sem código e sem ninguém confirmar nada (log 27).
+        let mut bancada = Bancada::nova(Role::Server);
+        assert!(bancada.daemon.config.peers.is_empty(), "nenhum par gravado");
+
+        estabeleceu(&mut bancada, chave());
+
+        assert!(
+            !bancada.daemon.linked,
+            "sem par gravado, ninguém entra sem passar pelo pareamento"
+        );
+        assert!(
+            bancada.rede.feitos().contains(&Feito::Desconectou),
+            "e o enlace tem de cair, senão `linked` fica ligado para sempre"
+        );
+    }
+
+    #[test]
+    fn uma_chave_diferente_da_fixada_e_recusada() {
+        let mut bancada = Bancada::nova(Role::Server);
+        gravar_par(&mut bancada);
+
+        estabeleceu(&mut bancada, outra_chave());
+
+        assert!(!bancada.daemon.linked, "não é quem está fixado");
+    }
+
+    #[test]
+    fn com_a_chave_fixada_certa_o_servico_aceita() {
+        // Proteção do que já funcionava: uma reconexão legítima continua entrando, senão a
+        // correção teria trocado um defeito por outro.
+        let mut bancada = Bancada::nova(Role::Server);
+        gravar_par(&mut bancada);
+
+        estabeleceu(&mut bancada, chave());
+
+        assert!(bancada.daemon.linked, "a chave confere com a fixada");
+    }
+
+    #[test]
+    fn com_pareamento_em_curso_o_servico_aceita_e_grava_o_par() {
+        // O outro caminho legítimo: o pareamento que o usuário acabou de confirmar.
+        let mut bancada = Bancada::nova(Role::Server);
+        bancada.daemon.on_pairing_code([1, 2, 3, 4, 5, 6], chave());
+        bancada.daemon.confirmar(true);
+
+        estabeleceu(&mut bancada, chave());
+
+        assert!(bancada.daemon.linked);
+        assert!(
+            !bancada.daemon.config.peers.is_empty(),
+            "o par precisa ficar gravado"
+        );
     }
 }
