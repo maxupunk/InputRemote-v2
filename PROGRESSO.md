@@ -51,8 +51,9 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] ~~Publicação de serviço SDP por `WSASetService`~~ — canal fixo, sem SDP (ADR-0009)
 - [x] ~~Backend BlueZ por `ProfileManager1.RegisterProfile`~~ — sockets `AF_BLUETOOTH` sem
       D-Bus, canal fixo (ADR-0009); log 26
-- [~] Medidor de RTT — `ir-bt/examples/bancada.rs`, com o `Endpoint` de produção. Mede uma
-      sonda por vez; falta a carga de 125 msg/s (log 26)
+- [x] Medidor de RTT com carga de 125 msg/s — `ir-bt/examples/bancada.rs`, com o `Endpoint`
+      de produção. Emite sem esperar resposta e casa a volta com a ida pelo número de
+      sequência; 600 sondas a 123/s, zero perdas (logs 26 e 28)
 - [ ] `[H]` Socket abre na sessão 0, sem usuário logado
 - [ ] `[H]` Par continua pareado após reiniciar as duas máquinas
 - [~] `[H]` Windows↔Windows e Windows↔Linux, nos dois sentidos — Linux→Windows pela bancada
@@ -60,10 +61,11 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       duas telas; faltam Windows↔Windows e Fedora→Windows pelo produto
 - [ ] `[H]` Latência **adicionada**: mediana < 20 ms, p99 < 50 ms — a meta é de **uma
       travessia** (carimbo na captura de uma máquina contra a injeção na outra,
-      `docs/01` §6); a ida e volta entra só para alinhar relógios. O medido até aqui é
-      **proxy de transporte**, e não latência adicionada: ida e volta de 49,84 ms na
-      mediana e 90,02 ms no p99, que por travessia dão 24,9 ms e 45,0 ms — o p99 passaria,
-      a mediana não. Falta medir o que a meta pede, e sob carga (logs 26 e 27)
+      `docs/01` §6); a ida e volta entra só para alinhar relógios. O medido é **proxy de
+      transporte**: ida e volta de 51,21 ms na mediana e 136,16 ms no p99 sob carga de
+      123/s, contra 49,84 e 90,02 ms sequencial. A carga **refutou** a suspeita de *sniff*
+      — mediana igual, cauda pior, zero perdas, que é assinatura de enfileiramento e custo
+      fixo por quadro. Falta a causa, a MTU efetiva, e medir o que a meta pede (log 28)
 - [ ] `[H]` Reconexão < 5 s após religar o rádio
 - [ ] `[H]` MTU efetiva medida nas duas pilhas
 - [ ] `[H]` Comparação lado a lado com UDP cabeado e UDP Wi-Fi

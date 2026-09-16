@@ -166,6 +166,17 @@ fn endereco_do_caminho(caminho: &Path) -> Option<BdAddr> {
 /// Traduz a falha de conexão no que o usuário precisa ouvir.
 fn traduzir(erro: &std::io::Error, alvo: BdAddr) -> BtError {
     use std::io::ErrorKind;
+
+    /// `EBUSY`: o kernel já tem uma sessão RFCOMM com este par neste canal.
+    const OCUPADO: i32 = 16;
+
+    if erro.raw_os_error() == Some(OCUPADO) {
+        // Não é falta de par nem falta de resposta: é sobra de uma conexão anterior que o enlace
+        // de baixo nível ainda segura (log 28). Chamar isto de "erro de socket" mandava a pessoa
+        // procurar defeito onde não há.
+        return BtError::Ocupado(alvo.to_string());
+    }
+
     match erro.kind() {
         // O par existe e está pareado, mas ninguém atende no canal do produto.
         ErrorKind::ConnectionRefused | ErrorKind::ConnectionReset | ErrorKind::TimedOut => {

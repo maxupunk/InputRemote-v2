@@ -34,6 +34,15 @@ pub enum BtError {
     #[error("o par não atendeu no canal do InputRemote")]
     SemResposta,
 
+    /// O rádio ainda tem uma conexão anterior com este par.
+    ///
+    /// O enlace de baixo nível sobrevive ao processo: um programa encerrado de repente deixa a
+    /// sessão RFCOMM meio aberta, e a conexão seguinte para o mesmo canal é recusada como ocupada
+    /// até o sistema expirar o enlace sozinho. Distinto de [`Self::SemResposta`]: ali não há
+    /// ninguém atendendo, e aqui há **conexão demais**, não de menos (log 28).
+    #[error("o rádio ainda está ocupado com uma conexão anterior a {0}")]
+    Ocupado(String),
+
     /// Falha de E/S no socket RFCOMM.
     #[error("erro de socket Bluetooth: {0}")]
     Io(#[from] std::io::Error),
@@ -91,6 +100,10 @@ impl BtError {
                 "Verifique se o InputRemote está em execução no outro computador e se o \
                  Bluetooth dele está ligado.",
             ),
+            Self::Ocupado(_) => Some(
+                "Uma conexão anterior com esse computador ainda não terminou. Espere alguns \
+                 segundos, ou desconecte-o pelas configurações de Bluetooth do sistema.",
+            ),
             _ => None,
         }
     }
@@ -101,13 +114,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn as_tres_causas_que_o_usuario_resolve_tem_instrucao() {
+    fn as_causas_que_o_usuario_resolve_tem_instrucao() {
         // O ADR-0005 exige distinguir "não pareado" de "pareado, mas sem resposta". Distinguir
         // só serve se cada uma disser o que fazer a respeito.
         let com_instrucao = [
             BtError::SemRadio("hci0 bloqueado".to_owned()),
             BtError::NaoPareado("AA:BB:CC:DD:EE:FF".to_owned()),
             BtError::SemResposta,
+            BtError::Ocupado("AA:BB:CC:DD:EE:FF".to_owned()),
         ];
         for erro in com_instrucao {
             let instrucao = erro.o_que_fazer().expect("precisa instruir");
