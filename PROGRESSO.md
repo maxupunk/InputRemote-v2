@@ -54,7 +54,10 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Medidor de RTT com carga de 125 msg/s — `ir-bt/examples/bancada.rs`, com o `Endpoint`
       de produção. Emite sem esperar resposta e casa a volta com a ida pelo número de
       sequência; 600 sondas a 123/s, zero perdas (logs 26 e 28)
-- [ ] `[H]` Socket abre na sessão 0, sem usuário logado
+- [ ] `[H]` Socket abre na sessão 0, sem usuário logado — e é o mesmo pré-requisito da
+      travessia de entrada no Windows: o canal do agente é `Acesso::Restrito` (só SYSTEM e
+      administradores), então só o serviço instalado hospeda o agente. A instância paralela
+      sem elevação serve para rádio, pareamento e sessão, mas não para captura (log 29)
 - [ ] `[H]` Par continua pareado após reiniciar as duas máquinas
 - [~] `[H]` Windows↔Windows e Windows↔Linux, nos dois sentidos — Linux→Windows pela bancada
       (log 26) e Windows→Linux pelo produto inteiro (log 27), com os seis dígitos batendo nas
@@ -379,7 +382,9 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] `ir-bt`: trait + backend Winsock + backend BlueZ — log 26
 - [x] Política única de escolha de portador — o serviço passou a rotear pelo portador que a
       sessão escolhe, em vez de mandar tudo pela rede; `ir-transporte` extraído. Log 26
-- [ ] Reconexão
+- [x] Reconexão — com a chave fixada e o `peer_addr` de cada lado apontando para o rádio do
+      outro, as duas máquinas reconectam sozinhas por Bluetooth ao subir, sem código e sem
+      ninguém pedir (log 29)
 - [~] `[H]` Quatro combinações por Bluetooth — duas feitas: Linux liga e Windows atende
       (log 26); Windows liga e Linux atende, pelo produto inteiro (log 27)
 - [ ] `[H]` Degradação para UDP com motivo visível

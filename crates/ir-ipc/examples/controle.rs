@@ -165,6 +165,10 @@ fn mostrar_resposta(resposta: &Resposta) -> bool {
             println!("  portador: {:?}", estado.portador);
             println!("  motivo:   {:?}", estado.motivo_do_portador);
             println!("  par:      {:?}", estado.par.as_ref().map(|p| p.conectado));
+            // Sem agente pronto nada e digitado nesta maquina: no Windows quem captura e injeta
+            // e ele, e o servico na sessao 0 nao alcanca a area de trabalho de ninguem.
+            println!("  agente:   pronto={}", estado.agente_pronto);
+            println!("  nivel:    {:?}", estado.nivel_privilegiado);
             // Consultar o estado é pergunta, não assinatura: quem quer acompanhar usa
             // `aguardar`. Continuar escutando aqui prendia a bancada num `read_exact` à espera
             // de mensagens que só chegam quando algo muda.

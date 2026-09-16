@@ -13,6 +13,22 @@ use tracing::{info, warn};
 
 use super::Daemon;
 
+/// A cada quantas batidas de 5 ms se relança o agente que ainda não conectou.
+///
+/// **Precisa ser maior que a janela em que o agente desiste**, que é de 30 s — 60 tentativas de
+/// 500 ms, em `ir-agent`. Eram 9 s, e daí vinham dois efeitos que se escondiam um no outro: o
+/// agente nunca chegava ao fim das próprias tentativas, então o erro que diz *por que* ele não
+/// conecta jamais aparecia; e cada lançamento sobrevivia ao seguinte, de modo que os processos se
+/// empilhavam — exatamente o que o espaçamento existia para evitar (log 29).
+///
+/// Os dois números vivem em crates diferentes e não há como o compilador amarrá-los. Se um mudar,
+/// o outro precisa ser conferido à mão: 36 s aqui contra 30 s lá.
+///
+/// Só existe no Windows: no Linux não há agente a relançar, e uma constante sem uso lá viraria
+/// aviso de build.
+#[cfg(windows)]
+const RELANCAR_AGENTE_TICKS: u32 = super::RECONNECT_TICKS * 12;
+
 impl Daemon {
     /// Por onde mandar comandos ao agente — só quando há agente pronto.
     ///
@@ -105,9 +121,7 @@ impl Daemon {
         if self.agente_pronto {
             return;
         }
-        // Um terço da cadência da reconexão: o agente recém-lançado leva um instante para
-        // conectar, e insistir antes disso empilharia processos esperando a mesma vaga.
-        if !self.ticks.is_multiple_of(super::RECONNECT_TICKS * 3) {
+        if !self.ticks.is_multiple_of(RELANCAR_AGENTE_TICKS) {
             return;
         }
         match crate::lancador::lancar_agente() {

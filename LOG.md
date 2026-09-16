@@ -53,3 +53,4 @@ quê. Um registro que se reescreve não é registro.
 | 26 | 2026-09-15 | [O Bluetooth que não existia, e o portador que o serviço ignorava](docs/logs/26-o-bluetooth-que-nao-existia.md) |
 | 27 | 2026-09-16 | [O par que voltava sozinho, e a latência que eu li errado](docs/logs/27-o-par-que-voltava-sozinho.md) |
 | 28 | 2026-09-16 | [A carga que refutou o *sniff*, e o rádio que ficava ocupado](docs/logs/28-a-carga-que-refutou-o-sniff.md) |
+| 29 | 2026-09-16 | [O agente que nunca chegava a dizer por quê](docs/logs/29-o-agente-que-nunca-dizia-por-que.md) |
