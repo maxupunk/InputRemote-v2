@@ -44,15 +44,20 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [ ] `[H]` **Nível de capacidade do Windows declarado** (N3 / N2 / N1)
 
 ### PoC-2 — Bluetooth RFCOMM dentro de um serviço
-- [ ] Socket `AF_BTH` + `BTHPROTO_RFCOMM` no Windows, a partir de serviço
+- [~] Socket `AF_BTH` + `BTHPROTO_RFCOMM` no Windows — abre, vincula o canal e **aceita
+      conexão de entrada sem registro SDP**; falta repetir a partir do serviço (log 26)
 - [x] ~~Publicação de serviço SDP por `WSASetService`~~ — canal fixo, sem SDP (ADR-0009)
 - [x] ~~Backend BlueZ por `ProfileManager1.RegisterProfile`~~ — sockets `AF_BLUETOOTH` sem
       D-Bus, canal fixo (ADR-0009); log 26
-- [ ] Medidor de RTT com carga de 125 msg/s
+- [~] Medidor de RTT — `ir-bt/examples/bancada.rs`, com o `Endpoint` de produção. Mede uma
+      sonda por vez; falta a carga de 125 msg/s (log 26)
 - [ ] `[H]` Socket abre na sessão 0, sem usuário logado
 - [ ] `[H]` Par continua pareado após reiniciar as duas máquinas
-- [ ] `[H]` Windows↔Windows e Windows↔Linux, nos dois sentidos
-- [ ] `[H]` Latência: mediana < 20 ms, p99 < 50 ms
+- [~] `[H]` Windows↔Windows e Windows↔Linux, nos dois sentidos — Linux→Windows funciona,
+      com os seis dígitos batendo nos dois lados (log 26); faltam os outros três sentidos
+- [ ] `[H]` Latência: mediana < 20 ms, p99 < 50 ms — **medido e reprovado**: ida e volta com
+      mediana de 49,84 ms e p99 de 90,02 ms. Causa não estabelecida; suspeita de *sniff* do
+      rádio, e os limites não dizem se medem ida ou ida e volta (log 26)
 - [ ] `[H]` Reconexão < 5 s após religar o rádio
 - [ ] `[H]` MTU efetiva medida nas duas pilhas
 - [ ] `[H]` Comparação lado a lado com UDP cabeado e UDP Wi-Fi
@@ -367,7 +372,7 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Política única de escolha de portador — o serviço passou a rotear pelo portador que a
       sessão escolhe, em vez de mandar tudo pela rede; `ir-transporte` extraído. Log 26
 - [ ] Reconexão
-- [ ] `[H]` Quatro combinações por Bluetooth
+- [~] `[H]` Quatro combinações por Bluetooth — uma feita (Linux liga, Windows atende)
 - [ ] `[H]` Degradação para UDP com motivo visível
 
 ## Etapa 8 — Clipboard e arquivos

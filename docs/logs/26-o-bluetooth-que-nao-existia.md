@@ -131,23 +131,65 @@ Os dois lados registraram `rádio Bluetooth aberto; é o portador preferido para
 Isso fecha a metade de **escutar** da hipótese do ADR-0009: vincular um canal fixo sem publicar
 registro é aceito pelas duas pilhas, e o 23 está livre nas duas máquinas.
 
+## A primeira conexão por rádio
+
+Windows escutando, Fedora ligando — o sentido que interessa, porque é o que testa se o Windows
+aceita entrada **sem** registro SDP publicado.
+
+```text
+Fedora   [ 533 ms] CÓDIGO DE PAREAMENTO: 279673
+Windows  [1841 ms] CÓDIGO DE PAREAMENTO: 279673
+Fedora   [ 544 ms] ENLACE PRONTO com 74:13:EA:A6:5A:99
+Windows  [1862 ms] ENLACE PRONTO com AC:50:DE:47:EB:28
+```
+
+**Os seis dígitos bateram nos dois lados**, derivados do hash do handshake `Noise_XX` que
+atravessou o rádio. O ADR-0009 se sustenta inteiro: nenhum dos dois lados publicou registro, e a
+conexão de entrada foi aceita. O `WSASetService` continua fora, e do jeito que o ADR previa —
+a hipótese foi testada, não assumida.
+
+No fim, com o processo do outro lado encerrado, o Windows registrou `ENLACE CAIU: o par encerrou
+o canal`, e não `o quadro não abriu`. A distinção entre as duas causas, escrita no
+[`endpoint`](../../crates/ir-bt/src/endpoint/mod.rs), funcionou no hardware.
+
+## A latência reprova, e a causa não está estabelecida
+
+Duzentas idas e voltas, uma sonda por vez, medidas pelo lado que liga:
+
+| | Medido | Limite da PoC-2 |
+|---|---:|---:|
+| mediana | 49,84 ms | 20 ms |
+| p90 | 68,94 ms | — |
+| p99 | 90,02 ms | 50 ms |
+| pior | 96,91 ms | — |
+
+**Reprova nos dois limites.** Duas ressalvas antes de culpar o portador:
+
+1. **A medida é de ida e volta**, isto é, duas travessias. Uma travessia fica perto de 25 ms
+   pela aritmética — ainda acima do alvo, mas menos da metade do número da tabela. Os limites da
+   PoC-2 não dizem qual das duas coisas medem, e isso precisa ser decidido antes de a tabela
+   valer como aprovação ou reprovação.
+2. **A suspeita principal é o modo de economia do rádio.** Um enlace ocioso entra em *sniff*, com
+   intervalo de dezenas de milissegundos, e as sondas aqui são estritamente sequenciais — uma por
+   vez, sem nada em voo —, que é o pior caso possível para isso. Não foi verificado.
+
+O instrumento é o [`examples/bancada.rs`](../../crates/ir-bt/examples/bancada.rs), que usa o
+`Endpoint` de produção. Ele nasceu errado e o erro valeu a pena registrar: na primeira versão os
+**dois** lados ecoavam, o que virou um pingue-pongue de 4 583 quadros e um número que não media
+nada. Quadros atravessando aos milhares também é um dado — o rádio aguenta tráfego contínuo nos
+dois sentidos —, mas latência não se mede assim.
+
 ## O que ainda não foi provado
 
-Nenhuma **conexão** entre os dois aconteceu ainda. O que falta, e é a PoC-2:
-
-- que o Windows aceita uma conexão **de entrada** sem registro SDP publicado — é a outra metade
-  da hipótese do ADR-0009, e a que o derruba se falhar (`WSASetService` volta, e só do lado do
-  Windows, onde não custa dependência);
-- o pareamento por rádio de ponta a ponta: código de seis dígitos, as duas confirmações, e um
-  quadro atravessando;
-- latência (mediana < 20 ms, p99 < 50 ms), reconexão < 5 s, MTU efetiva medida;
-- as quatro combinações entre plataformas;
-- que o socket abre **na sessão 0**, sem usuário logado. O teste acima rodou em primeiro plano,
-  e não a partir do serviço — o item `[H]` continua aberto por isso.
-
-O impedimento do momento é de bancada, não de código: o serviço instalado no Windows é do binário
-antigo e segura `\\.\pipe\inputremote-control` e a porta UDP; esta sessão não tem privilégio para
-pará-lo, e duas instâncias não convivem.
+- **Carga de 125 msg/s**, que é o que a PoC-2 pede de verdade; o medidor de hoje faz uma sonda
+  por vez.
+- **A causa da latência**: confirmar ou descartar o *sniff*, e refazer a medida com o enlace
+  ocupado.
+- **O socket a partir do serviço**, na sessão 0 e sem usuário logado. No Linux o rádio já abre
+  pelo serviço systemd; no Windows o teste foi em primeiro plano.
+- **Windows→Linux**, e as duas combinações entre máquinas iguais.
+- **Reconexão** depois de religar o rádio, e o par continuar pareado após reiniciar as duas
+  máquinas.
 
 ## Uma nota sobre o prazo de queda
 
