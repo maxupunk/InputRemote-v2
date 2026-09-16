@@ -16,7 +16,10 @@ path = "src/main.rs"
 ir-proto.workspace = true
 ir-session.workspace = true
 ir-crypto.workspace = true
-ir-net.workspace = true
+# O serviço não fala com `ir-net` nem com `ir-bt` direto: ele pede a um transporte, e quem sabe
+# que existem dois é o `ir-transporte`. Foi a ausência dessa fronteira que deixou o serviço
+# mandando pela rede o que a sessão marcara como Bluetooth.
+ir-transporte.workspace = true
 ir-input.workspace = true
 ir-ipc.workspace = true
 tokio.workspace = true

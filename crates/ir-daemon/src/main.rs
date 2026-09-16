@@ -1,7 +1,7 @@
 //! O executável do serviço.
 //!
 //! Em primeiro plano, para o teste antes da instalação como serviço/systemd: carrega
-//! configuração e identidade, sobe o endpoint UDP, liga captura ou injeção conforme o papel, e
+//! configuração e identidade, sobe os transportes, liga captura ou injeção conforme o papel, e
 //! roda o ator central ([02, §4](../../../docs/02-arquitetura.md)).
 
 mod actor;
@@ -17,10 +17,10 @@ use std::io::BufRead;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use ir_net::{Endpoint, bind};
 use ir_proto::peer::{Capabilities, MachineName, PrivilegedInputLevel};
 use ir_proto::screens::ScreenLayout;
 use ir_session::{LocalIdentity, Role};
+use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::{mpsc, watch};
 use tracing::info;
 // Só o caminho sem agente (Linux) relata backend de entrada indisponível.
@@ -28,6 +28,7 @@ use tracing::info;
 use tracing::warn;
 
 use crate::actor::{CaptureRx, Daemon, Entradas, Parts};
+use ir_transporte::{Endereco, Fato, Radio, Rede, Transporte};
 
 /// Ponto de entrada.
 ///
@@ -57,7 +58,7 @@ pub(crate) fn executar_bloqueante(parada: watch::Receiver<bool>) -> Result<()> {
     runtime.block_on(executar(parada))
 }
 
-/// O corpo do serviço: carrega estado, sobe rede, entrada e o canal de controle, e roda o ator.
+/// O corpo do serviço: carrega estado, sobe transportes, entrada e o canal de controle, e roda o ator.
 async fn executar(parada: watch::Receiver<bool>) -> Result<()> {
     // O guarda esvazia a fila do registro ao sair; soltá-lo antes perderia as últimas linhas.
     let _registro = init_tracing();
@@ -68,29 +69,30 @@ async fn executar(parada: watch::Receiver<bool>) -> Result<()> {
     let role = actor::papel_na_subida(&mut cfg, &dir)?;
     let edge = cfg.edge()?;
     info!(
-        "InputRemote daemon — papel {role}, impressão digital {}",
+        "InputRemote — papel {role}, impressão digital {}",
         identity.fingerprint()
     );
 
     // Tamanho de tela: da plataforma quando ela sabe, senão da configuração.
     let screen = ir_input::primary_screen_size().unwrap_or((cfg.screen_width, cfg.screen_height));
 
-    let socket = abrir_socket(cfg.port).await?;
-    let net = Endpoint::spawn(Arc::clone(&socket), Arc::clone(&identity));
+    let (rede, radio, transportes) = abrir_transportes(cfg.port, &identity).await?;
 
     let (capturer, injector, capture_rx) = build_io(role);
     let identidade = identidade_local(&identity);
-    let peer_addr = cfg.peer_addr.as_deref().and_then(|a| a.parse().ok());
+    // O endereço do par pode ser `ip:porta` ou um endereço de rádio; é ele que diz o portador.
+    let peer = cfg.peer_addr.as_deref().and_then(Endereco::ler);
 
     let canais = abrir_canais()?;
 
     let mut daemon = Daemon::new(Parts {
         session: actor::nova_sessao(role, edge, identidade.clone()),
-        net: net.commands.clone(),
+        rede,
+        radio,
         injector,
         capturer,
         screen,
-        peer_addr,
+        peer,
         data_dir: dir,
         config: cfg,
         avisos: canais.avisos,
@@ -101,14 +103,11 @@ async fn executar(parada: watch::Receiver<bool>) -> Result<()> {
         identidade_local: identidade,
     });
 
-    feed_screens(&mut daemon, screen);
-    daemon.connect_if_possible();
-    // O agente nasce junto com o serviço; o laço periódico só cuida de ressubi-lo se ele cair.
-    daemon.garantir_agente();
+    dar_partida(&mut daemon, screen);
 
     daemon
         .run(Entradas {
-            net_events: net.events,
+            transportes,
             capture: capture_rx,
             confirm: spawn_stdin_reader(),
             pedidos: canais.pedidos,
@@ -117,6 +116,59 @@ async fn executar(parada: watch::Receiver<bool>) -> Result<()> {
         })
         .await;
     Ok(())
+}
+
+/// Dá partida no ator: as telas, a primeira tentativa de conexão e o agente.
+fn dar_partida(daemon: &mut Daemon, screen: (u32, u32)) {
+    feed_screens(daemon, screen);
+    daemon.connect_if_possible();
+    // O agente nasce junto com o serviço; o laço periódico só cuida de ressubi-lo se ele cair.
+    daemon.garantir_agente();
+}
+
+/// Sobe os dois transportes de entrada e devolve as pontas.
+///
+/// **Um canal de fatos só para os dois.** Cada fato já diz por onde veio, e é isso que permite
+/// ao laço central ter um caminho de código para ambos os portadores — um canal por transporte
+/// faria o laço crescer a cada portador novo.
+async fn abrir_transportes(
+    porta: u16,
+    identidade: &Arc<ir_crypto::Identity>,
+) -> Result<(
+    Arc<dyn Transporte>,
+    Option<Arc<dyn Transporte>>,
+    mpsc::UnboundedReceiver<Fato>,
+)> {
+    let (fatos, transportes) = mpsc::unbounded_channel();
+    let rede: Arc<dyn Transporte> =
+        Arc::new(Rede::abrir(porta, Arc::clone(identidade), fatos.clone()).await?);
+    let radio = abrir_radio(Arc::clone(identidade), fatos);
+    Ok((rede, radio, transportes))
+}
+
+/// Abre o rádio Bluetooth, se houver um.
+///
+/// **Não abrir não é falha do serviço.** Sem adaptador, com ele desligado, ou com o canal do
+/// produto ocupado, o que resta é a rede — e é exatamente essa ausência que a política única do
+/// `ir-session` transforma em "Bluetooth indisponível; usando a rede local", com o motivo
+/// aparecendo na tela em vez de ficar escondido.
+fn abrir_radio(
+    identidade: Arc<ir_crypto::Identity>,
+    fatos: UnboundedSender<Fato>,
+) -> Option<Arc<dyn Transporte>> {
+    match Radio::abrir(identidade, fatos) {
+        Ok(radio) => {
+            info!("rádio Bluetooth aberto; é o portador preferido para teclado e mouse");
+            Some(Arc::new(radio) as Arc<dyn Transporte>)
+        }
+        Err(erro) => {
+            info!(%erro, "Bluetooth indisponível; a sessão vai usar a rede local");
+            if let Some(o_que_fazer) = erro.o_que_fazer() {
+                info!("{o_que_fazer}");
+            }
+            None
+        }
+    }
 }
 
 /// Os dois canais de IPC do serviço, já no ar.
@@ -206,19 +258,6 @@ fn arquivo_de_registro() -> Option<tracing_appender::rolling::RollingFileAppende
         .max_log_files(DIAS_DE_REGISTRO)
         .build(config::data_dir().join("logs"))
         .ok()
-}
-
-/// Vincula o socket UDP local na porta dada e registra o endereço.
-async fn abrir_socket(port: u16) -> Result<Arc<tokio::net::UdpSocket>> {
-    let socket = bind(
-        format!("0.0.0.0:{port}")
-            .parse()
-            .context("porta inválida")?,
-    )
-    .await
-    .context("vinculando o socket UDP")?;
-    info!(local = %socket.local_addr().context("endereço local")?, "escutando UDP");
-    Ok(socket)
 }
 
 /// A ponte da confirmação de pareamento: lê linhas do stdin numa thread própria.

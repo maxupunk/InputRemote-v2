@@ -2,6 +2,11 @@
 
 **Status:** aceito · **Data:** 2026-09-09 · **Substitui:** nada
 
+> **Alterado em 2026-09-15 por [ADR-0009](0009-canal-rfcomm-fixo-sem-sdp.md).** A parte de
+> publicação e consulta de SDP da Decisão A não vale mais: o canal RFCOMM é fixo nas duas
+> plataformas, e nenhum dos lados publica registro. O transporte (`AF_BTH` no Windows, sockets
+> `AF_BLUETOOTH` no Linux) e a Decisão B continuam valendo como estão escritos.
+
 São duas decisões, e elas se sustentam pelo mesmo motivo: o transporte precisa pertencer
 a um serviço que sobe antes do login.
 

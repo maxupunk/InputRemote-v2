@@ -7,6 +7,8 @@ members = [
     "crates/ir-crypto",
     "crates/ir-ipc",
     "crates/ir-net",
+    "crates/ir-bt",
+    "crates/ir-transporte",
     "crates/ir-input",
     "crates/ir-daemon",
     "crates/ir-agent",
@@ -30,6 +32,8 @@ ir-session = { path = "crates/ir-session", version = "0.1.0-dev" }
 ir-crypto = { path = "crates/ir-crypto", version = "0.1.0-dev" }
 ir-ipc = { path = "crates/ir-ipc", version = "0.1.0-dev" }
 ir-net = { path = "crates/ir-net", version = "0.1.0-dev" }
+ir-bt = { path = "crates/ir-bt", version = "0.1.0-dev" }
+ir-transporte = { path = "crates/ir-transporte", version = "0.1.0-dev" }
 ir-input = { path = "crates/ir-input", version = "0.1.0-dev" }
 
 postcard = { version = "1.1", default-features = false, features = ["alloc"] }

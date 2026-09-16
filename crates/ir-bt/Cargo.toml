@@ -1,0 +1,42 @@
+[package]
+name = "ir-bt"
+description = "Transporte Bluetooth RFCOMM. Move os quadros cifrados por um canal serial do rádio."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ir-proto.workspace = true
+ir-crypto.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+
+# BlueZ sem D-Bus: o recurso `rfcomm` do bluer é independente de `bluetoothd`, que é quem
+# arrastaria a biblioteca C do D-Bus. Sem ele, o crate é Rust puro sobre `AF_BLUETOOTH`, o que
+# importa porque o RPM compila num container onde não há cabeçalho de BlueZ instalado
+# (ver docs/logs/26).
+[target.'cfg(target_os = "linux")'.dependencies.bluer]
+version = "0.17"
+default-features = false
+features = ["rfcomm"]
+
+# Winsock `AF_BTH`, e não WinRT: as APIs `Windows.Devices.*` dependem de infraestrutura por
+# usuário e não são alvo suportado na sessão 0, onde este transporte precisa existir
+# (ADR-0005).
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_Networking_WinSock",
+    "Win32_Devices_Bluetooth",
+]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros", "time", "sync", "io-util"] }
+
+[lints]
+workspace = true

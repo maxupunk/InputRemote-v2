@@ -27,7 +27,12 @@ pub struct Config {
     pub screen_width: u32,
     /// Altura da tela em pixels.
     pub screen_height: u32,
-    /// O endereço do par, `ip:porta`, para iniciar a conexão. Opcional.
+    /// O endereço do par, para iniciar a conexão. Opcional.
+    ///
+    /// Duas formas, e é ela que decide o portador: `10.0.0.135:52525` fala pela rede,
+    /// `AC:50:DE:47:EB:28` fala pelo Bluetooth. As duas não se confundem — um `ip:porta` tem dois
+    /// grupos separados por `:`, um endereço de rádio tem seis —, e é por isso que um campo de
+    /// texto só dá conta dos dois sem o arquivo de configuração mudar de formato.
     pub peer_addr: Option<String>,
     /// Pares já pareados.
     #[serde(default)]

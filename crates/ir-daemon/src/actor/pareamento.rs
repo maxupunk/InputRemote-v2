@@ -11,7 +11,6 @@
 use std::time::{Duration, Instant};
 
 use ir_ipc::{Aviso, Resposta};
-use ir_net::NetCommand;
 use ir_session::{LinkDown, Phase};
 use tracing::{info, warn};
 
@@ -28,7 +27,7 @@ const PRAZO_DO_PAREAMENTO: Duration = Duration::from_secs(120);
 /// Termina com o par gravado, com o enlace caindo, com a recusa ou no prazo — e não no clique em
 /// "São iguais", que só diz que deste lado confere (log 25).
 #[derive(Debug, Clone, Copy)]
-pub(super) struct Pareamento {
+pub(crate) struct Pareamento {
     /// Quando o código apareceu. O prazo conta daqui.
     pub(super) desde: Instant,
     /// Se o usuário já disse que o código confere, e só falta o outro computador.
@@ -73,17 +72,20 @@ impl Daemon {
         if !expirou(pareamento.desde, Instant::now()) {
             return;
         }
-        if pareamento.conferido {
-            // O usuário já disse que confere, e é o outro lado que não respondeu. Recusar agora
-            // mandaria "códigos diferentes" — o sinal de alguém no meio — por um motivo que não é
-            // esse. Desfazer o enlace basta.
-            warn!("o pareamento conferido não terminou no prazo");
-            let _ = self.net.send(NetCommand::Disconnect);
-        } else {
-            warn!("o código de pareamento expirou sem confirmação");
-            // Recusar é o que desmonta o handshake do lado da rede e avisa o outro computador,
-            // para ele também sair da tela de comparação em vez de esperar o próprio prazo vencer.
-            let _ = self.net.send(NetCommand::ConfirmPairing(false));
+        if let Some(transporte) = self.transporte_do_par() {
+            if pareamento.conferido {
+                // O usuário já disse que confere, e é o outro lado que não respondeu. Recusar
+                // agora mandaria "códigos diferentes" — o sinal de alguém no meio — por um motivo
+                // que não é esse. Desfazer o enlace basta.
+                warn!("o pareamento conferido não terminou no prazo");
+                transporte.desconectar();
+            } else {
+                warn!("o código de pareamento expirou sem confirmação");
+                // Recusar é o que desmonta o handshake do lado do transporte e avisa o outro
+                // computador, para ele também sair da tela de comparação em vez de esperar o
+                // próprio prazo vencer.
+                transporte.confirmar_pareamento(false);
+            }
         }
         self.encerrar_pareamento_sem_sucesso();
     }
@@ -129,7 +131,9 @@ impl Daemon {
             self.apply_commands();
         }
         self.linked = false;
-        let _ = self.net.send(NetCommand::Disconnect);
+        if let Some(transporte) = self.transporte_do_par() {
+            transporte.desconectar();
+        }
         self.last_phase = self.session.phase();
         let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
         resposta
@@ -142,14 +146,13 @@ mod tests {
     use std::net::SocketAddr;
 
     use ir_crypto::PublicKey;
-    use ir_net::{ConnectMode, NetEvent};
     use ir_proto::carrier::Carrier;
     use ir_session::{Input, Role};
-    use tokio::sync::mpsc::UnboundedReceiver;
 
     use super::*;
-    use crate::actor::bancada::Bancada;
+    use crate::actor::bancada::{Bancada, Feito};
     use crate::config::{PinnedPeer, encode_key};
+    use ir_transporte::{Endereco, Fato};
 
     #[test]
     fn um_codigo_recem_mostrado_ainda_vale() {
@@ -190,14 +193,18 @@ mod tests {
         PublicKey([9; 32])
     }
 
-    fn endereco() -> SocketAddr {
-        "10.0.0.135:52526".parse().expect("endereço válido")
+    fn endereco() -> Endereco {
+        Endereco::Rede(
+            "10.0.0.135:52526"
+                .parse::<SocketAddr>()
+                .expect("endereço válido"),
+        )
     }
 
     /// Um serviço que já conhece o endereço do outro computador, sem par gravado.
     fn com_endereco() -> Bancada {
         let mut bancada = Bancada::nova(Role::Server);
-        bancada.daemon.peer_addr = Some(endereco());
+        bancada.daemon.peer = Some(endereco());
         bancada
     }
 
@@ -208,21 +215,6 @@ mod tests {
         }];
     }
 
-    /// O que o serviço mandou para a rede desde a última consulta.
-    fn enviados(rede: &mut UnboundedReceiver<NetCommand>) -> Vec<NetCommand> {
-        let mut comandos = Vec::new();
-        while let Ok(comando) = rede.try_recv() {
-            comandos.push(comando);
-        }
-        comandos
-    }
-
-    fn discou(comandos: &[NetCommand]) -> bool {
-        comandos
-            .iter()
-            .any(|comando| matches!(comando, NetCommand::Connect { .. }))
-    }
-
     #[test]
     fn sem_par_gravado_o_servico_nao_disca_sozinho() {
         // Discar para parear a cada 3 s punha um código novo na tela do outro computador a cada
@@ -231,7 +223,7 @@ mod tests {
         bancada.daemon.connect_if_possible();
         bancada.daemon.reconnect_if_needed();
         assert!(
-            !discou(&enviados(&mut bancada.rede)),
+            !Bancada::discou(&bancada.rede.feitos()),
             "parear só quando o usuário pede"
         );
     }
@@ -242,17 +234,30 @@ mod tests {
         let mut bancada = com_endereco();
         gravar_par(&mut bancada);
         bancada.daemon.reconnect_if_needed();
-        let comandos = enviados(&mut bancada.rede);
+        let feitos = bancada.rede.feitos();
         assert!(
-            comandos.iter().any(|comando| matches!(
-                comando,
-                NetCommand::Connect {
-                    mode: ConnectMode::Reconnect(_),
-                    ..
-                }
-            )),
-            "{comandos:?}"
+            feitos
+                .iter()
+                .any(|feito| matches!(feito, Feito::Conectou { fixada: true, .. })),
+            "{feitos:?}"
         );
+    }
+
+    #[test]
+    fn o_endereco_decide_o_portador_da_reconexao() {
+        // O ponto da fiação de portador: um par visto pelo rádio precisa ser procurado pelo
+        // rádio. Antes, tudo ia para o socket de rede, qualquer que fosse o portador.
+        let mut bancada = Bancada::nova(Role::Server);
+        bancada.daemon.peer = Endereco::ler("AC:50:DE:47:EB:28");
+        gravar_par(&mut bancada);
+
+        bancada.daemon.reconnect_if_needed();
+
+        assert!(
+            Bancada::discou(&bancada.radio.feitos()),
+            "a reconexão tinha de sair pelo rádio"
+        );
+        assert!(!Bancada::discou(&bancada.rede.feitos()), "e não pela rede");
     }
 
     #[test]
@@ -264,15 +269,15 @@ mod tests {
         bancada.daemon.confirmar(true);
         bancada.daemon.reconnect_if_needed();
 
-        let comandos = enviados(&mut bancada.rede);
+        let feitos = bancada.rede.feitos();
         assert!(
-            comandos
+            feitos
                 .iter()
-                .any(|comando| matches!(comando, NetCommand::ConfirmPairing(true)))
+                .any(|feito| matches!(feito, Feito::Confirmou(true)))
         );
         assert!(
-            !discou(&comandos),
-            "discar agora desmontaria o pareamento em andamento: {comandos:?}"
+            !Bancada::discou(&feitos),
+            "discar agora desmontaria o pareamento em andamento: {feitos:?}"
         );
     }
 
@@ -284,9 +289,10 @@ mod tests {
         bancada.daemon.on_pairing_code([3, 3, 4, 5, 8, 9], chave());
         bancada.daemon.confirmar(true);
 
-        bancada
-            .daemon
-            .on_net(NetEvent::LinkDown("handshake falhou"));
+        bancada.daemon.on_fato_do_transporte(Fato::Caiu {
+            portador: Carrier::Udp,
+            motivo: "handshake falhou".to_owned(),
+        });
 
         let mut recebidos = Vec::new();
         while let Ok(aviso) = avisos.try_recv() {
@@ -306,7 +312,7 @@ mod tests {
         let mut avisos = bancada.daemon.avisos.subscribe();
         bancada.daemon.on_pairing_code([6, 5, 5, 6, 8, 8], chave());
         bancada.daemon.confirmar(true);
-        let _ = enviados(&mut bancada.rede);
+        let _ = bancada.rede.feitos();
         if let Some(pareamento) = bancada.daemon.pareamento.as_mut() {
             pareamento.desde = Instant::now()
                 .checked_sub(PRAZO_DO_PAREAMENTO + Duration::from_secs(1))
@@ -315,12 +321,10 @@ mod tests {
 
         bancada.daemon.vencer_pareamento_se_preciso();
 
-        let comandos = enviados(&mut bancada.rede);
+        let feitos = bancada.rede.feitos();
         assert!(
-            comandos
-                .iter()
-                .any(|comando| matches!(comando, NetCommand::Disconnect)),
-            "o usuário já disse que confere; recusar agora mandaria \"códigos diferentes\": {comandos:?}"
+            feitos.contains(&Feito::Desconectou),
+            "o usuário já disse que confere; recusar agora mandaria \"códigos diferentes\": {feitos:?}"
         );
         let mut recebidos = Vec::new();
         while let Ok(aviso) = avisos.try_recv() {
@@ -355,21 +359,19 @@ mod tests {
         bancada.daemon.linked = true;
         bancada.daemon.drive(Input::CarrierUp(Carrier::Udp));
         assert_ne!(bancada.daemon.session.phase(), Phase::Offline);
-        let _ = enviados(&mut bancada.rede);
+        let _ = bancada.rede.feitos();
 
         assert_eq!(bancada.daemon.esquecer_par(), Resposta::Feito);
 
         assert_eq!(bancada.daemon.session.phase(), Phase::Offline);
-        let comandos = enviados(&mut bancada.rede);
+        let feitos = bancada.rede.feitos();
         assert!(
-            comandos
-                .iter()
-                .any(|comando| matches!(comando, NetCommand::Disconnect)),
-            "o enlace seguro precisa cair: {comandos:?}"
+            feitos.contains(&Feito::Desconectou),
+            "o enlace seguro precisa cair: {feitos:?}"
         );
         bancada.daemon.reconnect_if_needed();
         assert!(
-            !discou(&enviados(&mut bancada.rede)),
+            !Bancada::discou(&bancada.rede.feitos()),
             "esquecido, não se procura mais"
         );
         assert!(bancada.daemon.estado().par.is_none());

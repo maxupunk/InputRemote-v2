@@ -82,6 +82,7 @@ crates/
 ├── ir-ipc/        protocolo e transporte daemon↔agente↔ui
 ├── ir-net/        UDP de entrada, TCP de dados, descoberta mDNS
 ├── ir-bt/         RFCOMM: trait + backend Windows + backend BlueZ
+├── ir-transporte/ a fronteira dos portadores: rede e rádio por uma porta só
 ├── ir-input/      traits de captura/injeção + backends por SO
 ├── ir-clip/       modelos de clipboard + backends por SO
 ├── ir-files/      manifesto, blocos, BLAKE3, cotas, staging
@@ -95,8 +96,8 @@ A regra de dependência é uma seta só, e o CI a verifica:
 ```text
 ir-daemon ──► ir-session ──► ir-proto ──► (nada)
     │              └──────► ir-geometry ──► ir-proto
-    ├──► ir-net ──► ir-crypto ──► ir-proto
-    ├──► ir-bt  ──► ir-crypto
+    ├──► ir-transporte ──► ir-net ──► ir-crypto ──► ir-proto
+    │                 └──► ir-bt  ──► ir-crypto
     ├──► ir-files ──► ir-proto
     ├──► ir-input
     └──► ir-ipc
@@ -110,7 +111,10 @@ Proibições verificadas automaticamente:
 - `ir-proto`, `ir-session` e `ir-geometry` **NÃO DEVEM** depender de `tokio`, de sockets,
   de relógio de parede, de sistema de arquivos ou de qualquer API de sistema operacional;
 - `ir-ui` **NÃO DEVE** depender de `ir-session`, `ir-net`, `ir-bt` ou `ir-input`;
-- nenhum crate de plataforma (`ir-input`, `ir-bt`, `ir-clip`) depende de outro.
+- nenhum crate de plataforma (`ir-input`, `ir-bt`, `ir-clip`) depende de outro;
+- o `ir-daemon` **NÃO DEVE** falar com `ir-net` ou `ir-bt` direto: quem escolhe o portador é
+  o `ir-session`, e quem o alcança é o `ir-transporte`. Foi a ausência dessa fronteira que
+  deixou o serviço mandando por um portador o que a sessão marcara para outro.
 
 Foi a ausência dessas setas que permitiu ao v1 acumular 10.491 linhas no crate da GUI.
 

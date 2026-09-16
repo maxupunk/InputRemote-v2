@@ -1,0 +1,189 @@
+//! O adaptador do `ir-bt`: o rádio Bluetooth visto como um [`Transporte`].
+//!
+//! Gêmeo de [`rede`](crate::rede), e de propósito: os dois endpoints têm comandos e eventos com
+//! a mesma forma, então os dois adaptadores têm a mesma forma. É isso que permite ao ator ter um
+//! caminho de código só para os dois portadores.
+//!
+//! # Abrir pode falhar, e a falha é informação
+//!
+//! Diferente da rede, aqui **não abrir é um resultado esperado**: pode não haver rádio, ele pode
+//! estar desligado, ou o canal do produto pode estar ocupado. O erro que sai daqui é o que faz a
+//! sessão saber que `Carrier::Rfcomm` não está disponível — e é a partir daí que a política
+//! única do `ir-session` degrada para a rede, com o motivo aparecendo na tela.
+
+use std::sync::Arc;
+
+use ir_bt::{BtCommand, BtEvent, ConnectMode, Endpoint};
+use ir_crypto::{Identity, PublicKey};
+use ir_proto::carrier::Carrier;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+
+use crate::{Endereco, Fato, Transporte};
+
+/// O rádio Bluetooth como transporte de entrada.
+#[derive(Debug)]
+pub struct Radio {
+    comandos: UnboundedSender<BtCommand>,
+}
+
+impl Radio {
+    /// Abre o rádio, sobe o endpoint e passa a relatar em `fatos`.
+    ///
+    /// # Errors
+    ///
+    /// [`ir_bt::BtError::SemRadio`] se não houver rádio utilizável — o caso em que o produto
+    /// **não** deve insistir. Qualquer outro erro se o canal do produto não puder ser aberto.
+    pub fn abrir(identidade: Arc<Identity>, fatos: UnboundedSender<Fato>) -> ir_bt::Result<Self> {
+        let radio = Arc::new(ir_bt::abrir_radio()?);
+        let alca = Endpoint::spawn(radio, identidade);
+        tokio::spawn(repassar(alca.events, fatos));
+        Ok(Self {
+            comandos: alca.commands,
+        })
+    }
+}
+
+impl Transporte for Radio {
+    fn portador(&self) -> Carrier {
+        Carrier::Rfcomm
+    }
+
+    fn conectar(&self, alvo: Endereco, chave: Option<PublicKey>) {
+        let Endereco::Radio(peer) = alvo else {
+            // Um endereço de rede não é com este transporte.
+            return;
+        };
+        let mode = match chave {
+            Some(fixada) => ConnectMode::Reconnect(fixada),
+            None => ConnectMode::Pair,
+        };
+        let _ = self.comandos.send(BtCommand::Connect { peer, mode });
+    }
+
+    fn enviar(&self, bytes: Vec<u8>) {
+        let _ = self.comandos.send(BtCommand::SendFrame(bytes));
+    }
+
+    fn confirmar_pareamento(&self, conferiu: bool) {
+        let _ = self.comandos.send(BtCommand::ConfirmPairing(conferiu));
+    }
+
+    fn desconectar(&self) {
+        let _ = self.comandos.send(BtCommand::Disconnect);
+    }
+}
+
+/// Repassa os eventos do endpoint como fatos do serviço, até um dos lados ir embora.
+async fn repassar(mut eventos: UnboundedReceiver<BtEvent>, fatos: UnboundedSender<Fato>) {
+    while let Some(evento) = eventos.recv().await {
+        let Some(fato) = fato_de(evento) else {
+            continue;
+        };
+        if fatos.send(fato).is_err() {
+            break; // o ator encerrou
+        }
+    }
+}
+
+/// Traduz um evento do rádio no fato correspondente.
+///
+/// Pura, como a gêmea da rede, e pelo mesmo motivo: é onde se troca um campo pelo outro sem
+/// perceber, e aqui dá para verificar sem rádio nenhum.
+fn fato_de(evento: BtEvent) -> Option<Fato> {
+    const PORTADOR: Carrier = Carrier::Rfcomm;
+    Some(match evento {
+        BtEvent::PairingCode {
+            code,
+            peer_static,
+            peer,
+        } => Fato::CodigoDePareamento {
+            portador: PORTADOR,
+            digitos: code,
+            chave_do_par: peer_static,
+            de: Endereco::Radio(peer),
+        },
+        BtEvent::Established { peer_static, peer } => Fato::Estabelecido {
+            portador: PORTADOR,
+            chave_do_par: peer_static,
+            de: Endereco::Radio(peer),
+        },
+        BtEvent::Frame(bytes) => Fato::Quadro {
+            portador: PORTADOR,
+            bytes,
+        },
+        BtEvent::LinkDown(motivo) => Fato::Caiu {
+            portador: PORTADOR,
+            motivo: motivo.to_owned(),
+        },
+        BtEvent::Error(mensagem) => Fato::Erro {
+            portador: PORTADOR,
+            mensagem,
+        },
+        // O enum é não exaustivo: uma variante nova do `ir-bt` não pode derrubar o serviço.
+        _ => return None,
+    })
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::panic)]
+mod tests {
+    use ir_bt::BdAddr;
+
+    use super::*;
+
+    const PAR: BdAddr = BdAddr([0xAC, 0x50, 0xDE, 0x47, 0xEB, 0x28]);
+
+    #[test]
+    fn todo_fato_traduzido_sai_marcado_como_bluetooth() {
+        // A propriedade que faltava no serviço: o portador do fato é o portador de verdade, e
+        // não o `Carrier::Udp` fixo que o ator usava quando só havia um transporte.
+        let eventos = [
+            BtEvent::PairingCode {
+                code: [1, 2, 3, 4, 5, 6],
+                peer_static: PublicKey([9; 32]),
+                peer: PAR,
+            },
+            BtEvent::Established {
+                peer_static: PublicKey([9; 32]),
+                peer: PAR,
+            },
+            BtEvent::Frame(vec![1, 2, 3]),
+            BtEvent::LinkDown("o par encerrou o canal"),
+            BtEvent::Error("falhou".to_owned()),
+        ];
+        for evento in eventos {
+            let fato = fato_de(evento).expect("traduz");
+            assert_eq!(fato.portador(), Carrier::Rfcomm, "{fato:?}");
+        }
+    }
+
+    #[test]
+    fn o_endereco_do_par_chega_como_endereco_de_radio() {
+        // É o que o serviço grava para reconectar depois. Se virasse endereço de rede, a
+        // reconexão discaria pelo portador errado — ou não discaria.
+        let fato = fato_de(BtEvent::Established {
+            peer_static: PublicKey([3; 32]),
+            peer: PAR,
+        })
+        .expect("traduz");
+        match fato {
+            Fato::Estabelecido { de, .. } => {
+                assert_eq!(de, Endereco::Radio(PAR));
+                assert_eq!(de.portador(), Carrier::Rfcomm);
+                assert_eq!(de.to_string(), "AC:50:DE:47:EB:28");
+            }
+            outro => panic!("esperava o estabelecido, veio {outro:?}"),
+        }
+    }
+
+    #[test]
+    fn o_motivo_da_queda_atravessa_inteiro() {
+        // "o par encerrou o canal" e "o quadro não abriu" são causas diferentes, e o `ir-bt` já
+        // as distingue. Perder essa distinção aqui apagaria o trabalho feito lá.
+        let fato = fato_de(BtEvent::LinkDown("o par encerrou o canal")).expect("traduz");
+        match fato {
+            Fato::Caiu { motivo, .. } => assert_eq!(motivo, "o par encerrou o canal"),
+            outro => panic!("esperava a queda, veio {outro:?}"),
+        }
+    }
+}

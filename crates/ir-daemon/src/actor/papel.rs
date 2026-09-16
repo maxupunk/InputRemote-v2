@@ -20,6 +20,8 @@ use std::path::Path;
 
 use anyhow::Result;
 use ir_ipc::{Aviso, Falha, Resposta};
+// A produção pergunta o portador em uso ao ator; só os testes nomeiam um portador à mão.
+#[cfg(test)]
 use ir_proto::carrier::Carrier;
 use ir_proto::screens::Edge;
 use ir_session::{Input, LinkDown, LocalIdentity, Phase, Role, Session, SessionConfig};
@@ -198,7 +200,9 @@ impl Daemon {
         self.seed_pointer = true;
         self.last_phase = Phase::Offline;
         if self.linked {
-            self.drive(Input::CarrierUp(Carrier::Udp));
+            // Pelo portador que está de pé, e não por um presumido: trocar de papel sobre um
+            // enlace de Bluetooth não pode reiniciar a sessão dizendo que ela é de rede.
+            self.drive(Input::CarrierUp(self.portador_em_uso()));
         }
         let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
     }

@@ -1,28 +1,30 @@
-//! O ator central: o único dono do [`Session`], reagindo a rede, entrada e relógio.
+//! O ator central: o único dono do [`Session`], reagindo a transporte, entrada e relógio.
 //!
 //! É a tarefa da sessão de [02, §4](../../../docs/02-arquitetura.md): tudo que muda o estado
-//! passa por aqui, um evento de cada vez. Rede e entrada só convertem bytes em [`Input`] e
-//! comandos em bytes ([`commands`](crate::commands)).
+//! passa por aqui, um evento de cada vez. Os transportes e a entrada só convertem bytes em
+//! [`Input`] e comandos em bytes ([`commands`](crate::commands)).
+//!
+//! O que depende de **qual** portador está em uso mora em [`enlace`], ao lado.
 
-use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Instant;
 
 use ir_input::{CaptureEvent, Capturer, Injector};
-use ir_ipc::{Aviso, ComandoDoAgente, Maquina, Nome};
-use ir_net::{ConnectMode, NetCommand, NetEvent};
-use ir_proto::carrier::Carrier;
+use ir_ipc::{Aviso, ComandoDoAgente, Maquina, Nome, Portador};
 use ir_proto::input::PointerDelta;
 use ir_proto::screens::{Edge, ScreenLayout};
-use ir_session::{CommandBatch, Input, LinkDown, LocalIdentity, Phase, Session, Timestamp};
+use ir_session::{CommandBatch, Input, LocalIdentity, Phase, Session, Timestamp};
 use tokio::sync::broadcast;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tracing::{error, info, warn};
+use tokio::sync::mpsc::UnboundedReceiver;
+use tracing::info;
 
-use crate::config::{Config, PinnedPeer, encode_key};
+use crate::config::Config;
+use ir_transporte::{Endereco, Transporte};
 
 mod agente;
 #[cfg(test)]
 mod bancada;
+mod enlace;
 mod papel;
 mod parada;
 mod pareamento;
@@ -41,35 +43,44 @@ pub(crate) struct Daemon {
     pub(crate) session: Session,
     pub(crate) out: CommandBatch,
     start: Instant,
-    pub(crate) net: UnboundedSender<NetCommand>,
+    /// O transporte de rede. Sempre existe.
+    pub(crate) rede: Arc<dyn Transporte>,
+    /// O transporte de rádio, quando há rádio nesta máquina.
+    pub(crate) radio: Option<Arc<dyn Transporte>>,
     pub(crate) injector: Option<Box<dyn Injector>>,
     pub(crate) capturer: Option<Box<dyn Capturer>>,
     pub(crate) screen: (u32, u32),
-    peer_addr: Option<SocketAddr>,
-    data_dir: std::path::PathBuf,
-    config: Config,
-    pending_peer: Option<ir_crypto::PublicKey>,
+    /// Onde o par foi visto pela última vez. O endereço diz por qual portador se fala com ele.
+    pub(crate) peer: Option<Endereco>,
+    pub(crate) data_dir: std::path::PathBuf,
+    pub(crate) config: Config,
+    pub(crate) pending_peer: Option<ir_crypto::PublicKey>,
     /// O pareamento em andamento, do código na tela até o fim ([`pareamento`]).
     ///
     /// Vai além do clique em "São iguais": até o outro lado responder, a reconexão não disca por
     /// cima e o prazo continua valendo (log 25).
-    pareamento: Option<Pareamento>,
+    pub(crate) pareamento: Option<Pareamento>,
     /// Se a próxima posição absoluta deve **semear** o ponteiro (sem atravessar) em vez de virar
     /// movimento. Ligado ao estabelecer e ao retomar o controle, para o cursor real e o modelo da
     /// sessão começarem no mesmo ponto.
-    seed_pointer: bool,
+    pub(crate) seed_pointer: bool,
     /// Se o enlace seguro (criptografia) está de pé. Distinto de a sessão estar estabelecida.
-    linked: bool,
+    pub(crate) linked: bool,
     /// Contador de batidas, para espaçar as tentativas de reconexão.
     ticks: u32,
     /// Por onde o serviço empurra avisos para as interfaces conectadas.
-    avisos: broadcast::Sender<Aviso>,
+    pub(crate) avisos: broadcast::Sender<Aviso>,
     /// Esta máquina, para a impressão digital aparecer na tela de pareamento.
     machine: Maquina,
     /// O nome desta máquina.
     nome: Nome,
     /// A borda que dá para o par.
     edge: Edge,
+    /// O portador que o usuário fixou, se ele fixou algum.
+    ///
+    /// Guardado aqui porque a interface precisa vê-lo de volta, e porque é ele que transforma
+    /// "escolhido" em "fixado nas preferências" na frase que aparece na tela.
+    pub(crate) portador_fixado: Option<Portador>,
     /// A última fase informada às interfaces, para só avisar quando muda de verdade.
     last_phase: Phase,
     /// Por onde o serviço manda comandos ao agente.
@@ -93,10 +104,22 @@ impl Daemon {
     }
 
     /// Alimenta um evento à sessão e executa os comandos que ela produzir.
-    fn drive(&mut self, input: Input) {
+    pub(crate) fn drive(&mut self, input: Input) {
         let now = self.now();
         self.session.step(now, input, &mut self.out);
         self.apply_commands();
+    }
+
+    /// O transporte por onde se fala com o par.
+    ///
+    /// Pelo endereço dele, e não pelo portador da sessão: durante o pareamento ainda não há
+    /// sessão, e responder à comparação de códigos pelo transporte errado deixaria o outro
+    /// computador esperando para sempre.
+    pub(crate) fn transporte_do_par(&self) -> Option<&dyn Transporte> {
+        let portador = self
+            .peer
+            .map_or_else(|| self.portador_em_uso(), Endereco::portador);
+        self.transporte(portador)
     }
 
     /// A batida periódica: reconecta quando é hora, depois avança a sessão.
@@ -115,7 +138,7 @@ impl Daemon {
     }
 
     /// Avisa as interfaces se a fase da sessão mudou desde o último aviso.
-    fn notar_estado(&mut self) {
+    pub(crate) fn notar_estado(&mut self) {
         let fase = self.session.phase();
         if fase != self.last_phase {
             self.last_phase = fase;
@@ -123,28 +146,10 @@ impl Daemon {
         }
     }
 
-    /// Retoma a conexão conforme o que está caído.
-    fn reconnect_if_needed(&mut self) {
-        if self.pareando() {
-            return; // no meio de um pareamento, até ele terminar; discar agora o desmontaria
-        }
-        if self.linked {
-            // O enlace seguro está de pé, mas a sessão caiu (silêncio do par). Reinicia a sessão
-            // sobre o mesmo enlace: um `Hello` novo, que o par absorve se já estiver de pé.
-            if self.session.phase() == Phase::Offline {
-                self.drive(Input::CarrierUp(Carrier::Udp));
-            }
-        } else if self.peer_addr.is_some() && self.config.first_peer_key().is_some() {
-            // Sem enlace, com endereço e com par gravado: somos o iniciador, e tentamos de novo.
-            // Sem par gravado não se disca sozinho — parear é pedido do usuário (log 25).
-            self.connect_if_possible();
-        }
-    }
-
     /// Roda o ator até os canais fecharem.
     pub(crate) async fn run(mut self, entradas: Entradas) {
         let Entradas {
-            mut net_events,
+            mut transportes,
             mut capture,
             mut confirm,
             mut pedidos,
@@ -157,8 +162,8 @@ impl Daemon {
         loop {
             tokio::select! {
                 _ = ticker.tick() => self.on_tick(),
-                event = net_events.recv() => match event {
-                    Some(event) => self.on_net(event),
+                fato = transportes.recv() => match fato {
+                    Some(fato) => self.on_fato_do_transporte(fato),
                     None => break,
                 },
                 event = capture.recv() => {
@@ -190,31 +195,7 @@ impl Daemon {
         }
     }
 
-    /// Um evento vindo da rede.
-    fn on_net(&mut self, event: NetEvent) {
-        match event {
-            NetEvent::PairingCode {
-                code, peer_static, ..
-            } => self.on_pairing_code(code, peer_static),
-            NetEvent::Established { peer_static, peer } => self.on_established(peer_static, peer),
-            NetEvent::Frame(bytes) => self.on_frame(&bytes),
-            NetEvent::LinkDown(reason) => {
-                info!(reason, "enlace de rede caiu");
-                self.linked = false;
-                // Um código na tela sem enlace por baixo não tem mais o que confirmar.
-                self.abandonar_pareamento_pendente();
-                self.drive(Input::CarrierDown {
-                    carrier: Carrier::Udp,
-                    reason: LinkDown::TransportFailed,
-                });
-                self.notar_estado();
-            }
-            NetEvent::Error(message) => warn!(message, "erro de rede"),
-            _ => {}
-        }
-    }
-
-    fn on_pairing_code(&mut self, code: [u8; 6], peer_static: ir_crypto::PublicKey) {
+    pub(crate) fn on_pairing_code(&mut self, code: [u8; 6], peer_static: ir_crypto::PublicKey) {
         self.pending_peer = Some(peer_static);
         self.pareamento = Some(Pareamento {
             desde: Instant::now(),
@@ -245,12 +226,14 @@ impl Daemon {
     ///
     /// Devolve se havia código esperando a resposta. Um clique num código que já não vale precisa
     /// virar explicação na janela, e não um "feito" que não muda nada (log 25).
-    fn confirmar(&mut self, yes: bool) -> bool {
+    pub(crate) fn confirmar(&mut self, yes: bool) -> bool {
         if !self.aguardando_confirmacao() {
             return false;
         }
         info!("confirmação recebida: {}", if yes { "sim" } else { "não" });
-        let _ = self.net.send(NetCommand::ConfirmPairing(yes));
+        if let Some(transporte) = self.transporte_do_par() {
+            transporte.confirmar_pareamento(yes);
+        }
         if yes {
             // Deste lado confere, mas o pareamento só termina quando o outro lado também
             // confirmar. Até lá ele segue em andamento: com prazo, sem rediscagem por cima, e com
@@ -264,54 +247,6 @@ impl Daemon {
             self.encerrar_pareamento_sem_sucesso();
         }
         true
-    }
-
-    fn on_established(&mut self, peer_static: ir_crypto::PublicKey, peer: SocketAddr) {
-        if self.pending_peer.take().is_some() {
-            self.pareamento = None;
-            self.save_peer(peer_static, peer);
-            // O par foi gravado: a interface fecha a tela de comparação com sucesso.
-            let _ = self
-                .avisos
-                .send(Aviso::PareamentoConcluido { sucesso: true });
-        } else if let Some(pinned) = self.config.first_peer_key()
-            && pinned != peer_static
-        {
-            warn!("a chave do par não confere com a fixada — recusando");
-            let _ = self.net.send(NetCommand::Disconnect);
-            return;
-        }
-        self.linked = true;
-        self.peer_addr = Some(peer);
-        // A próxima posição absoluta semeia o ponteiro: o cursor real está onde está, e o modelo
-        // da sessão precisa começar no mesmo ponto, senão a primeira travessia dispara errado.
-        self.seed_pointer = true;
-        info!(%peer, "enlace seguro pronto; iniciando a sessão");
-        self.drive(Input::CarrierUp(Carrier::Udp));
-        self.notar_estado();
-    }
-
-    fn save_peer(&mut self, peer_static: ir_crypto::PublicKey, peer: SocketAddr) {
-        let pinned = PinnedPeer {
-            pubkey: encode_key(&peer_static),
-            addr: Some(peer.to_string()),
-        };
-        self.config.peers = vec![pinned];
-        if let Err(error) = self.config.save(&self.data_dir) {
-            error!(%error, "não foi possível gravar o par");
-        } else {
-            info!("par gravado");
-        }
-    }
-
-    fn on_frame(&mut self, bytes: &[u8]) {
-        match ir_proto::codec::decode(bytes, Carrier::Udp) {
-            Ok(frame) => self.drive(Input::Received {
-                carrier: Carrier::Udp,
-                frame,
-            }),
-            Err(error) => warn!(%error, "quadro recebido malformado"),
-        }
     }
 
     /// Um evento de entrada capturado localmente (papel de servidor).
@@ -355,26 +290,5 @@ impl Daemon {
     pub(crate) fn definir_telas(&mut self, arranjo: ScreenLayout) {
         self.ultimo_arranjo = Some(arranjo.clone());
         self.drive(Input::LocalScreens(arranjo));
-    }
-
-    /// Reconecta ao par gravado, como iniciador, se houver par e endereço.
-    ///
-    /// Nunca começa um pareamento. Discar para parear sem o usuário pedir punha um código novo na
-    /// tela do outro computador a cada tentativa, e o que ele estava comparando deixava de valer
-    /// (log 25). Parear começa pela janela ([`Pedido::IniciarPareamento`](ir_ipc::Pedido)).
-    pub(crate) fn connect_if_possible(&self) {
-        let Some(chave) = self.config.first_peer_key() else {
-            info!("nenhum par gravado; o pareamento começa pela janela");
-            return;
-        };
-        let Some(peer) = self.peer_addr else {
-            info!("sem endereço de par; aguardando conexão de entrada");
-            return;
-        };
-        info!(%peer, "conectando ao par");
-        let _ = self.net.send(NetCommand::Connect {
-            peer,
-            mode: ConnectMode::Reconnect(chave),
-        });
     }
 }

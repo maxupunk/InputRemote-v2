@@ -24,6 +24,11 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ("ir-ipc", &["ir-proto"]),
     ("ir-net", &["ir-proto", "ir-crypto"]),
     ("ir-bt", &["ir-proto", "ir-crypto"]),
+    // A fronteira dos portadores: o unico lugar que conhece rede e radio ao mesmo tempo.
+    (
+        "ir-transporte",
+        &["ir-proto", "ir-crypto", "ir-net", "ir-bt"],
+    ),
     ("ir-files", &["ir-proto"]),
     ("ir-input", &["ir-proto"]),
     ("ir-clip", &["ir-proto"]),
@@ -35,8 +40,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "ir-session",
             "ir-crypto",
             "ir-ipc",
-            "ir-net",
-            "ir-bt",
+            "ir-transporte",
             "ir-files",
             "ir-input",
         ],

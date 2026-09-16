@@ -4,28 +4,32 @@
 //! [`Entradas`], as origens de evento que o mantêm vivo. Ficam fora do laço central por tamanho
 //! — o laço é o que se lê para entender o serviço, e uma lista de campos no meio dele só atrapalha.
 
-use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Instant;
 
 use ir_input::{Capturer, Injector};
 use ir_ipc::{Aviso, ComandoDoAgente, FatoDoAgente, Maquina, Nome};
-use ir_net::{NetCommand, NetEvent};
 use ir_proto::screens::Edge;
 use ir_session::{CommandBatch, LocalIdentity, Phase, Session};
 use tokio::sync::broadcast;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::UnboundedReceiver;
 
 use super::{CaptureRx, Daemon};
 use crate::config::Config;
 use crate::ipc::PedidoRecebido;
+use ir_transporte::{Endereco, Transporte};
 
 /// Tudo que alimenta o ator, num valor só.
 ///
 /// Juntos e não soltos porque são a mesma coisa vista de cinco lados: as origens de evento do
 /// serviço. Passá-los um a um transformaria cada canal novo numa mudança de assinatura.
 pub(crate) struct Entradas {
-    /// Eventos do endpoint de rede.
-    pub(crate) net_events: UnboundedReceiver<NetEvent>,
+    /// O que os transportes relatam — **os dois pelo mesmo canal**.
+    ///
+    /// Um canal só, e não um por portador: cada fato já diz por onde veio, e é o que permite ao
+    /// laço central ter um caminho de código para os dois. Um canal por transporte obrigaria o
+    /// laço a crescer a cada portador novo.
+    pub(crate) transportes: UnboundedReceiver<ir_transporte::Fato>,
     /// Entrada capturada localmente (só onde não há agente).
     pub(crate) capture: CaptureRx,
     /// Confirmação de pareamento vinda do terminal.
@@ -42,16 +46,22 @@ pub(crate) struct Entradas {
 pub(crate) struct Parts {
     /// A sessão já configurada.
     pub(crate) session: Session,
-    /// Canal de comandos para o endpoint de rede.
-    pub(crate) net: UnboundedSender<NetCommand>,
+    /// O transporte de rede. Sempre existe: um socket UDP local sempre vincula.
+    pub(crate) rede: Arc<dyn Transporte>,
+    /// O transporte de rádio, quando há rádio.
+    ///
+    /// `None` é um estado normal e esperado — sem adaptador, desligado, ou com o canal do
+    /// produto ocupado. É a ausência que faz a sessão degradar para a rede, **com o motivo
+    /// visível na tela**, em vez de o produto insistir num rádio que não existe.
+    pub(crate) radio: Option<Arc<dyn Transporte>>,
     /// Injetor (cliente) ou nada.
     pub(crate) injector: Option<Box<dyn Injector>>,
     /// Capturador (servidor) ou nada.
     pub(crate) capturer: Option<Box<dyn Capturer>>,
     /// Tamanho da tela local, em pixels.
     pub(crate) screen: (u32, u32),
-    /// Endereço do par, se conhecido.
-    pub(crate) peer_addr: Option<SocketAddr>,
+    /// Onde o par foi visto pela última vez, se em algum lugar.
+    pub(crate) peer: Option<Endereco>,
     /// Diretório de estado.
     pub(crate) data_dir: std::path::PathBuf,
     /// A configuração corrente.
@@ -78,15 +88,18 @@ impl Daemon {
             session: parts.session,
             out: CommandBatch::with_capacity(32),
             start: Instant::now(),
-            net: parts.net,
+            rede: parts.rede,
+            radio: parts.radio,
             injector: parts.injector,
             capturer: parts.capturer,
             screen: parts.screen,
-            peer_addr: parts.peer_addr,
+            peer: parts.peer,
             data_dir: parts.data_dir,
             config: parts.config,
             pending_peer: None,
             pareamento: None,
+            // Ninguém fixou nada até a interface pedir: a escolha começa automática.
+            portador_fixado: None,
             seed_pointer: true,
             linked: false,
             ticks: 0,

@@ -45,8 +45,9 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 
 ### PoC-2 — Bluetooth RFCOMM dentro de um serviço
 - [ ] Socket `AF_BTH` + `BTHPROTO_RFCOMM` no Windows, a partir de serviço
-- [ ] Publicação de serviço SDP por `WSASetService`
-- [ ] Backend BlueZ por `ProfileManager1.RegisterProfile`
+- [x] ~~Publicação de serviço SDP por `WSASetService`~~ — canal fixo, sem SDP (ADR-0009)
+- [x] ~~Backend BlueZ por `ProfileManager1.RegisterProfile`~~ — sockets `AF_BLUETOOTH` sem
+      D-Bus, canal fixo (ADR-0009); log 26
 - [ ] Medidor de RTT com carga de 125 msg/s
 - [ ] `[H]` Socket abre na sessão 0, sem usuário logado
 - [ ] `[H]` Par continua pareado após reiniciar as duas máquinas
@@ -362,8 +363,9 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [ ] `[H]` Nível de capacidade confirmado no produto (mínimo N2)
 
 ## Etapa 7 — Bluetooth
-- [ ] `ir-bt`: trait + backend Winsock + backend BlueZ
-- [ ] Política única de escolha de portador
+- [x] `ir-bt`: trait + backend Winsock + backend BlueZ — log 26
+- [x] Política única de escolha de portador — o serviço passou a rotear pelo portador que a
+      sessão escolhe, em vez de mandar tudo pela rede; `ir-transporte` extraído. Log 26
 - [ ] Reconexão
 - [ ] `[H]` Quatro combinações por Bluetooth
 - [ ] `[H]` Degradação para UDP com motivo visível

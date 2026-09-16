@@ -50,3 +50,4 @@ quê. Um registro que se reescreve não é registro.
 | 23 | 2026-09-15 | [O pico de latência que virava queda](docs/logs/23-o-pico-de-latencia-que-virava-queda.md) |
 | 24 | 2026-09-15 | [A borda é do servidor](docs/logs/24-a-borda-e-do-servidor.md) |
 | 25 | 2026-09-15 | [O pareamento que se desfazia depois do clique](docs/logs/25-o-pareamento-que-se-desfazia-depois-do-clique.md) |
+| 26 | 2026-09-15 | [O Bluetooth que não existia, e o portador que o serviço ignorava](docs/logs/26-o-bluetooth-que-nao-existia.md) |

@@ -1,0 +1,22 @@
+[package]
+name = "ir-transporte"
+description = "O portador visto pelo serviço: uma porta só para rede e rádio."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ir-proto.workspace = true
+ir-crypto.workspace = true
+# Os dois transportes de entrada. Este crate é o único lugar do produto que conhece os dois ao
+# mesmo tempo — é justamente a fronteira que ele existe para desenhar.
+ir-net.workspace = true
+ir-bt.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+
+[lints]
+workspace = true

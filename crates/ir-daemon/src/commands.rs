@@ -6,7 +6,6 @@
 
 use ir_input::InjectEvent;
 use ir_ipc::ComandoDoAgente;
-use ir_net::NetCommand;
 use ir_proto::carrier::Carrier;
 use ir_session::{Command, Injection, Notice};
 use tracing::{debug, info, warn};
@@ -44,12 +43,22 @@ impl Daemon {
         }
     }
 
+    /// Manda o quadro **pelo portador que a sessão escolheu**.
+    ///
+    /// Este método recebia o portador e o ignorava, mandando tudo para o socket de rede. Com um
+    /// transporte só isso não aparecia; com dois, a tela diria "Bluetooth" e os bytes iriam pela
+    /// rede — e o limite de tamanho conferido na codificação seria o do portador errado, já que
+    /// o teto do rádio é menor que o da rede ([03, §2](../../../docs/03-protocolo.md)).
     fn send_frame(&self, carrier: Carrier, frame: &ir_proto::frame::Frame) {
+        let Some(transporte) = self.transporte(carrier) else {
+            // A sessão só escolhe portador que ela declarou disponível, então chegar aqui é
+            // defeito nosso — e vale dizer, em vez de o quadro sumir em silêncio.
+            warn!(%carrier, "a sessão pediu um portador que não está aberto");
+            return;
+        };
         match ir_proto::codec::encode(frame, carrier) {
-            Ok(bytes) => {
-                let _ = self.net.send(NetCommand::SendFrame(bytes));
-            }
-            Err(error) => warn!(%error, "não foi possível codificar o quadro"),
+            Ok(bytes) => transporte.enviar(bytes),
+            Err(error) => warn!(%error, %carrier, "não foi possível codificar o quadro"),
         }
     }
 

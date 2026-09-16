@@ -6,13 +6,10 @@
 //! vocabulário de dentro e o de fora. As `impl` são do mesmo [`Daemon`]; um submódulo enxerga
 //! os campos privados do pai, então nada precisou virar público para isto morar aqui.
 
-use std::net::SocketAddr;
-
 use ir_ipc::{
-    Aviso, Borda, Candidato, Estado, Falha, LinkState, Maquina, Nivel, Nome, Papel, ParConhecido,
-    Pedido, Portador, Recursos, Resposta,
+    Aviso, Borda, Candidato, Estado, Falha, LinkState, Maquina, MotivoDoPortador, Nivel, Nome,
+    Papel, ParConhecido, Pedido, Portador, Recursos, Resposta,
 };
-use ir_net::{ConnectMode, NetCommand};
 use ir_proto::carrier::Carrier;
 use ir_proto::screens::Edge;
 use ir_session::{Phase, Role};
@@ -21,6 +18,7 @@ use tracing::error;
 use super::Daemon;
 use crate::config::{Config, decode_key};
 use crate::ipc::PedidoRecebido;
+use ir_transporte::Endereco;
 
 impl Daemon {
     /// Um pedido da interface: traduz, age, e devolve a resposta pelo caminho de volta.
@@ -51,11 +49,17 @@ impl Daemon {
                 }
             }
             Pedido::Encerrar => {
-                let _ = self.net.send(NetCommand::Disconnect);
+                if let Some(transporte) = self.transporte_do_par() {
+                    transporte.desconectar();
+                }
                 Resposta::Feito
             }
             Pedido::EsquecerPar { .. } => self.esquecer_par(),
             Pedido::FixarPortador(portador) => {
+                // Guardado dos dois lados: a sessão precisa dele para desligar a degradação, e a
+                // interface precisa vê-lo de volta para dizer "fixado nas preferências" em vez de
+                // inventar um motivo.
+                self.portador_fixado = portador;
                 self.session
                     .pin_carrier(portador.map(Portador::no_protocolo));
                 Resposta::Feito
@@ -74,11 +78,15 @@ impl Daemon {
     /// Anuncia o par configurado como candidato, no lugar da descoberta (ainda não ligada).
     fn anunciar_candidato(&self) {
         let mut candidatos = Vec::new();
-        if let Some(addr) = self.peer_addr {
+        if let Some(endereco) = self.peer {
+            let portador = Portador::from(endereco.portador());
             candidatos.push(Candidato {
-                rotulo: format!("Computador em {addr}"),
-                endereco: addr.to_string(),
-                portador: Portador::RedeLocal,
+                rotulo: format!("Computador em {endereco}"),
+                endereco: endereco.to_string(),
+                // O portador vem do próprio endereço, e não de um presumido: um endereço de
+                // rádio na lista precisa aparecer como Bluetooth, senão a tela promete uma coisa
+                // e o serviço faz outra.
+                portador,
             });
         }
         let _ = self
@@ -87,15 +95,24 @@ impl Daemon {
     }
 
     /// Começa a parear com o endereço escolhido.
+    ///
+    /// O texto pode ser um `ip:porta` ou um endereço de rádio, e é ele que decide o portador. É o
+    /// que permite o Bluetooth entrar sem vocabulário novo na interface.
     fn iniciar_pareamento(&mut self, candidato: &str) -> Resposta {
-        let Ok(addr) = candidato.parse::<SocketAddr>() else {
+        let Some(alvo) = Endereco::ler(candidato) else {
             return Resposta::Falha(Falha::ForaDeContexto);
         };
-        self.peer_addr = Some(addr);
-        let _ = self.net.send(NetCommand::Connect {
-            peer: addr,
-            mode: ConnectMode::Pair,
-        });
+        if self.transporte(alvo.portador()).is_none() {
+            // Pediram para parear por um portador que não está aberto nesta máquina — sem rádio,
+            // por exemplo. Dizer isso é melhor que ficar em silêncio esperando um código.
+            return Resposta::Falha(Falha::ForaDeContexto);
+        }
+        // O endereço é guardado **antes** de discar: é ele que diz por onde responder à
+        // comparação de códigos, e a resposta do par pode chegar antes da próxima linha.
+        self.peer = Some(alvo);
+        if let Some(transporte) = self.transporte(alvo.portador()) {
+            transporte.conectar(alvo, None);
+        }
         Resposta::Feito
     }
 
@@ -120,13 +137,41 @@ impl Daemon {
     /// O relatório de diagnóstico, já pronto para copiar.
     fn diagnostico(&self) -> String {
         format!(
-            "papel: {:?}\nfase: {}\nenlace seguro: {}\npares gravados: {}\nendereço do par: {:?}",
+            "papel: {:?}\nfase: {}\nenlace seguro: {}\npares gravados: {}\nendereço do par: {}\n\
+             rádio Bluetooth: {}\nportador em uso: {}",
             self.session.role(),
             self.session.phase(),
             self.linked,
             self.config.peers.len(),
-            self.peer_addr,
+            self.peer
+                .map_or_else(|| "nenhum".to_owned(), |par| par.to_string()),
+            if self.radio.is_some() {
+                "aberto"
+            } else {
+                "indisponível"
+            },
+            // O nome técnico, que é o que serve num diagnóstico.
+            self.session
+                .carrier()
+                .map_or("nenhum", |portador| Portador::from(portador).nome_tecnico()),
         )
+    }
+
+    /// Por que o portador em uso foi escolhido.
+    ///
+    /// Antes isto era `RedeComoAlternativa` fixo, o que fazia a tela dizer "Bluetooth
+    /// indisponível; usando a rede local" **mesmo com o rádio ligado e conectado dos dois
+    /// lados** — a frase que deu origem a este trabalho. A escolha é da sessão
+    /// ([`CarrierSet::pick_input_carrier`](ir_session::CarrierSet)); aqui só se conta qual foi.
+    fn motivo_do_portador(&self) -> Option<MotivoDoPortador> {
+        let portador = self.session.carrier()?;
+        Some(if self.portador_fixado.is_some() {
+            MotivoDoPortador::FixadoPeloUsuario
+        } else if portador == Carrier::Rfcomm {
+            MotivoDoPortador::Preferido
+        } else {
+            MotivoDoPortador::RedeComoAlternativa
+        })
     }
 
     /// O estado corrente, no vocabulário publicado da interface.
@@ -139,11 +184,8 @@ impl Daemon {
             este_nome: self.nome.clone(),
             par: self.par_conhecido(),
             portador: self.session.carrier().map(portador_de),
-            portador_fixado: None,
-            motivo_do_portador: self
-                .session
-                .carrier()
-                .map(|_| ir_ipc::MotivoDoPortador::RedeComoAlternativa),
+            portador_fixado: self.portador_fixado,
+            motivo_do_portador: self.motivo_do_portador(),
             latencia: None,
             nivel_privilegiado: Nivel::SoDesbloqueado,
             // Pronto para digitar: ou o agente está de pé (Windows), ou o serviço injeta direto
