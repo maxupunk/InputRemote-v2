@@ -1,0 +1,24 @@
+[package]
+name = "ir-files"
+description = "Transferência de arquivos: manifesto, blocos, BLAKE3, cotas e staging."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ir-proto.workspace = true
+# Sem `ir-crypto` e sem `ir-net`: este crate não cifra e não conhece socket. Ele produz e consome
+# `BulkMessage`, e quem os leva é o `ir-transporte` (docs/02-arquitetura.md §2).
+blake3.workspace = true
+tokio = { workspace = true, features = ["fs", "io-util"] }
+tracing.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros", "fs", "io-util"] }
+
+[lints]
+workspace = true

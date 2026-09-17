@@ -399,9 +399,15 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       implícito, e a regra de colisão quando as duas pontas discam
       ([log 30](docs/logs/30-o-canal-de-dados-em-tcp.md))
 - [ ] `ir-clip`: texto, imagem PNG, lista de arquivos
-- [ ] `ir-files`: manifesto, blocos, BLAKE3, cotas, staging por RAII
-- [ ] Progresso e cancelamento
-- [ ] Transferência de 5 GB degrada a entrada em no máximo 10%
+- [x] `ir-files`: manifesto, blocos, BLAKE3, cotas, staging por RAII — 69 testes, incluindo a
+      travessia de uma árvore inteira e treze casos de par hostil
+      ([log 31](docs/logs/31-o-motor-de-transferencia.md))
+- [~] Progresso e cancelamento — o motor conta os bytes e o cancelamento não deixa rastro
+      (provado por teste); falta levar os dois à interface
+      ([log 31](docs/logs/31-o-motor-de-transferencia.md))
+- [ ] `[H]` Transferência de 5 GB degrada a entrada em no máximo 10% — exige as duas máquinas
+- [ ] Ligar `ir-files` ao `ir-net::bulk` no serviço: é o que falta para copiar e colar de verdade
+- [ ] `ir-clip` ligado ao agente, nos dois sistemas, para o Ctrl+C e o Ctrl+V
 
 ## Etapa 9 — Interface
 

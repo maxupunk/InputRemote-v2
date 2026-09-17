@@ -2712,6 +2712,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ir-files"
+version = "0.1.0-dev"
+dependencies = [
+ "blake3",
+ "ir-proto",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "ir-geometry"
 version = "0.1.0-dev"
 dependencies = [
