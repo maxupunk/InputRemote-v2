@@ -65,8 +65,10 @@ fn greeting() -> Greeting {
     }
 }
 
-/// Construtores curtos, compartilhados pelos quatro grupos de vetores.
-fn v(name: &'static str, frame: Frame, hex: &'static str) -> Vector {
+/// Construtores curtos, compartilhados pelos grupos de vetores.
+///
+/// `pub` porque os canais 4 e 5 moram em [`crate::dados`], por limite de tamanho de arquivo.
+pub fn v(name: &'static str, frame: Frame, hex: &'static str) -> Vector {
     Vector { name, frame, hex }
 }
 
@@ -97,6 +99,10 @@ pub fn vectors() -> Vec<Vector> {
     all.extend(input_vectors());
     all.extend(pointer_vectors());
     all.extend(feedback_vectors());
+    all.extend(crate::dados::clipboard_vectors());
+    all.extend(crate::dados::bulk_opening_vectors());
+    all.extend(crate::dados::bulk_body_vectors());
+    all.extend(crate::dados::bulk_closing_vectors());
     all
 }
 

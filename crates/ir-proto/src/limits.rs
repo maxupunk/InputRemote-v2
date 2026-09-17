@@ -20,8 +20,30 @@ pub const MAX_RFCOMM_PLAINTEXT: usize = 512;
 
 /// Máximo de texto claro num quadro TCP.
 ///
-/// Origem: `docs/03-protocolo.md` §2. É o tamanho de bloco de arquivo.
-pub const MAX_TCP_PLAINTEXT: usize = 64 * 1024;
+/// Origem: o teto do próprio Noise, **não** uma escolha nossa. Uma mensagem de transporte
+/// Noise tem no máximo 65 535 B *contando a etiqueta Poly1305*, logo o texto claro para em
+/// 65 519 B.
+///
+/// `docs/03-protocolo.md` §2 dizia 64 KiB, que é 65 536 — dezessete bytes acima do possível.
+/// Não era margem apertada, era impossível: `snow` recusa `payload + 16 > 65535` com
+/// `Error::Input`, então o primeiro bloco cheio de arquivo nunca teria sido cifrado. O número
+/// passou dois meses sem doer porque nada usava TCP ainda. Ver
+/// [ADR-0010](../../../docs/adr/0010-canal-de-dados-em-tcp-proprio.md).
+///
+/// Quem envia bloco de arquivo não usa este valor e sim [`MAX_FILE_BLOCK`], que desconta o
+/// cabeçalho da mensagem.
+pub const MAX_TCP_PLAINTEXT: usize = 65_519;
+
+/// Máximo de bytes de conteúdo num `FileBlock`.
+///
+/// Origem: [`MAX_TCP_PLAINTEXT`] menos folga para o cabeçalho da mensagem — o byte do canal,
+/// o discriminante, o identificador, o índice do item e o deslocamento. Um número redondo,
+/// com folga deliberada, em vez do máximo aritmético: o ganho de encher os últimos bytes é
+/// nulo e o custo de errar a conta é um enlace que cai no bloco cheio.
+///
+/// A folga é conferida por teste (`a_full_file_block_fits_a_tcp_frame`), não por confiança na
+/// aritmética do `postcard`.
+pub const MAX_FILE_BLOCK: usize = 60 * 1024;
 
 /// Máximo que uma mensagem de **entrada** pode ocupar codificada.
 ///
@@ -84,4 +106,20 @@ const _INPUT_FITS_EVERY_INPUT_CARRIER: () = {
 /// O canal de texto do clipboard só faz sentido se for maior que um quadro de entrada.
 const _CLIPBOARD_IS_LARGER_THAN_INPUT: () = {
     assert!(MAX_CLIPBOARD_TEXT_OFF_TCP > MAX_INPUT_MESSAGE);
+};
+
+/// O quadro TCP tem de caber numa mensagem de transporte Noise.
+///
+/// O teto é do Noise, não nosso: 65 535 B por mensagem, etiqueta Poly1305 inclusa. Está
+/// escrito como asserção porque foi precisamente esta conta que `docs/03` §2 errou — por
+/// dezessete bytes, e sem doer, porque nada usava TCP.
+const _TCP_FITS_ONE_NOISE_MESSAGE: () = {
+    const MAX_NOISE_MESSAGE: usize = 65_535;
+    const TAG: usize = 16;
+    assert!(MAX_TCP_PLAINTEXT + TAG <= MAX_NOISE_MESSAGE);
+};
+
+/// Um bloco de arquivo tem de deixar espaço para o cabeçalho da mensagem que o carrega.
+const _FILE_BLOCK_LEAVES_ROOM_FOR_ITS_HEADER: () = {
+    assert!(MAX_FILE_BLOCK < MAX_TCP_PLAINTEXT);
 };

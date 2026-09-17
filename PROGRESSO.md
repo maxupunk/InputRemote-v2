@@ -249,12 +249,15 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Validação de manifesto e de caminho relativo contra travessia de diretório
 - [x] Ida e volta de quadro em todos os portadores permitidos, e de todos os vetores
 - [x] Teste de tamanho máximo (entrada ≤ 64 B em texto claro)
-- [x] Vetores gravados da versão 1 — 17 quadros, 4 canais, incluindo a época da sessão
-      ([log 22](docs/logs/22-a-sessao-que-reiniciava-a-cada-200-ms.md))
+- [x] Vetores gravados da versão 1 — 31 quadros, os **seis** canais, incluindo a época da sessão
+      ([log 22](docs/logs/22-a-sessao-que-reiniciava-a-cada-200-ms.md),
+      [log 30](docs/logs/30-o-canal-de-dados-em-tcp.md))
 - [x] Byte sobrando, truncamento em todo comprimento e lixo arbitrário não geram pânico
 - [~] Alvo de `cargo fuzz` do decodificador — há varredura determinística no CI de commit;
       o alvo propriamente dito depende de `cargo-fuzz` e fecha junto com a Etapa 2
-- [ ] Ida e volta de **toda** variante de `ClipboardMessage` e `BulkMessage`
+- [x] Ida e volta de **toda** variante de `ClipboardMessage` e `BulkMessage` — 5 + 9 vetores
+      gravados, com a contagem de variantes conferida por teste
+      ([log 30](docs/logs/30-o-canal-de-dados-em-tcp.md))
 
 ### 2.2. `ir-geometry`
 - [x] `Point` e `Rect` inteiros, sem ponto flutuante, com bordas inclusivas
@@ -349,7 +352,9 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       no caminho — hoje cai pelo prazo de 1 s. Falta decidir entre prazo de queda maior e soltar
       tudo em 1 s mantendo a sessão ([log 24](docs/logs/24-a-borda-e-do-servidor.md))
 - [~] Confiabilidade sobre UDP — a de `ir-session` já existe e é testada; falta o ensaio de perda de 5% ponta a ponta
-- [ ] TCP de dados (só entrada foi implementada; arquivos são Etapa 8)
+- [~] TCP de dados — `ir-net::bulk` existe, com enquadramento `u32`, `Noise_IK`, enlace
+      cheio-duplex e 38 testes; falta ligá-lo ao serviço, que é Etapa 8
+      ([log 30](docs/logs/30-o-canal-de-dados-em-tcp.md), [ADR-0010](docs/adr/0010-canal-de-dados-em-tcp-proprio.md))
 - [ ] `[H]` Latência dentro da meta, medida entre duas máquinas
 
 ## Etapa 5 — Entrada no Windows
@@ -390,6 +395,9 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [ ] `[H]` Degradação para UDP com motivo visível
 
 ## Etapa 8 — Clipboard e arquivos
+- [x] Transporte do canal 5: `ir-net::bulk` — `u32` + corpo, `IK` sem pareamento, contador
+      implícito, e a regra de colisão quando as duas pontas discam
+      ([log 30](docs/logs/30-o-canal-de-dados-em-tcp.md))
 - [ ] `ir-clip`: texto, imagem PNG, lista de arquivos
 - [ ] `ir-files`: manifesto, blocos, BLAKE3, cotas, staging por RAII
 - [ ] Progresso e cancelamento

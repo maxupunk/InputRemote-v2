@@ -28,6 +28,7 @@
     )
 )]
 
+pub mod bulk;
 pub mod discovery;
 pub mod endpoint;
 pub mod error;

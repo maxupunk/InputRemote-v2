@@ -159,6 +159,71 @@ mod tests {
     }
 
     #[test]
+    fn a_full_file_block_fits_a_tcp_frame() {
+        // A razão de `MAX_FILE_BLOCK` existir separado de `MAX_TCP_PLAINTEXT`: o bloco cheio
+        // ainda tem de caber **com** o cabeçalho da própria mensagem — canal, discriminante,
+        // identificador, índice do item e deslocamento.
+        //
+        // Conferido codificando o pior caso, e não pela aritmética: quanto o `postcard` gasta
+        // no prefixo de uma fatia de 60 KiB e nos varints é detalhe dele, não nosso. Se um dia
+        // essa conta mudar, é aqui que aparece — não na bancada, no primeiro bloco cheio.
+        let frame = Frame::new(
+            Message::Bulk(BulkMessage::FileBlock {
+                id: TransferId(u32::MAX),
+                item: u32::MAX,
+                offset: u64::MAX,
+                data: vec![0xa5; limits::MAX_FILE_BLOCK],
+            }),
+            Sequence(u32::MAX),
+        );
+        let bytes = encode(&frame, Carrier::Tcp).expect("o bloco cheio tem de caber");
+        assert_eq!(decode(&bytes, Carrier::Tcp).unwrap(), frame);
+
+        let folga = limits::MAX_TCP_PLAINTEXT - bytes.len();
+        assert!(
+            folga >= 64,
+            "a folga do cabeçalho caiu para {folga} B — apertado demais para ser seguro"
+        );
+    }
+
+    #[test]
+    fn a_file_block_one_byte_over_the_limit_is_still_encodable() {
+        // O teto do bloco é nossa política, não o teto do portador: passar um byte dele não
+        // é erro de codec. Este teste existe para que ninguém "corrija" `MAX_FILE_BLOCK`
+        // achando que ele é o limite físico — quem o aplica é quem monta o bloco.
+        let frame = Frame::new(
+            Message::Bulk(BulkMessage::FileBlock {
+                id: TransferId(1),
+                item: 0,
+                offset: 0,
+                data: vec![0u8; limits::MAX_FILE_BLOCK + 1],
+            }),
+            Sequence::ZERO,
+        );
+        assert!(encode(&frame, Carrier::Tcp).is_ok());
+    }
+
+    #[test]
+    fn a_frame_past_the_noise_ceiling_is_refused_instead_of_failing_later() {
+        // Acima de `MAX_TCP_PLAINTEXT` não há o que negociar: o Noise não cifraria. O codec
+        // recusa aqui, onde o defeito é nosso e barato, em vez de o erro aparecer como
+        // "enlace caiu" do outro lado.
+        let frame = Frame::new(
+            Message::Bulk(BulkMessage::FileBlock {
+                id: TransferId(1),
+                item: 0,
+                offset: 0,
+                data: vec![0u8; limits::MAX_TCP_PLAINTEXT],
+            }),
+            Sequence::ZERO,
+        );
+        assert!(matches!(
+            encode(&frame, Carrier::Tcp),
+            Err(ProtoError::TooLarge { .. })
+        ));
+    }
+
+    #[test]
     fn bulk_is_refused_outside_tcp() {
         let frame = Frame::new(
             Message::Bulk(BulkMessage::Accept { id: TransferId(1) }),

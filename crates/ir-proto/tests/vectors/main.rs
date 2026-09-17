@@ -36,11 +36,27 @@
 // propagar erro: a mensagem *é* o diagnóstico.
 #![allow(clippy::expect_used)]
 
+mod dados;
 mod table;
 
 use ir_proto::carrier::Carrier;
+use ir_proto::channel::ChannelId;
 use ir_proto::codec;
 use table::{Vector, vectors};
+
+/// Com qual portador cada vetor é codificado.
+///
+/// Quase todos usam UDP — o portador mais apertado, e portanto o que mais denuncia quadro
+/// grande. O canal 5 é a exceção **obrigatória**: `ChannelId::Bulk.allows(Udp)` é falso por
+/// desenho, e pedir ao codec que o codifique em UDP seria pedir que ele quebrasse a regra que
+/// existe para impedir arquivo de disputar o portador da entrada.
+fn carrier_for(channel: ChannelId) -> Carrier {
+    if channel == ChannelId::Bulk {
+        Carrier::Tcp
+    } else {
+        Carrier::Udp
+    }
+}
 
 fn to_hex(bytes: &[u8]) -> String {
     use core::fmt::Write;
@@ -68,7 +84,7 @@ fn from_hex(hex: &str) -> Vec<u8> {
 #[test]
 fn encoding_matches_the_recorded_bytes() {
     for Vector { name, frame, hex } in vectors() {
-        let bytes = codec::encode(&frame, Carrier::Udp).expect("codifica");
+        let bytes = codec::encode(&frame, carrier_for(frame.channel())).expect("codifica");
         assert_eq!(
             to_hex(&bytes),
             hex,
@@ -83,7 +99,8 @@ fn encoding_matches_the_recorded_bytes() {
 #[test]
 fn recorded_bytes_decode_back_to_the_same_frame() {
     for Vector { name, frame, hex } in vectors() {
-        let decoded = codec::decode(&from_hex(hex), Carrier::Udp).expect("decodifica");
+        let decoded =
+            codec::decode(&from_hex(hex), carrier_for(frame.channel())).expect("decodifica");
         assert_eq!(decoded, frame, "`{name}` não sobreviveu à ida e volta");
     }
 }
@@ -128,18 +145,34 @@ fn input_vectors_stay_within_the_hot_path_budget() {
 }
 
 #[test]
-fn the_vector_set_covers_every_channel_that_has_one() {
-    use ir_proto::ChannelId;
+fn the_vector_set_covers_every_channel() {
+    // Eram quatro canais. Clipboard e dados ficaram de fora enquanto não tinham conteúdo, e
+    // a lista escrita à mão não tinha como avisar que faltavam. Agora a fonte é
+    // `ChannelId::ALL`: um canal novo entra aqui sozinho, e o teste cobra o vetor.
     let covered: Vec<ChannelId> = vectors().iter().map(|v| v.frame.channel()).collect();
-    for channel in [
-        ChannelId::Control,
-        ChannelId::ReliableInput,
-        ChannelId::Pointer,
-        ChannelId::Feedback,
-    ] {
+    for channel in ChannelId::ALL {
         assert!(
             covered.contains(&channel),
             "nenhum vetor cobre o canal {channel}"
         );
     }
+}
+
+#[test]
+fn every_message_variant_of_the_data_channels_is_recorded() {
+    // `docs/03-protocolo.md` §9 exige ida e volta de toda variante, e os canais 4 e 5 são os
+    // que carregam conteúdo de tamanho variável — onde um erro de posição não corrompe uma
+    // tecla, corrompe um arquivo. A conta é escrita aqui para que acrescentar variante ao
+    // protocolo sem gravar o vetor correspondente falhe.
+    const VARIANTES_DE_CLIPBOARD: usize = 5;
+    const VARIANTES_DE_DADOS: usize = 9;
+
+    let conta = |canal: ChannelId| {
+        vectors()
+            .iter()
+            .filter(|v| v.frame.channel() == canal)
+            .count()
+    };
+    assert_eq!(conta(ChannelId::ClipboardText), VARIANTES_DE_CLIPBOARD);
+    assert_eq!(conta(ChannelId::Bulk), VARIANTES_DE_DADOS);
 }

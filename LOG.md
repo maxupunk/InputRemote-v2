@@ -54,3 +54,4 @@ quê. Um registro que se reescreve não é registro.
 | 27 | 2026-09-16 | [O par que voltava sozinho, e a latência que eu li errado](docs/logs/27-o-par-que-voltava-sozinho.md) |
 | 28 | 2026-09-16 | [A carga que refutou o *sniff*, e o rádio que ficava ocupado](docs/logs/28-a-carga-que-refutou-o-sniff.md) |
 | 29 | 2026-09-16 | [O agente que nunca chegava a dizer por quê](docs/logs/29-o-agente-que-nunca-dizia-por-que.md) |
+| 30 | 2026-09-17 | [O canal de dados em TCP, e o teto que o Noise nunca teria permitido](docs/logs/30-o-canal-de-dados-em-tcp.md) |

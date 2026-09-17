@@ -31,6 +31,26 @@ pub enum NetError {
     #[error("a identidade do par não confere com a fixada")]
     WrongPeer,
 
+    /// O par anunciou um corpo maior que o teto do portador.
+    ///
+    /// Só existe nos portadores de *stream*, onde há prefixo de tamanho para mentir. Conferido
+    /// **antes** de reservar memória: estes bytes chegam num processo privilegiado
+    /// ([04, §1](../../../docs/04-seguranca.md)).
+    #[error("o par anunciou {size} B, acima do teto de {limit} B")]
+    TooLarge {
+        /// O tamanho anunciado.
+        size: usize,
+        /// O teto do portador.
+        limit: usize,
+    },
+
+    /// O par fechou o *stream*.
+    ///
+    /// Não é erro de socket, e a distinção importa: "o par encerrou" é o que o usuário precisa
+    /// ouvir, e não "erro de E/S".
+    #[error("o par encerrou a conexão")]
+    Closed,
+
     /// A descoberta por mDNS falhou.
     #[error("a descoberta na rede falhou: {0}")]
     Discovery(String),

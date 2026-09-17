@@ -33,6 +33,8 @@ Uma decisão só muda por um ADR novo que substitua o anterior — não por edi�
 | [0006](adr/0006-entrada-linux-evdev-uinput.md) | evdev + uinput como caminho primário no Linux |
 | [0007](adr/0007-ui-slint-processo-separado.md) | Interface em Slint, em processo separado |
 | [0008](adr/0008-agente-com-thread-por-desktop.md) | Um agente por sessão, com uma thread por desktop |
+| [0009](adr/0009-canal-rfcomm-fixo-sem-sdp.md) | Canal RFCOMM fixo, sem SDP |
+| [0010](adr/0010-canal-de-dados-em-tcp-proprio.md) | O canal de dados em TCP próprio, fora da abstração de portador |
 
 ## Registro do que foi feito
 

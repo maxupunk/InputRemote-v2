@@ -37,7 +37,12 @@ Tamanhos máximos de quadro:
 |---|---:|---|
 | UDP | 1 200 B | fica abaixo da MTU típica sem fragmentar IP |
 | RFCOMM | negociado, teto de 512 B | MTU de RFCOMM varia entre pilhas; 512 B é seguro em todas |
-| TCP | 64 KiB | blocos de arquivo |
+| TCP | 65 519 B | o teto do Noise: 65 535 menos a etiqueta Poly1305 |
+
+O número do TCP **não é escolha nossa**, e a versão anterior desta tabela dizia 64 KiB — dezessete
+bytes acima do que o Noise permite cifrar numa mensagem. Bloco de arquivo usa `MAX_FILE_BLOCK`
+(60 KiB), que desconta o cabeçalho da mensagem que o carrega. Ver
+[ADR-0010](adr/0010-canal-de-dados-em-tcp-proprio.md).
 
 ## 3. Criptografia (L1)
 

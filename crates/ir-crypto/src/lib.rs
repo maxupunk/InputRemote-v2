@@ -41,4 +41,4 @@ pub use handshake::Handshake;
 pub use identity::{Fingerprint, Identity, PublicKey, SecretBytes};
 pub use replay::ReplayWindow;
 pub use sas::codes_match;
-pub use transport::Transport;
+pub use transport::{Opener, Sealer, Transport};
