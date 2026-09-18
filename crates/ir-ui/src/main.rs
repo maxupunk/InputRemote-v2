@@ -16,6 +16,7 @@
 
 use std::rc::Rc;
 
+use ir_ui::bandeja::{self, Inicio};
 use ir_ui::real::ServicoReal;
 use ir_ui::servico::Servico;
 use ir_ui::simulado::ServicoSimulado;
@@ -26,6 +27,17 @@ use ir_ui::simulado::ServicoSimulado;
 ///
 /// Repassa a falha do Slint quando não há backend gráfico disponível.
 fn main() -> Result<(), slint::PlatformError> {
+    // Uma interface por sessão. A demonstração fica de fora, para poder rodar ao lado da de
+    // verdade; ela nunca fala com o serviço.
+    let marca = if pediu_simulado() {
+        None
+    } else {
+        match bandeja::abrir_ou_avisar() {
+            Some(marca) => Some(marca),
+            // A outra interface já foi avisada para aparecer: esta não tem mais o que fazer.
+            None => return Ok(()),
+        }
+    };
     // O serviço de verdade, sempre — mesmo que ele não esteja no ar agora: a ligação é tentada de
     // novo sozinha, e a janela diz o que está acontecendo e o que fazer. O simulado só entra
     // quando pedido de propósito. Cair nele sozinho mostrava dado de mentira a quem só precisava
@@ -35,13 +47,21 @@ fn main() -> Result<(), slint::PlatformError> {
     } else {
         Rc::new(ServicoReal::local())
     };
-    ir_ui::janela::abrir(servico)
+    let inicio = if pediu("--bandeja") {
+        Inicio::NaBandeja
+    } else {
+        Inicio::Visivel
+    };
+    let marca = marca.unwrap_or_else(bandeja::sem_marca);
+    ir_ui::janela::abrir(servico, inicio, marca)
+}
+
+/// Se a linha de comando traz este argumento.
+fn pediu(argumento: &str) -> bool {
+    std::env::args().skip(1).any(|a| a == argumento)
 }
 
 /// Se a demonstração foi pedida: `--simulado` na linha de comando, ou `IR_SIMULADO` no ambiente.
 fn pediu_simulado() -> bool {
-    std::env::args()
-        .skip(1)
-        .any(|argumento| argumento == "--simulado")
-        || std::env::var_os("IR_SIMULADO").is_some()
+    pediu("--simulado") || std::env::var_os("IR_SIMULADO").is_some()
 }

@@ -16,7 +16,8 @@
     TemDaemon   1 quando inputremote-daemon.exe existe
     TemAgente   1 quando inputremote-agent.exe existe
 -->
-<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
   <Product Id="*"
            Name="InputRemote"
            Language="1033"
@@ -51,6 +52,16 @@
          impediu atualizar o servico numa maquina que nao podia ser reiniciada. -->
     <Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
 
+    <!-- A interface mora na bandeja desde o login, sem janela visivel. Sem o Restart Manager (acima),
+         o instalador nao a encontraria para pedir que fosse fechada, e o executavel preso so seria
+         trocado depois de reiniciar. Encerra-la aqui e inofensivo: ela nao guarda estado nenhum (a
+         sessao e do servico) e volta no proximo login ou pelo menu Iniciar. `TerminateProcess` e
+         o caminho, e nao `CloseMessage`: fechar a janela so a esconde na bandeja. -->
+    <util:CloseApplication Id="FecharInterface"
+                           Target="inputremote-ui.exe"
+                           TerminateProcess="0"
+                           RebootPrompt="no" />
+
     <!-- O icone da entrada em Aplicativos. Vem do arquivo, e nao extraido do executavel:
          extrair pegaria o primeiro tamanho que aparecesse, e a lista de programas usa 32 px. -->
     <Icon Id="icone.ico" SourceFile="$(var.Recursos)\icone.ico" />
@@ -76,14 +87,26 @@
                registro. Assim a chave do componente e o executavel — que e o que o atalho
                aponta — e o Windows repara o atalho sozinho se o programa sumir. Um atalho em
                componente separado precisaria de chave HKCU, e este e um instalador para a
-               maquina inteira, nao para um usuario. -->
+               maquina inteira, nao para um usuario.
+
+               O `Icon` nao e opcional: atalho anunciado nao le o icone do executavel, e sem ele o
+               menu Iniciar mostrava uma folha em branco. -->
           <Shortcut Id="AtalhoInterface"
                     Directory="ProgramMenuFolder"
                     Name="InputRemote"
                     Description="Compartilha teclado e mouse com outro computador"
                     WorkingDirectory="PASTAINSTALACAO"
+                    Icon="icone.ico"
+                    IconIndex="0"
                     Advertise="yes" />
         </File>
+        <!-- A interface sobe com o login de cada usuario, ja na bandeja (argumento de bandeja, abaixo): o icone fica
+             ao lado do relogio e a janela so aparece quando alguem clica nele. -->
+        <RegistryValue Root="HKLM"
+                       Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                       Name="InputRemote"
+                       Type="string"
+                       Value="&quot;[#inputremote_ui.exe]&quot; --bandeja" />
       </Component>
 
       <?if $(var.TemAgente) = 1 ?>

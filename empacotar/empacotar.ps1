@@ -230,7 +230,7 @@ function Empacotar-Windows([string]$versao, [string]$commit) {
     # argumento que termina em barra faz o Windows tratar a aspa de fechamento como escapada --
     # o que so aparece quando o caminho tem espaco, isto e, na maquina de outra pessoa.
     Executar-Ferramenta -Nome 'candle' -Programa (Join-Path $wix 'candle.exe') -Argumentos @(
-        '-nologo', '-arch', 'x64', '-ext', 'WixUIExtension',
+        '-nologo', '-arch', 'x64', '-ext', 'WixUIExtension', '-ext', 'WixUtilExtension',
         "-dVersao=$versaoDoMsi", "-dRotulo=$versao",
         "-dBinarios=$binarios", "-dRecursos=$recursos",
         "-dTemDaemon=$temDaemon", "-dTemAgente=$temAgente",
@@ -244,7 +244,7 @@ function Empacotar-Windows([string]$versao, [string]$commit) {
         # ICE61 reclama que o produto poderia remover uma versao igual a si mesmo. E
         # exatamente o que AllowSameVersionUpgrades pede, e e o que se quer enquanto a versao
         # for 0.1.0-dev e mudar varias vezes por dia sem mudar de numero.
-        '-nologo', '-ext', 'WixUIExtension', '-sw1076', '-spdb',
+        '-nologo', '-ext', 'WixUIExtension', '-ext', 'WixUtilExtension', '-sw1076', '-spdb',
         '-out', $msi,
         (Join-Path $obj 'Produto.wixobj')
     ) | Out-Null

@@ -97,6 +97,8 @@ export component Preferencias inherits VerticalLayout {
 
             Text {
                 text: Dados.estado.nivel-explicacao;
+                // Quem ocupa a sobra da linha é a explicação, e não o selo.
+                horizontal-stretch: 1;
                 vertical-alignment: center;
                 font-size: Tema.fonte-nota;
                 color: Tema.texto-fraco;

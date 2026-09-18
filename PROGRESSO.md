@@ -473,7 +473,11 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [ ] Botões acessíveis: `accessible-role` e ação padrão, para leitor de tela e automação
       ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
 - [ ] Preferências avançadas: arranjo de telas, atalho de emergência
-- [ ] Bandeja do sistema
+- [~] Bandeja do sistema no Windows — ícone, menu, minimizar e fechar escondem, uma interface por
+      sessão, sobe com o login já na bandeja; falta o clique de verdade no ícone ([log 37](docs/logs/37-a-bandeja-e-a-rolagem-de-lado.md))
+- [x] Preferências sem rolagem horizontal: a área rolável tem a largura visível, e nenhum texto
+      empurra a largura ([log 37](docs/logs/37-a-bandeja-e-a-rolagem-de-lado.md))
+- [x] Ícone do atalho no menu Iniciar — o atalho anunciado do MSI não tinha ícone ([log 37](docs/logs/37-a-bandeja-e-a-rolagem-de-lado.md))
 - [ ] Fechar, matar ou não abrir não altera a sessão
 
 ## Etapa 10 — Qualidade e lançamento

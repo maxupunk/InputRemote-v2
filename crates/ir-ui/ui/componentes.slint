@@ -75,6 +75,8 @@ export component Selo inherits Rectangle {
 
     background: root.cor-de-fundo;
     border-radius: 5px;
+    // Do tamanho do texto: numa linha com uma explicação ao lado, quem estica é a explicação.
+    horizontal-stretch: 0;
 
     HorizontalLayout {
         padding-left: Tema.e2;
@@ -92,6 +94,9 @@ export component Selo inherits Rectangle {
 }
 
 /// Uma linha de "rótulo … valor".
+///
+/// O valor quebra linha em vez de empurrar a largura: um nome de máquina comprido ou a impressão
+/// digital não podem alargar a tela.
 export component Dado inherits HorizontalLayout {
     in property <string> rotulo;
     in property <string> valor;
@@ -104,9 +109,8 @@ export component Dado inherits HorizontalLayout {
         color: Tema.texto-fraco;
         font-size: Tema.fonte-corpo;
         vertical-alignment: center;
+        horizontal-stretch: 0;
     }
-
-    Rectangle { }
 
     Text {
         text: root.valor;
@@ -114,6 +118,8 @@ export component Dado inherits HorizontalLayout {
         font-size: Tema.fonte-corpo;
         horizontal-alignment: right;
         vertical-alignment: center;
+        horizontal-stretch: 1;
+        wrap: word-wrap;
     }
 }
 

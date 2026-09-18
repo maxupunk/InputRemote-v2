@@ -169,8 +169,14 @@ export component Janela inherits Window {
             }
         }
 
-        ScrollView {
+        // Rolagem só na vertical. Sem prender a largura, o Slint dá à área rolável a largura
+        // mínima do conteúdo quando ela passa da janela, e um texto sem quebra bastava para os
+        // cartões saírem cortados à direita, com uma barra horizontal embaixo.
+        rolagem := ScrollView {
+            viewport-width: self.visible-width;
+
             VerticalLayout {
+                width: rolagem.visible-width;
                 padding: Tema.e4;
                 spacing: Tema.e4;
 

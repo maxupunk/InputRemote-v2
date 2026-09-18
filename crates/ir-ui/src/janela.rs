@@ -214,7 +214,11 @@ fn seis_vazios() -> ModelRc<SharedString> {
 ///
 /// Repassa a falha de [`slint::PlatformError`] quando não há como criar ou rodar a janela — sem
 /// backend gráfico, ou sem servidor de janelas no Linux.
-pub fn abrir(servico: Rc<dyn Servico>) -> Result<(), slint::PlatformError> {
+pub fn abrir(
+    servico: Rc<dyn Servico>,
+    inicio: crate::bandeja::Inicio,
+    marca: crate::bandeja::Marca,
+) -> Result<(), slint::PlatformError> {
     let janela = Janela::new()?;
     let situacao = servico.situacao();
     let contexto = Rc::new(Contexto {
@@ -246,7 +250,7 @@ pub fn abrir(servico: Rc<dyn Servico>) -> Result<(), slint::PlatformError> {
         batida.observar_conexao();
     });
 
-    janela.run()
+    crate::bandeja::rodar(&janela, inicio, marca)
 }
 
 fn ligar_configuracao(janela: &Janela, contexto: &Rc<Contexto>) {
