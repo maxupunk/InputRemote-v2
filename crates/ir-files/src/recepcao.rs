@@ -137,6 +137,12 @@ impl Recepcao {
         })
     }
 
+    /// O identificador desta transferência, para as respostas que não saem de [`Self::aplicar`].
+    #[must_use]
+    pub const fn id(&self) -> TransferId {
+        self.id
+    }
+
     /// Quantos bytes já foram escritos.
     #[must_use]
     pub const fn escritos(&self) -> u64 {

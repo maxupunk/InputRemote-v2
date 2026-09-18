@@ -229,6 +229,7 @@ impl Session {
         self.pending_pointer = ir_proto::input::PointerDelta::ZERO;
         self.seqs.reset();
         self.reliability.reset();
+        self.area.reset();
         self.incarnations.forget_peer();
 
         for timer in [TimerId::Heartbeat, TimerId::Snapshot, TimerId::PointerFlush] {
@@ -289,6 +290,7 @@ impl Session {
         }
 
         self.service_retransmissions(now, out);
+        self.pump_clipboard(now, out);
         self.send_bare_ack_if_needed(now, out);
     }
 

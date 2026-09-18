@@ -81,6 +81,12 @@ pub enum Input {
     /// sessão; é rotina, e o estado é do serviço justamente por isso
     /// (`docs/02-arquitetura.md` §1.1).
     AgentLost,
+
+    /// O usuário copiou este texto e levou o controle ao par: ofereça-o.
+    ///
+    /// Vai pelo canal 4, em qualquer portador. Sem sessão estabelecida, é descartado — oferecer
+    /// depois, fora do momento da travessia, poria no clipboard do par algo que ele não pediu.
+    ClipboardText(super::ClipText),
 }
 
 /// Por que um portador caiu, do ponto de vista local.

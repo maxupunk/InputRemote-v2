@@ -63,6 +63,13 @@ impl Envio {
         }
     }
 
+    /// O identificador desta transferência, para as mensagens que não saem de [`Self::proxima`] —
+    /// o `Cancel`, em especial.
+    #[must_use]
+    pub const fn id(&self) -> ir_proto::message::TransferId {
+        self.plano.id
+    }
+
     /// Quantos bytes de conteúdo já saíram.
     #[must_use]
     pub const fn enviados(&self) -> u64 {
@@ -86,7 +93,7 @@ impl Envio {
         if self.aberto.is_some() {
             return self.continuar().await;
         }
-        self.comecar_o_proximo().await
+        self.comecar_o_proximo()
     }
 
     /// Abre o próximo arquivo do plano, pulando os diretórios.
@@ -94,7 +101,7 @@ impl Envio {
     /// Diretório não gera mensagem: quem recebe o cria a partir do manifesto, que ele já tem
     /// inteiro. Mandar `FileStart` de uma pasta seria uma mensagem sem conteúdo e um caso extra na
     /// máquina de estados dos dois lados.
-    async fn comecar_o_proximo(&mut self) -> Result<Option<BulkMessage>> {
+    fn comecar_o_proximo(&mut self) -> Result<Option<BulkMessage>> {
         loop {
             let Some(item) = self.plano.itens.get(self.proximo) else {
                 return Ok(None);
@@ -110,9 +117,13 @@ impl Envio {
                 .get(indice)
                 .ok_or(FileError::Violacao("item sem caminho local"))?
                 .clone();
-            let arquivo = tokio::fs::File::open(&caminho)
-                .await
-                .map_err(|erro| FileError::io(&caminho, erro))?;
+            // Aberto primeiro, conferido depois: o que se confere é o descritor que vai ser lido, e
+            // não o caminho — que pode ter sido trocado por um vínculo desde o manifesto
+            // ([`crate::permissao`]).
+            let aberto =
+                std::fs::File::open(&caminho).map_err(|erro| FileError::io(&caminho, erro))?;
+            crate::permissao::conferir_aberto(&self.plano.leitor, &caminho, &aberto)?;
+            let arquivo = tokio::fs::File::from_std(aberto);
             let declarado = item.size;
             self.aberto = Some(Aberto {
                 indice,

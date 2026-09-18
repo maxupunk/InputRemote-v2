@@ -3,6 +3,7 @@
 //! Entra um evento, sai uma lista de comandos. Sem E/S, sem relógio lido, sem `async`, sem
 //! estado compartilhado — [ADR-0004](../../../docs/adr/0004-nucleo-sans-io.md).
 
+mod area;
 mod client;
 mod consultas;
 mod edge;
@@ -90,6 +91,9 @@ pub struct Session {
     /// Coalescido: se três amostras se acumulam, vai a soma. Perder amostra intermediária é
     /// invisível; atrasar não é (`docs/02-arquitetura.md` §6, regra 5).
     pub(super) pending_pointer: PointerDelta,
+
+    /// O canal 4: o texto do clipboard indo e vindo.
+    pub(super) area: area::Area,
 }
 
 impl Session {
@@ -115,6 +119,7 @@ impl Session {
             clock: Clock::default(),
             pending_pointer: PointerDelta::ZERO,
             last_rtt: None,
+            area: area::Area::default(),
         }
     }
 
@@ -166,6 +171,7 @@ impl Session {
             Input::SetPeerEdge(edge) => self.on_set_peer_edge(now, edge, out),
             Input::AgentReady => self.agent_ready = true,
             Input::AgentLost => self.on_agent_lost(now, out),
+            Input::ClipboardText(texto) => self.on_clipboard_text(now, texto, out),
         }
     }
 

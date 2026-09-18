@@ -98,6 +98,9 @@ pub enum Command {
 
     /// Conte isto à interface.
     Notify(Notice),
+
+    /// Chegou texto do par, inteiro e conferido: ponha-o no clipboard desta máquina.
+    ClipboardText(super::ClipText),
 }
 
 /// Os comandos produzidos por um passo.

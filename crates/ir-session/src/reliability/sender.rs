@@ -20,6 +20,9 @@ use crate::time::{Millis, Timestamp};
 /// para uma rajada de digitação e pequeno o bastante para não esconder um enlace ruim.
 pub const WINDOW: usize = 64;
 
+/// Quantas sequências atrás da mais nova uma confirmação ainda alcança: as 32 do bitmap.
+pub const ACK_REACH: u32 = 32;
+
 /// Uma mensagem enviada e ainda não confirmada.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Pending {
@@ -81,6 +84,21 @@ impl Sender {
     #[must_use]
     pub fn pending(&self) -> usize {
         self.unacked.len()
+    }
+
+    /// Se a mensagem de sequência `next` pode sair sem tirar a mais antiga pendente do alcance da
+    /// confirmação.
+    ///
+    /// A confirmação diz "a mais nova que chegou, e quais das 32 anteriores". Uma pendente mais de
+    /// 32 atrás da mais nova **não tem como ser confirmada**: o par a recebe, entrega, e mesmo assim
+    /// o emissor a reenvia até desistir e derrubar o enlace. Contar pendentes não evita isso — cinco
+    /// pendentes podem estar a quarenta sequências uma da outra, se as do meio foram confirmadas.
+    /// Quem manda em rajada (o clipboard) pergunta isto antes de cada mensagem.
+    #[must_use]
+    pub fn within_ack_reach(&self, next: Sequence) -> bool {
+        self.unacked
+            .front()
+            .is_none_or(|oldest| next.distance_from(oldest.seq) <= ACK_REACH)
     }
 
     /// Se não há nada esperando confirmação.

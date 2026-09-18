@@ -11,6 +11,7 @@ members = [
     "crates/ir-transporte",
     "crates/ir-files",
     "crates/ir-transferencia",
+    "crates/ir-acesso",
     "crates/ir-clip",
     "crates/ir-input",
     "crates/ir-daemon",
@@ -38,6 +39,7 @@ ir-net = { path = "crates/ir-net", version = "0.1.0-dev" }
 ir-bt = { path = "crates/ir-bt", version = "0.1.0-dev" }
 ir-transporte = { path = "crates/ir-transporte", version = "0.1.0-dev" }
 ir-files = { path = "crates/ir-files", version = "0.1.0-dev" }
+ir-acesso = { path = "crates/ir-acesso", version = "0.1.0-dev" }
 ir-transferencia = { path = "crates/ir-transferencia", version = "0.1.0-dev" }
 ir-clip = { path = "crates/ir-clip", version = "0.1.0-dev" }
 ir-input = { path = "crates/ir-input", version = "0.1.0-dev" }

@@ -23,13 +23,17 @@ use ir_transporte::Endereco;
 impl Daemon {
     /// Um pedido da interface: traduz, age, e devolve a resposta pelo caminho de volta.
     pub(super) fn on_pedido(&mut self, recebido: PedidoRecebido) {
-        let PedidoRecebido { pedido, responder } = recebido;
-        let resposta = self.tratar(pedido);
+        let PedidoRecebido {
+            pedido,
+            leitor,
+            responder,
+        } = recebido;
+        let resposta = self.tratar(pedido, leitor);
         let _ = responder.send(resposta);
     }
 
     /// A ação de cada pedido. A autoridade é conferida no transporte, não aqui.
-    fn tratar(&mut self, pedido: Pedido) -> Resposta {
+    fn tratar(&mut self, pedido: Pedido, leitor: ir_transferencia::Leitor) -> Resposta {
         match pedido {
             Pedido::Estado => Resposta::Estado(self.estado()),
             Pedido::Acompanhar => Resposta::Feito,
@@ -69,11 +73,32 @@ impl Daemon {
             Pedido::DefinirBorda(borda) => self.trocar_borda(borda.no_protocolo()),
             Pedido::DefinirPapel(papel) => self.trocar_papel(role_de(papel)),
             Pedido::Diagnostico => Resposta::Diagnostico(self.diagnostico()),
-            Pedido::EnviarArquivos { caminhos } => self.enviar_arquivos(caminhos),
+            Pedido::EnviarArquivos { caminhos } => self.enviar_arquivos(caminhos, leitor),
+            // O mesmo gatilho da travessia, à mão. Quem lê o clipboard é o ajudante da sessão.
+            Pedido::SincronizarClipboard => {
+                let _ = self.avisos.send(Aviso::LerClipboard);
+                Resposta::Feito
+            }
+            // O texto vem de quem pediu, e não de um caminho que o serviço leria: não há o que
+            // conferir de permissão, só se há par para receber.
+            Pedido::OferecerTexto(texto) => self.oferecer_texto(texto),
             // A tela de bloqueio é N2: depende do agente no desktop seguro, que ainda não entra.
             // O curinga cobre também variantes futuras do contrato ainda não tratadas aqui.
             _ => Resposta::Falha(Falha::ForaDeContexto),
         }
+    }
+
+    /// Leva o texto copiado ao par, pelo canal 4 da sessão.
+    fn oferecer_texto(&mut self, texto: ir_ipc::TextoDoClipboard) -> Resposta {
+        if !self.session.phase().is_established() {
+            return Resposta::Falha(Falha::ForaDeContexto);
+        }
+        // Os dois tipos têm o mesmo limite, o do canal 4; a conversão não recusa nada.
+        let Some(texto) = ir_session::ClipText::new(texto.em_string()) else {
+            return Resposta::Falha(Falha::ForaDeContexto);
+        };
+        self.drive(ir_session::Input::ClipboardText(texto));
+        Resposta::Feito
     }
 
     /// Encaminha um pedido de envio para a tarefa de transferência.
@@ -82,17 +107,14 @@ impl Daemon {
     /// resposta é "recebi o pedido", e o que acontece depois chega por
     /// [`Aviso::Transferencia`](ir_ipc::Aviso::Transferencia).
     ///
-    /// Caminho vazio é recusado aqui, e não lá: é o único erro que se pode ver sem tocar o disco.
-    fn enviar_arquivos(&self, caminhos: Vec<String>) -> Resposta {
-        let caminhos: Vec<std::path::PathBuf> = caminhos
-            .into_iter()
-            .map(std::path::PathBuf::from)
-            .filter(|caminho| !caminho.as_os_str().is_empty())
-            .collect();
-        if caminhos.is_empty() {
-            return Resposta::Falha(Falha::ForaDeContexto);
+    /// Quem não pode ler nada é recusado aqui, antes de a tarefa de transferência tocar o disco: é o
+    /// serviço do Windows como SYSTEM, que ainda não sabe quem está do outro lado do *pipe*.
+    fn enviar_arquivos(&self, caminhos: Vec<String>, leitor: ir_transferencia::Leitor) -> Resposta {
+        if leitor == ir_transferencia::Leitor::Desconhecido {
+            return Resposta::Falha(Falha::SemPermissao);
         }
-        if self.arquivos.enviar(caminhos) {
+        let caminhos = caminhos.into_iter().map(std::path::PathBuf::from).collect();
+        if self.arquivos.enviar(caminhos, leitor) {
             Resposta::Feito
         } else {
             Resposta::Falha(Falha::ForaDeContexto)

@@ -45,7 +45,7 @@ fn main() {
     let mut args = std::env::args().skip(1);
     let (Some(endereco), Some(acao)) = (args.next(), args.next()) else {
         return println!(
-            "uso: controle <endereco> estado|diagnostico|aguardar|confirmar|parear <par>|enviar <caminho>"
+            "uso: controle <endereco> estado|diagnostico|aguardar|confirmar|sincronizar|parear <par>|enviar <caminho>"
         );
     };
 
@@ -83,7 +83,16 @@ fn montar(acao: &str, argumento: Option<String>) -> Result<Roteiro, String> {
     };
     match acao {
         "estado" => simples(Pedido::Estado),
+        // O gatilho da travessia, à mão: o ajudante da sessão lê o clipboard e oferece ao par.
+        "sincronizar" => simples(Pedido::SincronizarClipboard),
         "diagnostico" => simples(Pedido::Diagnostico),
+        // O que o ajudante faz quando há texto no clipboard, sem precisar de clipboard.
+        "texto" => argumento
+            .and_then(ir_ipc::TextoDoClipboard::novo)
+            .map_or_else(
+                || Err("texto: diga o texto, até 256 KiB".to_owned()),
+                |texto| simples(Pedido::OferecerTexto(texto)),
+            ),
         "confirmar" => simples(Pedido::ConfirmarPareamento { conferiu: true }),
         "aguardar" => Ok(Roteiro {
             pedido: None,
@@ -239,6 +248,15 @@ fn mostrar_aviso(
 ) -> bool {
     match aviso {
         ir_ipc::Aviso::Transferencia(t) => mostrar_transferencia(t),
+        // Na bancada o texto é de teste: mostrar é o que prova que chegou inteiro.
+        ir_ipc::Aviso::TextoRecebido(texto) => {
+            println!(
+                "TEXTO RECEBIDO ({} B): {}",
+                texto.como_str().len(),
+                texto.como_str()
+            );
+            false
+        }
         ir_ipc::Aviso::CodigoDePareamento { digitos } => {
             let texto: String = digitos.iter().map(|d| char::from(b'0' + d)).collect();
             println!("CÓDIGO DE PAREAMENTO: {texto}");

@@ -28,6 +28,7 @@ use ir_proto::limits;
 use ir_proto::message::{ManifestItem, TransferId};
 
 use crate::error::{FileError, Result};
+use crate::permissao::{self, Leitor};
 
 /// Profundidade máxima de diretórios dentro de uma raiz copiada.
 const PROFUNDIDADE_MAXIMA: usize = 64;
@@ -51,6 +52,8 @@ pub struct Plano {
     pub nome: String,
     /// Quantas entradas foram ignoradas, e por quê contadas juntas.
     pub ignorados: usize,
+    /// Com a autoridade de quem os arquivos serão lidos no envio.
+    pub leitor: Leitor,
 }
 
 impl Plano {
@@ -69,7 +72,9 @@ impl Plano {
 /// [`FileError::CaminhoImpossivel`] para nome que não é UTF-8; [`FileError::Io`] em falha de
 /// leitura de diretório; [`FileError::Violacao`] se a árvore passa dos limites do protocolo — e
 /// aqui a violação é nossa, não do par, o que é justamente por que ela é pega antes de enviar.
-pub async fn montar(id: TransferId, raizes: &[PathBuf]) -> Result<Plano> {
+/// [`FileError::SemPermissao`] se alguma entrada não seria legível por `leitor`
+/// ([`crate::permissao`]).
+pub async fn montar(id: TransferId, raizes: &[PathBuf], leitor: Leitor) -> Result<Plano> {
     let mut plano = Plano {
         id,
         itens: Vec::new(),
@@ -77,6 +82,7 @@ pub async fn montar(id: TransferId, raizes: &[PathBuf]) -> Result<Plano> {
         total: 0,
         nome: nome_do_destino(raizes),
         ignorados: 0,
+        leitor,
     };
     for raiz in raizes {
         acrescentar_raiz(&mut plano, raiz).await?;
@@ -95,6 +101,9 @@ async fn acrescentar_raiz(plano: &mut Plano, raiz: &Path) -> Result<()> {
         plano.ignorados += 1;
         return Ok(());
     }
+    // A raiz e todas as pastas acima dela: é aqui que um `0644` dentro de um `/root` fechado é
+    // barrado.
+    permissao::conferir(&plano.leitor, raiz, &dados)?;
     let nome = nome_relativo(raiz)?;
     if dados.is_file() {
         return acrescentar(plano, raiz, nome, dados.len(), false);
@@ -131,6 +140,7 @@ async fn percorrer(plano: &mut Plano, raiz: &Path, prefixo: &str) -> Result<()> 
                 plano.ignorados += 1;
                 continue;
             }
+            permissao::conferir_entrada(&plano.leitor, &caminho, &dados)?;
             let relativo = format!("{prefixo}/{}", nome_relativo(&caminho)?);
             if dados.is_dir() {
                 acrescentar(plano, &caminho, relativo.clone(), 0, true)?;
@@ -225,7 +235,9 @@ mod tests {
         let alvo = temp.caminho().join("nota.txt");
         escrever(&alvo, b"doze bytes..").await;
 
-        let plano = montar(TransferId(1), &[alvo]).await.unwrap();
+        let plano = montar(TransferId(1), &[alvo], Leitor::Proprio)
+            .await
+            .unwrap();
         assert_eq!(caminhos(&plano), vec!["nota.txt"]);
         assert_eq!(plano.total, 12);
         assert_eq!(plano.nome, "nota.txt");
@@ -238,7 +250,9 @@ mod tests {
         escrever(&raiz.join("a.pdf"), b"12345").await;
         escrever(&raiz.join("anexos").join("b.bin"), b"123").await;
 
-        let plano = montar(TransferId(2), &[raiz]).await.unwrap();
+        let plano = montar(TransferId(2), &[raiz], Leitor::Proprio)
+            .await
+            .unwrap();
         assert_eq!(
             caminhos(&plano),
             vec![
@@ -261,7 +275,9 @@ mod tests {
         let raiz = temp.caminho().join("pasta");
         escrever(&raiz.join("a").join("x.bin"), b"abcdefghij").await;
 
-        let plano = montar(TransferId(3), &[raiz]).await.unwrap();
+        let plano = montar(TransferId(3), &[raiz], Leitor::Proprio)
+            .await
+            .unwrap();
         assert_eq!(
             crate::cota::avaliar(
                 &plano.itens,
@@ -282,7 +298,9 @@ mod tests {
         escrever(&a, b"a").await;
         escrever(&b, b"bb").await;
 
-        let plano = montar(TransferId(4), &[a, b]).await.unwrap();
+        let plano = montar(TransferId(4), &[a, b], Leitor::Proprio)
+            .await
+            .unwrap();
         assert_eq!(caminhos(&plano), vec!["a.txt", "b.txt"]);
         assert_eq!(plano.total, 3);
         assert_eq!(plano.nome, "a.txt e outros");
@@ -295,7 +313,9 @@ mod tests {
         let raiz = temp.caminho().join("vazia");
         tokio::fs::create_dir_all(&raiz).await.unwrap();
 
-        let plano = montar(TransferId(5), &[raiz]).await.unwrap();
+        let plano = montar(TransferId(5), &[raiz], Leitor::Proprio)
+            .await
+            .unwrap();
         assert_eq!(caminhos(&plano), vec!["vazia"]);
         assert_eq!(plano.total, 0);
     }
@@ -303,9 +323,13 @@ mod tests {
     #[tokio::test]
     async fn o_que_nao_existe_e_erro_e_nao_um_plano_vazio() {
         let temp = pasta_temporaria("manifesto-ausente");
-        let erro = montar(TransferId(6), &[temp.caminho().join("nao-existe")])
-            .await
-            .unwrap_err();
+        let erro = montar(
+            TransferId(6),
+            &[temp.caminho().join("nao-existe")],
+            Leitor::Proprio,
+        )
+        .await
+        .unwrap_err();
         assert!(matches!(erro, FileError::NaoEnviavel(_)), "{erro}");
     }
 
@@ -318,7 +342,9 @@ mod tests {
         let raiz = temp.caminho().join("com espaço e acentuação");
         escrever(&raiz.join("sub pasta").join("arquivo (1).txt"), b"x").await;
 
-        let plano = montar(TransferId(7), &[raiz]).await.unwrap();
+        let plano = montar(TransferId(7), &[raiz], Leitor::Proprio)
+            .await
+            .unwrap();
         assert!(!plano.vazio());
         for item in &plano.itens {
             assert!(item.is_safe_path(), "{}", item.path);
@@ -333,7 +359,9 @@ mod tests {
         escrever(&raiz.join("a.txt"), b"1").await;
         escrever(&raiz.join("b.txt"), b"22").await;
 
-        let plano = montar(TransferId(8), &[raiz]).await.unwrap();
+        let plano = montar(TransferId(8), &[raiz], Leitor::Proprio)
+            .await
+            .unwrap();
         assert_eq!(
             plano.itens.len(),
             plano.locais.len(),
@@ -358,7 +386,9 @@ mod tests {
         escrever(&raiz.join("real.txt"), b"x").await;
         std::os::unix::fs::symlink(&raiz, raiz.join("laco")).unwrap();
 
-        let plano = montar(TransferId(9), &[raiz]).await.unwrap();
+        let plano = montar(TransferId(9), &[raiz], Leitor::Proprio)
+            .await
+            .unwrap();
         assert_eq!(caminhos(&plano), vec!["p", "p/real.txt"]);
         assert_eq!(plano.ignorados, 1);
     }

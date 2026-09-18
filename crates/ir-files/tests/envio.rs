@@ -19,7 +19,7 @@ mod comum;
 use comum::{escrever, temp};
 use ir_files::envio::{resumo_de, tem_conteudo};
 use ir_files::error::FileError;
-use ir_files::{Envio, manifesto};
+use ir_files::{Envio, Leitor, manifesto};
 use ir_proto::limits;
 use ir_proto::message::{BulkMessage, ManifestItem, TransferId};
 
@@ -38,7 +38,7 @@ async fn um_arquivo_vira_inicio_bloco_e_fim() {
     let alvo = temp.caminho().join("nota.txt");
     escrever(&alvo, b"doze bytes..").await;
 
-    let plano = manifesto::montar(TransferId(1), std::slice::from_ref(&alvo))
+    let plano = manifesto::montar(TransferId(1), std::slice::from_ref(&alvo), Leitor::Proprio)
         .await
         .unwrap();
     let mut envio = Envio::novo(plano);
@@ -73,7 +73,9 @@ async fn um_arquivo_vazio_ainda_tem_inicio_e_fim() {
     let alvo = temp.caminho().join("vazio.txt");
     escrever(&alvo, b"").await;
 
-    let plano = manifesto::montar(TransferId(2), &[alvo]).await.unwrap();
+    let plano = manifesto::montar(TransferId(2), &[alvo], Leitor::Proprio)
+        .await
+        .unwrap();
     let corpo = drenar(&mut Envio::novo(plano)).await;
     assert_eq!(corpo.len(), 2, "{corpo:?}");
 }
@@ -85,7 +87,9 @@ async fn um_arquivo_maior_que_o_bloco_e_picado_com_deslocamento_crescente() {
     let tamanho = limits::MAX_FILE_BLOCK * 2 + 7;
     escrever(&alvo, &vec![0xa5; tamanho]).await;
 
-    let plano = manifesto::montar(TransferId(3), &[alvo]).await.unwrap();
+    let plano = manifesto::montar(TransferId(3), &[alvo], Leitor::Proprio)
+        .await
+        .unwrap();
     let mut envio = Envio::novo(plano);
     let corpo = drenar(&mut envio).await;
 
@@ -115,7 +119,9 @@ async fn diretorio_nao_gera_mensagem_nenhuma() {
     let raiz = temp.caminho().join("p");
     escrever(&raiz.join("a").join("b").join("x.txt"), b"x").await;
 
-    let plano = manifesto::montar(TransferId(4), &[raiz]).await.unwrap();
+    let plano = manifesto::montar(TransferId(4), &[raiz], Leitor::Proprio)
+        .await
+        .unwrap();
     let pastas = plano.itens.iter().filter(|i| i.is_dir).count();
     assert_eq!(pastas, 3, "p, p/a, p/a/b");
 
@@ -132,7 +138,9 @@ async fn varios_arquivos_saem_um_depois_do_outro_e_nunca_intercalados() {
     escrever(&raiz.join("b.txt"), &[2u8; 10]).await;
     escrever(&raiz.join("c.txt"), &[3u8; 10]).await;
 
-    let plano = manifesto::montar(TransferId(5), &[raiz]).await.unwrap();
+    let plano = manifesto::montar(TransferId(5), &[raiz], Leitor::Proprio)
+        .await
+        .unwrap();
     let corpo = drenar(&mut Envio::novo(plano)).await;
 
     let mut aberto: Option<u32> = None;
@@ -166,7 +174,7 @@ async fn um_arquivo_que_encolhe_no_meio_tem_erro_com_nome_proprio() {
     let alvo = temp.caminho().join("muda.bin");
     escrever(&alvo, &vec![7u8; 4096]).await;
 
-    let plano = manifesto::montar(TransferId(6), std::slice::from_ref(&alvo))
+    let plano = manifesto::montar(TransferId(6), std::slice::from_ref(&alvo), Leitor::Proprio)
         .await
         .unwrap();
     let mut envio = Envio::novo(plano);
@@ -194,7 +202,9 @@ async fn o_manifesto_do_envio_e_o_do_plano() {
     let temp = temp("envio-manifesto");
     let alvo = temp.caminho().join("x.txt");
     escrever(&alvo, b"abc").await;
-    let plano = manifesto::montar(TransferId(9), &[alvo]).await.unwrap();
+    let plano = manifesto::montar(TransferId(9), &[alvo], Leitor::Proprio)
+        .await
+        .unwrap();
     let envio = Envio::novo(plano.clone());
     match envio.manifesto() {
         BulkMessage::Manifest {
@@ -221,7 +231,7 @@ async fn o_resumo_avulso_bate_com_o_calculado_durante_o_envio() {
         .collect();
     escrever(&alvo, &conteudo).await;
 
-    let plano = manifesto::montar(TransferId(7), std::slice::from_ref(&alvo))
+    let plano = manifesto::montar(TransferId(7), std::slice::from_ref(&alvo), Leitor::Proprio)
         .await
         .unwrap();
     let corpo = drenar(&mut Envio::novo(plano)).await;

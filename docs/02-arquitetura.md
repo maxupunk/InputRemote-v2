@@ -55,8 +55,13 @@ Processo sem estado próprio, lançado pelo serviço. Existe **um por sessão de
   captura; as outras apenas injetam. Uma quarta thread vigia qual desktop está recebendo
   entrada. Ver [05](05-windows.md) e [ADR-0008](adr/0008-agente-com-thread-por-desktop.md).
 - **Linux:** não injeta nunca. O serviço injeta direto por `uinput`, em qualquer situação.
-  O agente cuida da captura pelo portal `InputCapture` (papel de servidor), do clipboard e
-  do arranjo dos monitores. Ver [06](06-linux.md).
+  O agente cuida da captura pelo portal `InputCapture` (papel de servidor) e do arranjo dos
+  monitores. Ver [06](06-linux.md).
+
+O **clipboard**, nos dois sistemas, é do ajudante `inputremote-agent --clipboard`: o mesmo
+executável, rodando como o usuário, iniciado pela sessão e falando pelo canal de controle — e não
+pelo do agente, que no Linux é `0600 root` e carrega injeção
+([ADR-0011](adr/0011-clipboard-na-travessia.md)).
 
 Regra: o agente **NÃO DEVE** tomar decisão nenhuma. Ele recebe comandos já resolvidos
 ("injete este evento", "suprima a entrada local") e devolve fatos ("este evento

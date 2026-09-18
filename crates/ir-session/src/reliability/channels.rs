@@ -123,6 +123,14 @@ impl ReliableChannels {
         self.pair(channel).map_or(0, |pair| pair.sender.pending())
     }
 
+    /// Se a mensagem de sequência `next` pode sair sem ficar fora do alcance da confirmação.
+    /// Canais não cobertos sempre podem.
+    #[must_use]
+    pub fn within_ack_reach(&self, channel: ChannelId, next: Sequence) -> bool {
+        self.pair(channel)
+            .is_none_or(|pair| pair.sender.within_ack_reach(next))
+    }
+
     /// O que a passagem do tempo pede.
     ///
     /// Varre os canais na ordem de importância: controle primeiro, entrada em seguida. Se

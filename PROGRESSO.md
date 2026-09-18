@@ -121,11 +121,12 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] CI: `fmt`, `clippy -D warnings`, `test`, `doc`, `xtask check`, `deny`, nos dois sistemas
 
 ### 1.2. `xtask` — as regras que o CI faz cumprir
-- [x] `check-limits`: linhas por arquivo, por função e por crate
+- [x] `check-limits`: linhas por arquivo, por função e por crate — módulos de teste em arquivo
+      próprio (`#[cfg(test)] mod x;`) não contam como produção ([log 35](docs/logs/35-o-texto-pelo-canal-4.md))
 - [x] `check-deps`: setas de dependência de [02, §2](docs/02-arquitetura.md)
 - [x] `check-deps`: pureza — crates puros sem runtime, relógio, E/S ou API de sistema
 - [x] `check-logs`: nenhuma macro de log recebendo tipo de entrada
-- [x] 23 testes do próprio `xtask` — uma verificação sem teste não é de confiança
+- [x] 26 testes do próprio `xtask` — uma verificação sem teste não é de confiança
 - [ ] Parâmetros por função e aninhamento (delegados ao `clippy.toml`, a confirmar no CI)
 
 ### 1.3. Processos e IPC
@@ -348,6 +349,11 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       90 s com a economia de energia ligada e picos de 117 ms, sem nenhuma queda, e a primeira ida e
       volta do controle no hardware. Mas o notebook trocou de ponto de acesso quatro vezes em dois
       minutos, e com um deles a sessão não firmou ou oscilou ([log 24](docs/logs/24-a-borda-e-do-servidor.md))
+- [x] Reconexão por UDP depois de uma queda: o enlace aceita o reinício do par com a mesma chave,
+      o iniciador ignora dado do enlace anterior, e uma regra de turno impede os dois lados de
+      discarem juntos para sempre. Na bancada, a sessão passou a firmar de primeira ([log 35](docs/logs/35-o-texto-pelo-canal-4.md))
+- [x] A confirmação alcança a mais antiga pendente: nada sai mais de 32 sequências à frente dela
+      (`within_ack_reach`), senão o enlace caía por uma mensagem que chegou ([log 35](docs/logs/35-o-texto-pelo-canal-4.md))
 - [ ] A sessão sobrevive à troca de ponto de acesso do Wi-Fi, com silêncios de mais de dez segundos
       no caminho — hoje cai pelo prazo de 1 s. Falta decidir entre prazo de queda maior e soltar
       tudo em 1 s mantendo a sessão ([log 24](docs/logs/24-a-borda-e-do-servidor.md))
@@ -399,9 +405,11 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Transporte do canal 5: `ir-net::bulk` — `u32` + corpo, `IK` sem pareamento, contador
       implícito, e a regra de colisão quando as duas pontas discam
       ([log 30](docs/logs/30-o-canal-de-dados-em-tcp.md))
-- [~] `ir-clip`: texto e lista de arquivos, com a guarda de eco — 36 testes. O backend do Windows
-      compila e está escrito (`AddClipboardFormatListener`, `CF_UNICODETEXT`, `CF_HDROP`); imagem
-      PNG e o backend do Linux (portal) faltam ([log 33](docs/logs/33-o-clipboard-sem-interceptar-atalho.md))
+- [~] `ir-clip`: texto e lista de arquivos, com a guarda de eco. Os dois backends exercitados
+      contra clipboard de verdade: Windows (`AddClipboardFormatListener`, `CF_HDROP`) e Linux
+      (`wl-clipboard`; no GNOME sem vigia, lido na travessia). Imagem PNG falta
+      ([log 33](docs/logs/33-o-clipboard-sem-interceptar-atalho.md),
+      [log 34](docs/logs/34-copiar-aqui-colar-la.md))
 - [x] `ir-files`: manifesto, blocos, BLAKE3, cotas, staging por RAII — 69 testes, incluindo a
       travessia de uma árvore inteira e treze casos de par hostil
       ([log 31](docs/logs/31-o-motor-de-transferencia.md))
@@ -412,14 +420,25 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [ ] `[H]` Transferência de 5 GB degrada a entrada em no máximo 10% — exige as duas máquinas
 - [x] Ligar `ir-files` ao `ir-net::bulk` no serviço — `ir-transferencia`, na tarefa dele, fora do
       compasso de 5 ms da entrada ([log 32](docs/logs/32-arquivos-atravessando.md))
-- [ ] O canal de arquivos sobe com a chave fixada da **subida**: parear agora exige reiniciar o
-      serviço para arquivos funcionarem. Falta um `watch` da chave do par
-- [ ] `ir-clip` ligado ao agente: `ComandoDoAgente::PublicarClipboard`,
-      `FatoDoAgente::ClipboardMudou`, e a thread do vigia. É o que falta para o Ctrl+C
-- [ ] `[H]` Ctrl+C e Ctrl+V de ponta a ponta — no Windows exige o MSI instalado, porque o canal do
-      agente é restrito a SYSTEM
-- [ ] Backend de clipboard do Linux: portal `org.freedesktop.portal.Clipboard` (o GNOME não expõe
-      `wlr-data-control`)
+- [x] O canal de arquivos acompanha o par: parear e esquecer valem na hora, sem reiniciar o
+      serviço; sem par, cada pedido é recusado com o motivo ([log 35](docs/logs/35-o-texto-pelo-canal-4.md))
+- [x] `ir-clip` ligado ao produto — pelo ajudante `inputremote-agent --clipboard`, que roda como
+      o usuário e fala pelo canal de controle, e não pelo agente, que é SYSTEM e carrega injeção
+      ([ADR-0011](docs/adr/0011-clipboard-na-travessia.md), [log 34](docs/logs/34-copiar-aqui-colar-la.md))
+- [x] O serviço só envia o que quem pediu poderia ler (`ir_files::permissao`), conferido no
+      descritor aberto: `/etc/shadow` no clipboard foi recusado na bancada
+      ([log 34](docs/logs/34-copiar-aqui-colar-la.md))
+- [~] `[H]` Ctrl+C e Ctrl+V de arquivos de ponta a ponta — nos dois sentidos pela rede, com
+      SHA-256 idêntico e o destino no clipboard do outro lado; falta o Windows instalado como
+      origem e o Ctrl+V à mão no Nautilus
+      ([log 34](docs/logs/34-copiar-aqui-colar-la.md))
+- [x] Texto atravessando pelo canal 4 da sessão, em qualquer portador, até 256 KiB, conferido por
+      BLAKE3: nos dois sentidos na bancada, e 218 KB em 2,8 s sem queda de sessão ([log 35](docs/logs/35-o-texto-pelo-canal-4.md))
+- [~] O serviço do Windows (SYSTEM) sabe quem pediu o envio: token do cliente do *pipe* em nível de
+      identificação e `AccessCheck` no arquivo já aberto (`ir-acesso`). Testado com *pipe* real e com
+      ACL que nega; falta o serviço instalado ([log 35](docs/logs/35-o-texto-pelo-canal-4.md))
+- [ ] `[H]` Com troca rápida de usuário no Windows, o texto que chega vai aos ajudantes das duas
+      sessões ([log 35](docs/logs/35-o-texto-pelo-canal-4.md))
 
 ## Etapa 9 — Interface
 

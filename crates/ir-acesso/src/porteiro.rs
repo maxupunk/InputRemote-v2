@@ -1,7 +1,7 @@
 //! Quem pode usar cada canal — a regra, sem sistema operacional no meio.
 //!
-//! A decisão fica separada de onde a credencial é lida ([`super::escuta`]) e de onde a filiação a
-//! grupos é consultada (`super::grupo`, no Linux) por um motivo prático: é a parte que precisa
+//! A decisão fica separada de onde a credencial é lida (o ponto de escuta do serviço) e de onde a filiação a
+//! grupos é consultada ([`crate::grupo`], no Linux) por um motivo prático: é a parte que precisa
 //! estar certa, e uma função pura é a única coisa que dá para testar por inteiro sem montar
 //! usuários e grupos de verdade numa máquina.
 //!
@@ -20,14 +20,14 @@
 // exercitada pelos testes. Ela continua compilando lá para os testes rodarem em qualquer máquina.
 #![cfg_attr(windows, allow(dead_code))]
 
-use super::escuta::Acesso;
+use crate::Acesso;
 
 /// O uid de root.
 const ROOT: u32 = 0;
 
 /// O que o porteiro decidiu sobre uma conexão.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Chamada {
+pub enum Chamada {
     /// Pode usar o canal.
     Permitida,
     /// Não pode, e aqui está quem tentou — para o registro dizer a quem liberar.
@@ -39,18 +39,18 @@ pub(crate) enum Chamada {
 
 /// Quem conectou, com a filiação a grupos lida no banco de usuários na hora da conexão.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Chamador<'a> {
+pub struct Chamador<'a> {
     /// O usuário do processo que conectou.
-    pub(crate) uid: u32,
+    pub uid: u32,
     /// Os grupos a que ele pertence **agora**, segundo o banco de usuários.
-    pub(crate) grupos: &'a [u32],
+    pub grupos: &'a [u32],
 }
 
 /// Decide se `chamador` pode usar um canal com este `acesso`.
 ///
 /// `dono` é o usuário que roda o serviço; `grupo_do_servico` é o gid do grupo que dá acesso ao
 /// controle, ou `None` se ele ainda não existe nesta máquina.
-pub(crate) fn decidir(
+pub fn decidir(
     acesso: Acesso,
     chamador: &Chamador<'_>,
     dono: u32,

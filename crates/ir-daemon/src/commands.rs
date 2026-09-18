@@ -35,6 +35,23 @@ impl Daemon {
                 if let Notice::EdgeChanged { edge } = notice {
                     self.adotar_borda(edge);
                 }
+                // O controle saiu desta máquina: o que está no clipboard daqui vai junto. É o
+                // gatilho que funciona onde o sistema não avisa mudança de clipboard — o GNOME não
+                // avisa (ADR-0011).
+                if let Notice::ControlMoved { remote: true } = notice {
+                    let _ = self.avisos.send(ir_ipc::Aviso::LerClipboard);
+                }
+            }
+            // Chegou texto do par: vai para o ajudante da sessão, que o põe no clipboard. Os dois
+            // tipos têm o mesmo limite, o do canal 4.
+            Command::ClipboardText(texto) => {
+                debug!(
+                    bytes = texto.as_str().len(),
+                    "texto de clipboard recebido do par"
+                );
+                if let Some(texto) = ir_ipc::TextoDoClipboard::novo(texto.into_string()) {
+                    let _ = self.avisos.send(ir_ipc::Aviso::TextoRecebido(texto));
+                }
             }
             // Os temporizadores são otimização (o serviço bate a sessão periodicamente e ela
             // confere os próprios prazos pelo relógio injetado); o curinga cobre variantes

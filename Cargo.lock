@@ -2649,10 +2649,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ir-acesso"
+version = "0.1.0-dev"
+dependencies = [
+ "anyhow",
+ "ir-files",
+ "libc",
+ "tokio",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "ir-agent"
 version = "0.1.0-dev"
 dependencies = [
  "anyhow",
+ "ir-clip",
  "ir-input",
  "ir-ipc",
  "ir-proto",
@@ -2704,6 +2716,7 @@ name = "ir-daemon"
 version = "0.1.0-dev"
 dependencies = [
  "anyhow",
+ "ir-acesso",
  "ir-crypto",
  "ir-input",
  "ir-ipc",
@@ -2788,6 +2801,7 @@ dependencies = [
 name = "ir-session"
 version = "0.1.0-dev"
 dependencies = [
+ "blake3",
  "ir-geometry",
  "ir-proto",
  "thiserror 2.0.20",

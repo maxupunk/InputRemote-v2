@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use ir_files::error::FileError;
-use ir_files::{Abertura, Cota, Envio, Reacao, Recepcao, manifesto};
+use ir_files::{Abertura, Cota, Envio, Leitor, Reacao, Recepcao, manifesto};
 use ir_proto::message::{BulkMessage, RejectReason, TransferId};
 
 static CONTADOR: AtomicU32 = AtomicU32::new(0);
@@ -147,7 +147,7 @@ pub async fn atravessar_com<F>(
 where
     F: FnMut(usize, BulkMessage) -> Option<BulkMessage>,
 {
-    let plano = match manifesto::montar(TransferId(1), origem).await {
+    let plano = match manifesto::montar(TransferId(1), origem, Leitor::Proprio).await {
         Ok(plano) => plano,
         Err(erro) => return Fim::Falhou(erro),
     };

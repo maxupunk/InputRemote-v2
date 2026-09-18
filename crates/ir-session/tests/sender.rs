@@ -11,7 +11,7 @@
 use ir_proto::frame::{Ack, Frame, Sequence};
 use ir_proto::input::{HidUsage, Modifiers};
 use ir_proto::message::{InputMessage, Message};
-use ir_session::reliability::{SendOutcome, Sender, TimeoutOutcome, WINDOW};
+use ir_session::reliability::{ACK_REACH, Receiver, SendOutcome, Sender, TimeoutOutcome, WINDOW};
 use ir_session::{Millis, Timestamp};
 
 const FLOOR: Millis = Millis(20);
@@ -256,4 +256,41 @@ fn resetting_clears_the_window_and_the_estimate() {
         FLOOR,
         "a estimativa volta ao piso"
     );
+}
+
+#[test]
+fn nothing_goes_out_beyond_what_an_ack_can_still_confirm() {
+    // As do meio confirmadas, a 0 perdida: poucas pendentes, e ainda assim longe demais.
+    let mut sender = Sender::new();
+    for seq in 0..=ACK_REACH {
+        assert!(sender.within_ack_reach(Sequence(seq)), "{seq}");
+        sender.on_sent(at(0), Sequence(seq), frame(seq));
+    }
+    let mut ack = Ack::new(Sequence(ACK_REACH));
+    for seq in 1..ACK_REACH {
+        ack = ack.with(Sequence(seq));
+    }
+    sender.on_ack(at(10), ack);
+    assert_eq!(sender.pending(), 1, "só a 0 continua pendente");
+    assert!(
+        !sender.within_ack_reach(Sequence(ACK_REACH + 1)),
+        "a 0 sairia do alcance"
+    );
+}
+
+#[test]
+fn the_reach_rule_is_exactly_what_the_receiver_can_confirm() {
+    // O outro lado da mesma regra: a 1 perdida e tudo até 1 + ACK_REACH recebido, a 1 que chega
+    // atrasada ainda é confirmada. Uma a mais, e não seria.
+    fn late_one_is_confirmed(head: u32) -> bool {
+        let mut receiver = Receiver::new();
+        receiver.accept(Sequence(0), frame(0));
+        for seq in 2..=head {
+            receiver.accept(Sequence(seq), frame(seq));
+        }
+        let _ = receiver.accept(Sequence(1), frame(1));
+        receiver.ack_to_send().unwrap().covers(Sequence(1))
+    }
+    assert!(late_one_is_confirmed(1 + ACK_REACH));
+    assert!(!late_one_is_confirmed(2 + ACK_REACH));
 }

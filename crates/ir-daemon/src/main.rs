@@ -5,13 +5,13 @@
 //! roda o ator central ([02, §4](../../../docs/02-arquitetura.md)).
 
 mod actor;
-#[cfg(windows)]
 mod arquivos;
 mod commands;
 mod config;
 mod ipc;
 #[cfg(windows)]
 mod lancador;
+#[cfg(windows)]
 mod service;
 
 use std::io::BufRead;

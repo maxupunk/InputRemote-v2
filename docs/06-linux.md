@@ -217,7 +217,7 @@ Group=inputremote
 CapabilityBoundingSet=
 NoNewPrivileges=yes
 ProtectSystem=strict
-ProtectHome=yes
+ProtectHome=read-only
 PrivateTmp=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
@@ -235,6 +235,13 @@ DeviceAllow=/dev/uinput rw
 [Install]
 WantedBy=multi-user.target
 ```
+
+`ProtectHome=read-only`, e não `yes`: enviar ao par o que o usuário copiou da pasta pessoal exige
+que o serviço leia ali ([ADR-0011](adr/0011-clipboard-na-travessia.md)). *O que* ele pode ler é
+decidido pelo `ir-files`, que só envia o que o próprio usuário que pediu leria; o sandbox garante
+que gravar em `/home` continua impossível. Um serviço com usuário dedicado, como o deste modelo,
+também não leria uma pasta pessoal `0700` — enquanto o serviço for esse, o envio a partir dela
+precisará que o ajudante do usuário entregue o conteúdo, e não o caminho.
 
 `Type=notify`: o serviço só se declara pronto depois que os dispositivos `uinput` foram
 confirmados pelo `udev` (§2.2). Assim, "serviço ativo" significa "capaz de injetar".

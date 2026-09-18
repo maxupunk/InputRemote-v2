@@ -119,7 +119,8 @@ No Linux o serviço **não precisa ser `root`**, e não deve ser. O acesso a `/d
 governado por permissão de arquivo, não por capacidade — então basta um usuário de sistema
 dedicado com `DeviceAllow=/dev/uinput rw` e uma política de D-Bus que permita registrar o
 perfil no BlueZ. Nenhuma capacidade é mantida: `CapabilityBoundingSet=` vazio,
-`NoNewPrivileges=yes`, `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes` e
+`NoNewPrivileges=yes`, `ProtectSystem=strict`, `ProtectHome=read-only` (o envio de arquivos lê da pasta pessoal; ver
+[06, §7](06-linux.md)), `PrivateTmp=yes` e
 `SystemCallFilter=@system-service` ([06, §7](06-linux.md)).
 
 Se a PoC-3 mostrar que o registro do perfil BlueZ exige `root`, o serviço sobe como `root`

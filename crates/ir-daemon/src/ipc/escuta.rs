@@ -12,45 +12,14 @@
 //! - No **Windows**, o descritor de segurança do *pipe* barra quem não pode no próprio sistema, e
 //!   o que chega até aqui já é permitido.
 //! - No **Linux**, o portão é o serviço: ele lê a credencial de quem conectou (`SO_PEERCRED`) e
-//!   consulta a filiação ao grupo no banco de usuários **na hora** ([`super::porteiro`]). A
+//!   consulta a filiação ao grupo no banco de usuários **na hora** ([`ir_acesso::porteiro`]). A
 //!   permissão do arquivo não serve de portão porque é conferida com os grupos do processo que
 //!   conecta — e no GNOME a sessão gráfica carrega os grupos de quando nasceu, então um `usermod`
 //!   só alcançaria a janela depois de reiniciar a máquina.
 
 use anyhow::{Context, Result};
 
-pub(crate) use super::porteiro::Chamada;
-
-/// Quem pode abrir este ponto de escuta.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Acesso {
-    /// Só o serviço e os administradores.
-    ///
-    /// É o do canal do agente, que carrega injeção de entrada: se um processo qualquer do
-    /// usuário pudesse abri-lo, qualquer programa que ele rodasse poderia digitar no prompt de
-    /// UAC ([04, §5](../../../docs/04-seguranca.md)).
-    Restrito,
-    /// Também o usuário interativo, que é quem tem a janela na frente.
-    UsuarioInterativo,
-}
-
-/// Só o serviço (`SY`) e os administradores (`BA`), com o DACL protegido contra herança.
-#[cfg(windows)]
-const SDDL_RESTRITO: &str = "D:P(A;;GA;;;SY)(A;;GA;;;BA)";
-/// O anterior, mais leitura e escrita para o usuário interativo (`IU`).
-#[cfg(windows)]
-const SDDL_INTERATIVO: &str = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)";
-
-#[cfg(windows)]
-impl Acesso {
-    /// A cadeia SDDL correspondente.
-    const fn sddl(self) -> &'static str {
-        match self {
-            Self::Restrito => SDDL_RESTRITO,
-            Self::UsuarioInterativo => SDDL_INTERATIVO,
-        }
-    }
-}
+pub(crate) use ir_acesso::{Acesso, Chamada};
 
 /// Uma conexão duplex já aceita.
 #[cfg(windows)]
@@ -64,7 +33,7 @@ pub(crate) type Conexao = tokio::net::UnixStream;
 pub(crate) struct Escuta {
     nome: String,
     /// Mantido vivo enquanto houver escuta: cada instância nova do *pipe* é criada com ele.
-    seguranca: super::seguranca::Descritor,
+    seguranca: ir_acesso::seguranca::Descritor,
     proximo: tokio::net::windows::named_pipe::NamedPipeServer,
 }
 
@@ -76,7 +45,7 @@ impl Escuta {
     ///
     /// Erro do sistema se o nome já estiver em uso ou o processo não puder criar o *pipe*.
     pub(crate) fn abrir(nome: &str, acesso: Acesso) -> Result<Self> {
-        let mut seguranca = super::seguranca::Descritor::de_sddl(acesso.sddl())?;
+        let mut seguranca = ir_acesso::seguranca::Descritor::de_sddl(acesso.sddl())?;
         let proximo = Self::criar(nome, &mut seguranca, true)?;
         Ok(Self {
             nome: nome.to_owned(),
@@ -88,7 +57,7 @@ impl Escuta {
     /// Cria uma instância do *pipe* com o descritor de segurança do canal.
     fn criar(
         nome: &str,
-        seguranca: &mut super::seguranca::Descritor,
+        seguranca: &mut ir_acesso::seguranca::Descritor,
         primeira: bool,
     ) -> Result<tokio::net::windows::named_pipe::NamedPipeServer> {
         seguranca
@@ -113,6 +82,46 @@ impl Escuta {
             Chamada::Permitida,
         ))
     }
+
+    /// Com a autoridade de quem os arquivos pedidos por esta conexão seriam lidos — provisória.
+    ///
+    /// O descritor de segurança decide **se** alguém entra, mas não diz **quem** entrou, e o
+    /// Windows só identifica o cliente depois de o serviço ler algo do *pipe*. Até lá, como SYSTEM,
+    /// o serviço não lê nada por ninguém; [`leitor_depois_de_ler`] completa a resposta.
+    #[allow(clippy::unused_self)] // a assinatura é a mesma do Linux, onde a escuta tem o que dizer
+    pub(crate) fn leitor_de(&self, _conexao: &Conexao) -> ir_transferencia::Leitor {
+        ir_transferencia::Leitor::do_chamador(None, 0, crate::lancador::como_servico())
+    }
+}
+
+/// O leitor desta conexão, agora que o primeiro pedido já foi lido.
+///
+/// Como SYSTEM, é quem conectou, conferido pelo próprio Windows a cada arquivo aberto
+/// (`ir_acesso::identidade`). Rodando como o próprio usuário, não há fronteira a proteger.
+#[cfg(windows)]
+pub(crate) fn leitor_depois_de_ler(
+    conexao: &Conexao,
+    _provisorio: ir_transferencia::Leitor,
+) -> ir_transferencia::Leitor {
+    if !crate::lancador::como_servico() {
+        return ir_transferencia::Leitor::Proprio;
+    }
+    match ir_acesso::identidade::TokenDoCliente::do_pipe(conexao) {
+        Ok(token) => ir_transferencia::Leitor::PeloSistema(std::sync::Arc::new(token)),
+        Err(erro) => {
+            tracing::warn!(%erro, "não consegui identificar quem conectou; esta conexão não envia arquivos");
+            ir_transferencia::Leitor::Desconhecido
+        }
+    }
+}
+
+/// No Linux o `SO_PEERCRED` já disse quem conectou, na aceitação.
+#[cfg(not(windows))]
+pub(crate) const fn leitor_depois_de_ler(
+    _conexao: &Conexao,
+    da_escuta: ir_transferencia::Leitor,
+) -> ir_transferencia::Leitor {
+    da_escuta
 }
 
 /// O ponto de escuta, que aceita uma conexão de cada vez.
@@ -154,7 +163,7 @@ impl Escuta {
         Ok(Self {
             listener,
             acesso,
-            dono: super::grupo::uid_efetivo(),
+            dono: ir_acesso::grupo::uid_efetivo(),
         })
     }
 
@@ -169,6 +178,13 @@ impl Escuta {
         Ok((conexao, chamada))
     }
 
+    /// Com a autoridade de quem os arquivos pedidos por esta conexão seriam lidos: o `uid` de quem
+    /// conectou, pelo `SO_PEERCRED`.
+    pub(crate) fn leitor_de(&self, conexao: &Conexao) -> ir_transferencia::Leitor {
+        let chamador = conexao.peer_cred().ok().map(|credencial| credencial.uid());
+        ir_transferencia::Leitor::do_chamador(chamador, self.dono, true)
+    }
+
     /// Lê quem conectou e pergunta ao porteiro se pode.
     fn avaliar(&self, conexao: &Conexao) -> Chamada {
         let Ok(credencial) = conexao.peer_cred() else {
@@ -177,16 +193,16 @@ impl Escuta {
         };
         let uid = credencial.uid();
         // A filiação é lida agora, no banco de usuários — não a que o processo herdou ao nascer.
-        let grupos = super::grupo::grupos_do_usuario(uid);
-        let chamador = super::porteiro::Chamador {
+        let grupos = ir_acesso::grupo::grupos_do_usuario(uid);
+        let chamador = ir_acesso::porteiro::Chamador {
             uid,
             grupos: &grupos,
         };
-        super::porteiro::decidir(
+        ir_acesso::porteiro::decidir(
             self.acesso,
             &chamador,
             self.dono,
-            super::grupo::gid_do_grupo(super::grupo::GRUPO),
+            ir_acesso::grupo::gid_do_grupo(ir_acesso::grupo::GRUPO),
         )
     }
 }

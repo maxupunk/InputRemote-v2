@@ -45,6 +45,11 @@ BuildRequires:  desktop-file-utils
 # icone generico, que e o mesmo que nao ter icone.
 Requires:       hicolor-icon-theme
 
+# O clipboard do Wayland, lido e escrito pelo ajudante da sessao. `timeout` vem do coreutils, que
+# toda instalacao tem; o prazo e o que impede um compositor mudo de travar o ajudante (ADR-0011).
+Requires:       wl-clipboard
+Requires:       coreutils
+
 # O grupo `inputremote` e criado na instalacao: e ele que alcanca o canal de controle do servico,
 # e sem ele a janela do usuario nao conversa com o servico (docs/02-arquitetura.md, secao 7).
 Requires(pre):  shadow-utils
@@ -57,9 +62,11 @@ Este pacote traz a interface de configuracao e o servico privilegiado, que e que
 e mouse por /dev/uinput -- o caminho que funciona tambem no greeter, na tela de bloqueio e no
 console.
 
-No Linux nao ha agente de sessao: a injecao por uinput entra abaixo do compositor, e o proprio
-servico a faz. O agente existe so no Windows, onde um servico na sessao 0 nao alcanca a area de
-trabalho do usuario.
+A injecao por uinput entra abaixo do compositor, e o proprio servico a faz. O que roda na sessao
+do usuario e so o ajudante de clipboard, iniciado com a sessao: ele leva ao outro computador o que
+estiver no clipboard quando o mouse atravessa a borda, e poe no clipboard daqui o que chegar de la.
+Ele roda como o usuario e fala pelo mesmo canal que a janela -- entao o usuario precisa estar no
+grupo `inputremote`.
 
 O servico nao sobe sozinho depois de instalado. Habilite com:
 
@@ -76,13 +83,16 @@ exit 0
 
 %build
 export CARGO_NET_OFFLINE=false
-# A interface e o servico. O agente nao entra: no Linux quem injeta e o proprio servico, por
-# uinput (docs/06-linux.md, secao 2).
-cargo build --release --locked --bin inputremote-ui --bin inputremote-daemon
+# A interface, o servico e o agente. No Linux o agente nao injeta -- quem injeta e o servico, por
+# uinput (docs/06-linux.md, secao 2) --; ele entra no papel de ajudante de clipboard (ADR-0011).
+cargo build --release --locked --bin inputremote-ui --bin inputremote-daemon --bin inputremote-agent
 
 %install
 install -Dpm 0755 target/release/inputremote-ui %{buildroot}%{_bindir}/inputremote-ui
 install -Dpm 0755 target/release/inputremote-daemon %{buildroot}%{_bindir}/inputremote-daemon
+install -Dpm 0755 target/release/inputremote-agent %{buildroot}%{_bindir}/inputremote-agent
+# Iniciado com a sessao grafica de cada usuario, pelo mecanismo padrao do XDG.
+install -Dpm 0644 empacotar/linux/inputremote-clipboard.desktop         %{buildroot}%{_sysconfdir}/xdg/autostart/inputremote-clipboard.desktop
 install -Dpm 0644 empacotar/linux/inputremote.desktop \
         %{buildroot}%{_datadir}/applications/%{name}.desktop
 
@@ -100,18 +110,25 @@ done
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
+desktop-file-validate %{buildroot}%{_sysconfdir}/xdg/autostart/inputremote-clipboard.desktop
 
 %files
 %license LICENSE
 %doc README.md PROGRESSO.md
 %{_bindir}/inputremote-ui
 %{_bindir}/inputremote-daemon
+%{_bindir}/inputremote-agent
 %{_prefix}/lib/systemd/system/%{name}.service
+%config(noreplace) %{_sysconfdir}/xdg/autostart/inputremote-clipboard.desktop
 %{_datadir}/applications/%{name}.desktop
 %{_datadir}/icons/hicolor/*/apps/%{name}.png
 
 %changelog
-* Thu Sep 11 2026 InputRemote <inputremote@example.invalid> - 0.1.0-0.1.dev
+* Fri Sep 18 2026 InputRemote <inputremote@example.invalid> - 0.1.0-0.1.dev
+- Copiar e colar: o ajudante de clipboard entra, iniciado com a sessao, e arquivos atravessam por TCP.
+- ProtectHome=read-only: o servico precisa ler o que o usuario copia da pasta pessoal.
+
+* Fri Sep 11 2026 InputRemote <inputremote@example.invalid> - 0.1.0-0.1.dev
 - O servico entra no pacote, com unidade systemd. A interface deixa de ser so demonstracao.
 
 * Thu Sep 10 2026 InputRemote <inputremote@example.invalid> - 0.1.0-0.1.dev

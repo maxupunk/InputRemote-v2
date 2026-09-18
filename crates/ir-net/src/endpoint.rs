@@ -18,7 +18,7 @@ use tokio::sync::mpsc;
 use crate::error::{NetError, Result};
 use crate::handshake::{self, ConnectMode};
 use crate::link::SecureLink;
-use crate::wire::{self, Kind};
+use crate::wire::{self, Kind, Mode};
 
 /// Buffer de recepção. Cobre o maior datagrama do produto (1200 B de texto claro + folga).
 const BUF: usize = 2048;
@@ -83,6 +83,8 @@ enum State {
     },
     Established {
         link: SecureLink,
+        /// Quem está do outro lado. Um reinício do enlace só é aceito com a mesma chave.
+        peer_static: PublicKey,
     },
 }
 
@@ -92,6 +94,8 @@ pub struct Endpoint {
     identity: Arc<Identity>,
     events: mpsc::UnboundedSender<NetEvent>,
     state: State,
+    /// Rodadas de reconexão desde o último enlace, para a regra de [`crate::turno`].
+    rodadas: u32,
 }
 
 impl core::fmt::Debug for Endpoint {
@@ -120,6 +124,7 @@ impl Endpoint {
             identity,
             events: evt_tx,
             state: State::Idle,
+            rodadas: 0,
         };
         tokio::spawn(endpoint.run(cmd_rx));
         EndpointHandle {
@@ -163,8 +168,14 @@ impl Endpoint {
         }
     }
 
-    /// Conecta como iniciador.
+    /// Conecta como iniciador — na reconexão, só se for a vez deste lado ([`crate::turno`]).
     async fn connect(&mut self, peer: SocketAddr, mode: ConnectMode) {
+        if let ConnectMode::Reconnect(peer_key) = mode {
+            self.rodadas = self.rodadas.wrapping_add(1);
+            if !crate::turno::discar_nesta_rodada(self.identity.public(), peer_key, self.rodadas) {
+                return;
+            }
+        }
         match handshake::drive_initiator(&self.socket, peer, &self.identity, mode).await {
             Ok(established) => self.on_established(peer, established),
             Err(error) => {
@@ -178,10 +189,49 @@ impl Endpoint {
     async fn on_datagram(&mut self, from: SocketAddr, datagram: &[u8]) {
         match &mut self.state {
             State::Idle => self.maybe_respond(from, datagram).await,
-            State::AwaitingConfirm { .. } | State::Established { .. } => {
+            State::AwaitingConfirm { .. } => {
                 self.on_data_datagram(datagram);
             }
+            State::Established { .. } => {
+                if !self.on_data_datagram(datagram) {
+                    self.maybe_restart(from, datagram).await;
+                }
+            }
         }
+    }
+
+    /// O par recomeçou o enlace enquanto o nosso ainda estava de pé.
+    ///
+    /// Acontece quando ele reiniciou, ou perdeu o enlace por um motivo que daqui não se viu. Sem
+    /// isto, este lado continuava num enlace que do outro lado já não existia — reabrindo sessão
+    /// sobre ele a cada rodada — e tratava o handshake do par como dado inválido; o par discava
+    /// para sempre. Foi o que a bancada mostrou depois de uma queda.
+    ///
+    /// Só troca de enlace se o handshake novo terminar **com a mesma chave**: um datagrama forjado
+    /// com o endereço do par, de outra identidade, não derruba o enlace que funciona.
+    async fn maybe_restart(&mut self, from: SocketAddr, datagram: &[u8]) {
+        let State::Established { link, peer_static } = &self.state else {
+            return;
+        };
+        let reinicio = matches!(wire::parse_handshake(datagram), Some((Mode::Reconnect, _)));
+        if from != link.peer() || !reinicio {
+            return;
+        }
+        let atual = *peer_static;
+        // Falha aqui é lixo ou repetição de um enlace velho; o enlace de agora continua valendo.
+        let Ok(novo) =
+            handshake::drive_responder(&self.socket, from, &self.identity, datagram).await
+        else {
+            return;
+        };
+        if novo.peer_static != atual {
+            return;
+        }
+        let _ = self
+            .events
+            .send(NetEvent::LinkDown("o par recomeçou o enlace"));
+        self.state = State::Idle;
+        self.on_established(from, novo);
     }
 
     /// Sem enlace: um datagrama de handshake vira uma resposta de respondedor.
@@ -201,6 +251,7 @@ impl Endpoint {
     fn on_established(&mut self, peer: SocketAddr, established: handshake::Established) {
         let link = SecureLink::new(Arc::clone(&self.socket), peer, established.transport);
         let peer_static = established.peer_static;
+        self.rodadas = 0;
         if let Some(code) = established.code {
             // Pareamento: mostra o código e espera a confirmação dos dois lados antes de
             // deixar qualquer quadro de sessão passar.
@@ -220,22 +271,22 @@ impl Endpoint {
             let _ = self
                 .events
                 .send(NetEvent::Established { peer_static, peer });
-            self.state = State::Established { link };
+            self.state = State::Established { link, peer_static };
         }
     }
 
-    /// Abre um datagrama de dados e age conforme a espécie.
-    fn on_data_datagram(&mut self, datagram: &[u8]) {
+    /// Abre um datagrama de dados e age conforme a espécie. `false` se ele não abriu.
+    fn on_data_datagram(&mut self, datagram: &[u8]) -> bool {
         let opened = match &mut self.state {
-            State::AwaitingConfirm { link, .. } | State::Established { link } => {
+            State::AwaitingConfirm { link, .. } | State::Established { link, .. } => {
                 link.open(datagram)
             }
-            State::Idle => return,
+            State::Idle => return false,
         };
         // Um datagrama que não abre é lixo, repetição, ou de outra sessão. Ignorado: derrubar
         // por um pacote solto abriria uma negação de serviço trivial.
         let Ok((kind, payload)) = opened else {
-            return;
+            return false;
         };
         match kind {
             Kind::SessionFrame => self.deliver_frame(payload),
@@ -247,6 +298,7 @@ impl Endpoint {
                 self.state = State::Idle;
             }
         }
+        true
     }
 
     fn deliver_frame(&mut self, payload: Vec<u8>) {
@@ -302,12 +354,12 @@ impl Endpoint {
             let _ = self
                 .events
                 .send(NetEvent::Established { peer_static, peer });
-            self.state = State::Established { link };
+            self.state = State::Established { link, peer_static };
         }
     }
 
     async fn send_frame(&mut self, bytes: &[u8]) {
-        if let State::Established { link } = &mut self.state
+        if let State::Established { link, .. } = &mut self.state
             && let Err(error) = link.send(Kind::SessionFrame, bytes).await
         {
             let _ = self.events.send(NetEvent::Error(error.to_string()));

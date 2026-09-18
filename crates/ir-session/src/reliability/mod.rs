@@ -20,4 +20,4 @@ mod sender;
 
 pub use channels::{Due, ReliableChannels};
 pub use receiver::{Delivery, Receiver};
-pub use sender::{SendOutcome, Sender, TimeoutOutcome, WINDOW};
+pub use sender::{ACK_REACH, SendOutcome, Sender, TimeoutOutcome, WINDOW};

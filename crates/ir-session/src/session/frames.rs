@@ -87,9 +87,9 @@ impl Session {
             Message::Input(message) => self.on_input_message(message, out),
             Message::Pointer(message) => self.on_pointer_message(now, message, out),
             Message::Feedback(feedback) => self.on_feedback(now, feedback, out),
-            // Clipboard, dados e mensagens de versões futuras ainda não são tratados pelo
-            // núcleo. Ignorar é o correto até que sejam, e o par não é penalizado por
-            // oferecê-los.
+            Message::Clipboard(message) => self.on_clipboard_message(now, message, out),
+            // Dados vão pelo canal próprio, fora da sessão; mensagens de versões futuras não
+            // são tratadas. Ignorar é o correto, e o par não é penalizado por oferecê-las.
             _ => {}
         }
     }

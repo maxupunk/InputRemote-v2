@@ -35,10 +35,16 @@ use ir_crypto::{Identity, PublicKey};
 /// Quem configura a transferência não tem por que conhecer o motor dela
 /// ([02, §2](../../../docs/02-arquitetura.md)).
 pub use ir_files::Cota;
+
+/// Com a autoridade de quem os arquivos são lidos, reexportada pelo mesmo motivo de [`Cota`].
+pub use ir_files::{Autorizacao, Leitor};
+
+/// Um pedido de envio: o que mandar, e com a autoridade de quem.
+pub(crate) type PedidoDeEnvio = (Vec<PathBuf>, Leitor);
 use ir_ipc::Aviso;
 use ir_ipc::transferencia::{Fase, Motivo, Sentido, Transferencia};
 use ir_transporte::dados::{EnlaceDeDados, Porta, ficar_com_o_proprio};
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, watch};
 use tracing::{debug, info, warn};
 
 /// Quanto esperar antes de tentar de novo quando o par não atende.
@@ -54,10 +60,24 @@ const ESPERA_ENTRE_TENTATIVAS: Duration = Duration::from_secs(3);
 /// ninguém vai abrir. Depois desta carência ele disca também.
 const CARENCIA_DO_NAO_PREFERIDO: Duration = Duration::from_secs(5);
 
+/// Com quem os arquivos são trocados, e onde ele está.
+///
+/// Muda ao parear e ao esquecer — **sem reiniciar o serviço**. Antes a chave era lida uma vez, na
+/// subida, e quem pareava ficava sem arquivos até reiniciar; a entrada, pelo contrário, já valia na
+/// hora. O canal agora recomeça sozinho com o par novo.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Destino {
+    /// A chave fixada do par, quando há um.
+    pub chave: Option<PublicKey>,
+    /// Onde alcançá-lo, quando se sabe. Só o de rede é usado: arquivo nunca vai pelo rádio.
+    pub alvo: Option<ir_transporte::Endereco>,
+}
+
 /// Por onde o ator pede um envio.
 #[derive(Debug, Clone)]
 pub struct Pedidos {
-    fila: mpsc::UnboundedSender<Vec<PathBuf>>,
+    fila: mpsc::UnboundedSender<PedidoDeEnvio>,
+    destino: Arc<watch::Sender<Destino>>,
 }
 
 impl Pedidos {
@@ -69,13 +89,39 @@ impl Pedidos {
     #[must_use]
     pub fn desligada() -> Self {
         let (fila, _) = mpsc::unbounded_channel();
-        Self { fila }
+        let (destino, _) = watch::channel(Destino::default());
+        Self {
+            fila,
+            destino: Arc::new(destino),
+        }
     }
 
-    /// Pede o envio destes caminhos. `false` quando a transferência não está de pé.
+    /// O par mudou: pareou-se um, esqueceu-se o que havia, ou ele foi achado em outro endereço.
+    ///
+    /// O canal em curso, se era com outro par, cai; o novo sobe sozinho.
+    pub fn trocar_destino(&self, destino: Destino) {
+        self.destino.send_if_modified(|atual| {
+            let mudou = *atual != destino;
+            *atual = destino;
+            mudou
+        });
+    }
+
+    /// Pede o envio destes caminhos, lidos com a autoridade de `leitor`. `false` quando a
+    /// transferência não está de pé.
+    ///
+    /// `leitor` não é detalhe: o serviço tem mais autoridade que quem pede, e sem ele o serviço leria
+    /// **por** quem pediu o que essa pessoa não leria sozinha (`ir_files::permissao`).
+    ///
+    /// Caminho vazio é descartado, e um pedido que fica sem nenhum é recusado aqui mesmo: é o único
+    /// erro que se vê sem tocar o disco.
     #[must_use]
-    pub fn enviar(&self, caminhos: Vec<PathBuf>) -> bool {
-        self.fila.send(caminhos).is_ok()
+    pub fn enviar(&self, caminhos: Vec<PathBuf>, leitor: Leitor) -> bool {
+        let caminhos: Vec<PathBuf> = caminhos
+            .into_iter()
+            .filter(|caminho| !caminho.as_os_str().is_empty())
+            .collect();
+        !caminhos.is_empty() && self.fila.send((caminhos, leitor)).is_ok()
     }
 }
 
@@ -90,10 +136,12 @@ pub struct Ajuste {
     pub cota: Cota,
     /// A identidade desta máquina.
     pub identidade: Arc<Identity>,
-    /// A chave fixada do par, quando já há um.
-    pub par: Option<PublicKey>,
-    /// Onde alcançar o par pela rede, quando se sabe.
-    pub alvo: Option<SocketAddr>,
+    /// O par da subida. Depois, quem muda é [`Pedidos::trocar_destino`].
+    ///
+    /// Qualquer endereço serve aqui, e só o de rede é usado: arquivo **nunca** viaja pelo rádio
+    /// ([01, §5](../../../docs/01-visao-e-escopo.md)). Um par alcançável só por Bluetooth tem o canal
+    /// de arquivos indisponível — declaradamente, e não por falta de tentar.
+    pub destino: Destino,
     /// Para contar à interface o que está acontecendo.
     pub avisos: broadcast::Sender<Aviso>,
 }
@@ -102,24 +150,27 @@ pub struct Ajuste {
 #[must_use]
 pub fn iniciar(ajuste: Ajuste) -> Pedidos {
     let (fila, pedidos) = mpsc::unbounded_channel();
-    tokio::spawn(servir(ajuste, pedidos));
-    Pedidos { fila }
+    let (destino, mudancas) = watch::channel(ajuste.destino);
+    tokio::spawn(servir(ajuste, pedidos, mudancas));
+    Pedidos {
+        fila,
+        destino: Arc::new(destino),
+    }
 }
 
-/// O laço de vida do canal de dados: tem enlace, usa; não tem, consegue um.
-async fn servir(ajuste: Ajuste, mut pedidos: mpsc::UnboundedReceiver<Vec<PathBuf>>) {
-    let Some(par) = ajuste.par else {
-        // Sem par fixado não há com quem trocar arquivo, e abrir a porta seria convidar
-        // conexão que nenhuma identidade autorizaria.
-        info!("sem par pareado; arquivos indisponíveis até haver um");
-        recusar_tudo(
-            &ajuste,
-            &mut pedidos,
-            Motivo::Outro("não há par pareado".to_owned()),
-        )
-        .await;
+/// O laço de vida do canal de dados: tem enlace, usa; não tem, consegue um; o par mudou, recomeça.
+async fn servir(
+    ajuste: Ajuste,
+    mut pedidos: mpsc::UnboundedReceiver<PedidoDeEnvio>,
+    mut destino: watch::Receiver<Destino>,
+) {
+    // Sem par não se abre a porta: seria convidar conexão que nenhuma identidade autorizaria.
+    if esperar_par(&ajuste, &mut pedidos, &mut destino)
+        .await
+        .is_none()
+    {
         return;
-    };
+    }
     let porta = match Porta::abrir(ajuste.porta, Arc::clone(&ajuste.identidade)).await {
         Ok(porta) => porta,
         Err(erro) => {
@@ -131,9 +182,22 @@ async fn servir(ajuste: Ajuste, mut pedidos: mpsc::UnboundedReceiver<Vec<PathBuf
     info!(porta = ajuste.porta, "canal de arquivos no ar");
 
     loop {
-        let enlace = obter(&porta, &ajuste, par).await;
+        let Some(par) = esperar_par(&ajuste, &mut pedidos, &mut destino).await else {
+            return;
+        };
+        let alvo = destino.borrow_and_update().alvo;
+        let enlace = tokio::select! {
+            enlace = obter(&porta, &ajuste.identidade, par, alvo) => enlace,
+            _ = destino.changed() => continue,
+        };
         info!("canal de arquivos estabelecido");
-        sessao::conduzir(enlace, &ajuste, &mut pedidos).await;
+        tokio::select! {
+            () = sessao::conduzir(enlace, &ajuste, &mut pedidos) => {}
+            _ = destino.changed() => {
+                info!("o par mudou; o canal de arquivos recomeça com o novo");
+                continue;
+            }
+        }
         warn!("o canal de arquivos caiu; teclado e mouse não foram afetados");
         let _ = ajuste.avisos.send(Aviso::Transferencia(Transferencia {
             sentido: Sentido::Recebendo,
@@ -145,13 +209,49 @@ async fn servir(ajuste: Ajuste, mut pedidos: mpsc::UnboundedReceiver<Vec<PathBuf
     }
 }
 
+/// A chave do par, esperando por ela enquanto não há um. `None` quando o serviço está saindo.
+///
+/// Enquanto espera, cada pedido é recusado com o motivo: um pedido que some deixa o usuário
+/// achando que a cópia foi feita.
+async fn esperar_par(
+    ajuste: &Ajuste,
+    pedidos: &mut mpsc::UnboundedReceiver<PedidoDeEnvio>,
+    destino: &mut watch::Receiver<Destino>,
+) -> Option<PublicKey> {
+    let mut avisou = false;
+    loop {
+        if let Some(chave) = destino.borrow_and_update().chave {
+            return Some(chave);
+        }
+        if !avisou {
+            info!("sem par pareado; arquivos indisponíveis até haver um");
+            avisou = true;
+        }
+        // A troca de par primeiro: um pedido feito logo depois de parear chega junto com ela, e
+        // sem a ordem o `select!` sorteava — às vezes recusando por "não há par" o que já tinha par.
+        tokio::select! {
+            biased;
+            mudou = destino.changed() => mudou.ok()?,
+            pedido = pedidos.recv() => {
+                let (caminhos, _) = pedido?;
+                recusar(ajuste, &caminhos, Motivo::Outro("não há par pareado".to_owned()));
+            }
+        }
+    }
+}
+
 /// Consegue um enlace: atende quem chega, e disca quando é a vez deste lado.
 ///
 /// Os dois lados escutam e os dois podem ter o endereço do outro. Quem disca primeiro é decidido
 /// pela regra da chave maior, sem trocar mensagem; o outro só disca depois da carência, para o caso
 /// de ser ele o único que sabe o endereço.
-async fn obter(porta: &Porta, ajuste: &Ajuste, par: PublicKey) -> EnlaceDeDados {
-    let nossa = ajuste.identidade.public();
+async fn obter(
+    porta: &Porta,
+    identidade: &Identity,
+    par: PublicKey,
+    alvo: Option<ir_transporte::Endereco>,
+) -> EnlaceDeDados {
+    let nossa = identidade.public();
     let carencia = if ficar_com_o_proprio(nossa, par) {
         Duration::ZERO
     } else {
@@ -164,7 +264,7 @@ async fn obter(porta: &Porta, ajuste: &Ajuste, par: PublicKey) -> EnlaceDeDados 
                 Ok(enlace) => return enlace,
                 Err(erro) => debug!(%erro, "conexão de arquivos recusada na porta"),
             },
-            enlace = discar_depois(porta, ajuste.alvo, par, carencia) => {
+            enlace = discar_depois(porta, alvo_de_rede(alvo), par, carencia) => {
                 if let Some(enlace) = enlace {
                     return enlace;
                 }
@@ -195,26 +295,39 @@ async fn discar_depois(
     }
 }
 
+/// O endereço de rede do par, quando o que se sabe dele é de rede.
+const fn alvo_de_rede(alvo: Option<ir_transporte::Endereco>) -> Option<SocketAddr> {
+    match alvo {
+        Some(ir_transporte::Endereco::Rede(endereco)) => Some(endereco),
+        _ => None,
+    }
+}
+
 /// Responde a todo pedido com a mesma recusa, enquanto o serviço viver.
 ///
 /// Dizer não é melhor que ficar calado: um pedido que some deixa o usuário achando que a cópia foi
 /// feita.
 async fn recusar_tudo(
     ajuste: &Ajuste,
-    pedidos: &mut mpsc::UnboundedReceiver<Vec<PathBuf>>,
+    pedidos: &mut mpsc::UnboundedReceiver<PedidoDeEnvio>,
     motivo: Motivo,
 ) {
-    while let Some(caminhos) = pedidos.recv().await {
-        let nome = caminhos
-            .first()
-            .and_then(|caminho| caminho.file_name())
-            .map_or_else(String::new, |nome| nome.to_string_lossy().into_owned());
-        let _ = ajuste.avisos.send(Aviso::Transferencia(Transferencia {
-            sentido: Sentido::Enviando,
-            nome,
-            bytes_feitos: 0,
-            bytes_total: 0,
-            fase: Fase::Parada(motivo.clone()),
-        }));
+    while let Some((caminhos, _)) = pedidos.recv().await {
+        recusar(ajuste, &caminhos, motivo.clone());
     }
+}
+
+/// Conta à interface que este pedido não vai sair, e por quê.
+fn recusar(ajuste: &Ajuste, caminhos: &[PathBuf], motivo: Motivo) {
+    let nome = caminhos
+        .first()
+        .and_then(|caminho| caminho.file_name())
+        .map_or_else(String::new, |nome| nome.to_string_lossy().into_owned());
+    let _ = ajuste.avisos.send(Aviso::Transferencia(Transferencia {
+        sentido: Sentido::Enviando,
+        nome,
+        bytes_feitos: 0,
+        bytes_total: 0,
+        fase: Fase::Parada(motivo),
+    }));
 }

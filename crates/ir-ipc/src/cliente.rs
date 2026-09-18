@@ -46,6 +46,52 @@ pub fn abrir(endereco: &str) -> std::io::Result<Duplex> {
     plataforma::abrir(endereco)
 }
 
+/// O endereço do canal de controle, com a mesma sobrescrita `IR_CONTROL_ENDPOINT` do serviço.
+///
+/// Mora aqui, e não em cada cliente, porque são três clientes — a interface, a ferramenta de
+/// bancada e o ajudante de clipboard — e interpretar a mesma variável de dois jeitos faria um deles
+/// procurar o serviço num lugar em que ele não está.
+///
+/// A sobrescrita aceita caminho completo ou nome curto: um valor sem separador vira
+/// `\\.\pipe\<nome>` no Windows e um socket no diretório temporário no Linux.
+#[must_use]
+pub fn endereco_do_controle() -> String {
+    match std::env::var("IR_CONTROL_ENDPOINT") {
+        Ok(valor) if !valor.is_empty() => expandir(&valor),
+        _ => padrao_do_controle(),
+    }
+}
+
+/// Expande uma sobrescrita curta para um endereço completo da plataforma.
+fn expandir(valor: &str) -> String {
+    if valor.contains(['\\', '/']) {
+        return valor.to_owned();
+    }
+    #[cfg(windows)]
+    {
+        format!(r"\\.\pipe\{valor}")
+    }
+    #[cfg(not(windows))]
+    {
+        std::env::temp_dir()
+            .join(format!("{valor}.sock"))
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
+/// O endereço padrão da plataforma.
+fn padrao_do_controle() -> String {
+    #[cfg(windows)]
+    {
+        r"\\.\pipe\inputremote-control".to_owned()
+    }
+    #[cfg(not(windows))]
+    {
+        "/run/inputremote/control.sock".to_owned()
+    }
+}
+
 #[cfg(not(windows))]
 mod plataforma {
     use std::os::unix::net::UnixStream;
@@ -246,5 +292,27 @@ mod tests {
             !servidor.escrita_chega_com_leitura_pendente(duplex),
             "com handle síncrono a escrita deveria esperar a leitura pendente"
         );
+    }
+}
+
+#[cfg(test)]
+mod testes_do_endereco {
+    use super::expandir;
+
+    #[test]
+    fn um_caminho_completo_nao_e_mexido() {
+        let caminho = if cfg!(windows) {
+            r"\\.\pipe\algum-nome"
+        } else {
+            "/tmp/algum.sock"
+        };
+        assert_eq!(expandir(caminho), caminho);
+    }
+
+    #[test]
+    fn um_nome_curto_vira_um_endereco_da_plataforma() {
+        let expandido = expandir("ir-teste");
+        assert!(expandido.contains("ir-teste"), "{expandido}");
+        assert_ne!(expandido, "ir-teste", "nome curto precisa virar endereço");
     }
 }

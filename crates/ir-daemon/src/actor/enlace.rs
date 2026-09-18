@@ -126,6 +126,9 @@ impl Daemon {
         } else {
             info!("par gravado");
         }
+        // Arquivos passam a valer com este par agora, e não depois de reiniciar o serviço.
+        self.arquivos
+            .trocar_destino(crate::arquivos::destino(&self.config));
     }
 
     /// Um quadro chegou. É decodificado com o limite **deste** portador.

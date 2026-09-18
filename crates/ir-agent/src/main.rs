@@ -24,6 +24,11 @@
 //! [`ir_ipc::cliente`], que usa E/S sobreposta por baixo e entrega aqui um `Read` e um `Write`
 //! bloqueantes como antes (log 21).
 
+// Sem janela de console em release. O serviço lança o agente com `CREATE_NO_WINDOW`, mas o ajudante
+// de clipboard é iniciado pela chave `Run` do Windows, a cada login — e um aplicativo de console
+// abriria uma janela preta na tela do usuário, o mesmo defeito que a interface teve (log 12).
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -36,6 +41,8 @@ use ir_proto::input::PointerPosition;
 use ir_proto::screens::ScreenLayout;
 use tracing::{info, warn};
 
+mod clipboard;
+
 /// Quanto tempo se insiste em achar o serviço antes de desistir.
 ///
 /// O serviço pode estar subindo junto (no arranque da máquina, os dois nascem quase juntos).
@@ -46,6 +53,18 @@ const ESPERA: Duration = Duration::from_millis(500);
 
 fn main() {
     iniciar_tracing();
+
+    // O ajudante de clipboard é o mesmo executável num papel diferente: roda **como o usuário**,
+    // iniciado pela sessão, e fala pelo canal de controle (ADR-0011). Um binário a menos para
+    // instalar e assinar.
+    if std::env::args().any(|argumento| argumento == "--clipboard") {
+        info!("ajudante de clipboard do InputRemote iniciando");
+        if let Err(erro) = clipboard::servir() {
+            warn!(%erro, "o ajudante de clipboard terminou");
+        }
+        return;
+    }
+
     info!("agente do InputRemote iniciando");
 
     // Uma sessão só. Se a conexão cai, o agente **sai**: quem o ressobe é o serviço, e sair é
@@ -283,7 +302,11 @@ fn enviar(escrita: &Arc<Mutex<Escrita>>, fato: &FatoDoAgente) -> Result<()> {
 }
 
 /// Lê um quadro do canal. `Ok(None)` no fim limpo.
-fn ler_quadro<T: serde::de::DeserializeOwned>(leitura: &mut impl Read) -> Result<Option<T>> {
+///
+/// Serve aos dois canais: o do agente e o de controle, que o ajudante de clipboard usa.
+pub(crate) fn ler_quadro<T: serde::de::DeserializeOwned>(
+    leitura: &mut impl Read,
+) -> Result<Option<T>> {
     let mut prefixo = [0u8; PREFIXO];
     if let Err(erro) = leitura.read_exact(&mut prefixo) {
         return if erro.kind() == std::io::ErrorKind::UnexpectedEof {

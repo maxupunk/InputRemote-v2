@@ -91,6 +91,14 @@
         <File Id="inputremote_agent.exe"
               Source="$(var.Binarios)\inputremote-agent.exe"
               KeyPath="yes" />
+        <!-- O ajudante de clipboard: o mesmo executavel, rodando como cada usuario que entra, e
+             nao como SYSTEM. O clipboard e dado do usuario (ADR-0011). HKLM\...\Run inicia o
+             ajudante na sessao de todo usuario, com a autoridade dele. -->
+        <RegistryValue Root="HKLM"
+                       Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                       Name="InputRemoteClipboard"
+                       Type="string"
+                       Value="&quot;[#inputremote_agent.exe]&quot; --clipboard" />
       </Component>
       <?endif?>
 

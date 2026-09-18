@@ -153,6 +153,12 @@ async fn recv_from_peer(socket: &UdpSocket, peer: SocketAddr, buf: &mut [u8]) ->
         if from != peer {
             continue; // datagrama de outra origem no meio do handshake
         }
+        // Um quadro de dados do enlace anterior, ainda em trânsito, não é resposta a este
+        // handshake. Tomá-lo por uma derrubava o handshake inteiro — "datagrama malformado" na
+        // bancada, a cada tentativa de reconectar depois de uma queda.
+        if buf.get(..len).and_then(wire::parse_handshake).is_none() {
+            continue;
+        }
         return Ok(buf.get(..len).unwrap_or(&[]).to_vec());
     }
 }

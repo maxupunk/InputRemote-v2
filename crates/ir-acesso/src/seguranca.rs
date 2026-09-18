@@ -28,7 +28,7 @@ use windows::core::{HSTRING, PCWSTR};
 ///
 /// Guarda a memória que o Windows alocou e a devolve ao ser descartado. Precisa continuar vivo
 /// enquanto o ponto de escuta existir: cada instância nova do *pipe* é criada com ele de novo.
-pub(crate) struct Descritor {
+pub struct Descritor {
     descritor: PSECURITY_DESCRIPTOR,
     atributos: SECURITY_ATTRIBUTES,
 }
@@ -49,7 +49,7 @@ impl Descritor {
     /// # Errors
     ///
     /// Erro do Windows se o SDDL for inválido — o que é defeito de programação, não de ambiente.
-    pub(crate) fn de_sddl(sddl: &str) -> Result<Self> {
+    pub fn de_sddl(sddl: &str) -> Result<Self> {
         let texto = HSTRING::from(sddl);
         let mut descritor = PSECURITY_DESCRIPTOR::default();
         // SAFETY: `texto` vive até o fim da chamada e é terminado em nulo; `descritor` é um
@@ -75,16 +75,22 @@ impl Descritor {
         })
     }
 
+    /// O descritor em si, para um teste aplicá-lo a um arquivo.
+    #[cfg(test)]
+    pub(crate) const fn bruto(&self) -> PSECURITY_DESCRIPTOR {
+        self.descritor
+    }
+
     /// Cria uma instância do *pipe* protegida por este descritor.
     ///
-    /// A criação mora aqui, e não em [`super::escuta`], para o `unsafe` ficar confinado ao módulo
+    /// A criação mora aqui, e não em o ponto de escuta do serviço, para o `unsafe` ficar confinado ao módulo
     /// que já o declara ([09, §4](../../../docs/09-padroes-de-codigo.md)). Quem chama recebe uma
     /// função comum.
     ///
     /// # Errors
     ///
     /// Erro do sistema se o nome já estiver em uso ou o processo não puder criar o *pipe*.
-    pub(crate) fn criar_pipe(
+    pub fn criar_pipe(
         &mut self,
         nome: &str,
         primeira: bool,

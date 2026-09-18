@@ -339,6 +339,11 @@ por repetição com espera curta — outra aplicação pode estar segurando o cl
 Clipboard pertence ao agente do desktop `Default`. No desktop `Winlogon` não há clipboard
 de usuário, e a sincronização fica suspensa — declaradamente, na interface.
 
+> **Alterado pelo [ADR-0011](adr/0011-clipboard-na-travessia.md).** Quem cuida do clipboard não
+> é o agente SYSTEM, e sim o ajudante `inputremote-agent --clipboard`, que roda **como o
+> usuário** e fala pelo canal de controle. O clipboard é dado do usuário; não há motivo para ele
+> passar por um processo com mais autoridade que isso.
+
 ## 7. Bluetooth dentro do serviço
 
 Winsock, não WinRT. Ver [ADR-0005](adr/0005-bluetooth-rfcomm-winsock.md).

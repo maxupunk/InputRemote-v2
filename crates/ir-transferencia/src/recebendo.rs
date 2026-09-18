@@ -17,7 +17,6 @@ use tracing::{debug, info, warn};
 
 use crate::sessao::{anunciar, responder, traduzir_recusa};
 
-/// O sentido de entrada: aplica o que chega e responde.
 /// Para onde o que chega vai, e sob que teto.
 ///
 /// Os dois juntos porque são a mesma decisão vista de dois lados — onde gravar e quanto aceitar —,
@@ -30,10 +29,11 @@ pub(crate) struct Deposito {
     pub(crate) cota: ir_files::Cota,
 }
 
+/// O sentido de entrada: aplica o que chega e responde.
 pub(crate) async fn receber(
     mut destinatario: Destinatario,
     remetente: Arc<Mutex<Remetente>>,
-    respostas: mpsc::Sender<BulkMessage>,
+    respostas: mpsc::UnboundedSender<BulkMessage>,
     deposito: Deposito,
     avisos: tokio::sync::broadcast::Sender<Aviso>,
 ) {
@@ -48,7 +48,7 @@ pub(crate) async fn receber(
         };
         // Resposta a algo que **nós** mandamos: é da outra metade.
         if eh_resposta(&mensagem) {
-            if respostas.send(mensagem).await.is_err() {
+            if respostas.send(mensagem).is_err() {
                 debug!("ninguém esperando resposta de transferência");
             }
             continue;
@@ -150,7 +150,15 @@ async fn aplicar(
             true
         }
         Err(erro) => {
-            let motivo = if matches!(erro, FileError::ResumoDivergente { .. }) {
+            let motivo = if let FileError::ResumoDivergente { item } = erro {
+                // Dizer à origem, e não só registrar: ela está esperando a conferência de cada
+                // arquivo, e sem resposta esperaria até o prazo para descobrir o que aqui já se sabe.
+                let divergiu = BulkMessage::Verified {
+                    id: recepcao.id(),
+                    item,
+                    ok: false,
+                };
+                responder(remetente, divergiu).await;
                 Motivo::ResumoDivergente
             } else {
                 Motivo::Outro(erro.to_string())

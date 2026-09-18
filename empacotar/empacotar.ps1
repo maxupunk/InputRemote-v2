@@ -326,7 +326,17 @@ function Empacotar-Linux {
     Escrever-Passo 'compilando e empacotando dentro do container'
     # A fonte entra somente leitura: o empacotamento nao pode sujar a arvore de quem o chamou, e
     # um target/ de Linux escrito por cima do de Windows seria uma tarde perdida.
+    #
+    # Com teto de CPU e memoria, e a troca igual a memoria (sem swap). Sem teto, o rpmbuild compila
+    # o workspace inteiro com LTO e um rustc por thread, a VM do WSL cresce ate paginar, e a maquina
+    # inteira trava junto -- aconteceu, com o Docker parando de responder. Com teto, faltar memoria
+    # mata um rustc e a construcao falha com motivo, que e melhor que um computador parado.
+    $nucleos = [Math]::Max(2, [Math]::Floor([Environment]::ProcessorCount / 2))
     & docker run --rm `
+        --cpus $nucleos `
+        --memory 12g `
+        --memory-swap 12g `
+        -e "CARGO_BUILD_JOBS=$nucleos" `
         -v "${raiz}:/fonte:ro" `
         -v "${dist}:/saida" `
         -v inputremote-cargo:/opt/cargo/registry `

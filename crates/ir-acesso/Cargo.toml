@@ -1,0 +1,42 @@
+[package]
+name = "ir-acesso"
+description = "Quem conectou ao serviço, e o que essa pessoa pode: portão por credencial e identificação do cliente."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Só pela interface `Autorizacao`: quem pergunta "poderia ler?" é o motor de arquivos, e a
+# resposta no Windows mora aqui.
+ir-files.workspace = true
+anyhow.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+# O *pipe* do servidor é criado com o descritor de segurança de cada canal.
+tokio = { workspace = true, features = ["net"] }
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    # O descritor de segurança dos canais, escrito em SDDL, e o de cada arquivo aberto.
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    # Quem está do outro lado do pipe.
+    "Win32_System_Pipes",
+    "Win32_System_Threading",
+]
+
+# A filiação a grupos, lida no banco de usuários na hora (`grupo`).
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros", "net", "io-util"] }
+
+[lints]
+workspace = true

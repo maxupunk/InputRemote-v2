@@ -57,6 +57,13 @@ pub enum FileError {
     #[error("não sei enviar {0}")]
     NaoEnviavel(PathBuf),
 
+    /// Quem pediu o envio não poderia ler isto sozinho.
+    ///
+    /// O serviço tem mais autoridade que quem pede; mandar o que o pedinte não leria seria usar o
+    /// serviço para ler por ele ([`crate::permissao`]).
+    #[error("sem permissão para enviar {0}")]
+    SemPermissao(PathBuf),
+
     /// O arquivo mudou de tamanho entre o manifesto e o envio.
     ///
     /// Tem nome próprio porque, sem ele, o sintoma seria um "resumo divergente" no destino — que

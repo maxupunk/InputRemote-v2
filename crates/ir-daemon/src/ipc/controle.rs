@@ -31,9 +31,10 @@ pub(crate) async fn servir(
                 // Registrado em nível alto de propósito: é como se confirma, no diagnóstico, que
                 // a janela achou o serviço em vez de ficar de fora em silêncio.
                 info!("interface conectada");
+                let leitor = escuta.leitor_de(&conexao);
                 let pedidos = pedidos.clone();
                 let avisos = avisos.subscribe();
-                tokio::spawn(atender(conexao, pedidos, avisos));
+                tokio::spawn(atender(conexao, leitor, pedidos, avisos));
             }
             Ok((conexao, Chamada::Negada { uid })) => {
                 warn!(
@@ -54,52 +55,70 @@ pub(crate) async fn servir(
 
 /// Atende uma conexão até ela fechar.
 async fn atender(
-    conexao: Conexao,
+    mut conexao: Conexao,
+    leitor: ir_transferencia::Leitor,
     pedidos: UnboundedSender<PedidoRecebido>,
     mut avisos: broadcast::Receiver<Aviso>,
 ) {
+    // O primeiro pedido é lido antes de dividir a conexão: no Windows, só depois de ler algo do
+    // pipe é que o sistema diz quem está do outro lado (`super::identidade`).
+    let primeiro = match quadros::ler::<_, Pedido>(&mut conexao).await {
+        Ok(Some(pedido)) => pedido,
+        Ok(None) => return,
+        Err(erro) => {
+            warn!(%erro, "quadro de controle malformado; encerrando conexão");
+            return;
+        }
+    };
+    let leitor = super::escuta::leitor_depois_de_ler(&conexao, leitor);
     let (mut leitura, mut escrita) = tokio::io::split(conexao);
     // Só depois de a interface pedir para acompanhar é que os avisos começam a fluir; antes
     // disso ela recebe só as respostas aos próprios pedidos.
     let mut acompanhando = false;
+    let mut proximo = Some(primeiro);
     loop {
-        tokio::select! {
-            quadro = quadros::ler::<_, Pedido>(&mut leitura) => {
-                match quadro {
-                    Ok(Some(pedido)) => {
-                        if matches!(pedido, Pedido::Acompanhar) {
-                            acompanhando = true;
-                        }
-                        if !responder(&pedidos, &mut escrita, pedido).await {
-                            break;
-                        }
-                    }
-                    Ok(None) => break,
-                    Err(erro) => {
-                        warn!(%erro, "quadro de controle malformado; encerrando conexão");
-                        break;
-                    }
-                }
+        if let Some(pedido) = proximo.take() {
+            acompanhando |= matches!(pedido, Pedido::Acompanhar);
+            if !responder(&pedidos, &mut escrita, pedido, leitor.clone()).await {
+                break;
             }
+        }
+        tokio::select! {
+            quadro = quadros::ler::<_, Pedido>(&mut leitura) => match quadro {
+                Ok(Some(pedido)) => proximo = Some(pedido),
+                Ok(None) => break,
+                Err(erro) => {
+                    warn!(%erro, "quadro de controle malformado; encerrando conexão");
+                    break;
+                }
+            },
             aviso = avisos.recv(), if acompanhando => {
-                match aviso {
-                    Ok(aviso) => {
-                        let msg = ParaInterface::Aviso(aviso);
-                        if quadros::escrever(&mut escrita, &msg).await.is_err() {
-                            break;
-                        }
-                    }
-                    // Uma interface lenta pode perder avisos; ela se reconcilia pelo próximo
-                    // estado, então um atraso não é motivo para derrubar a conexão.
-                    Err(broadcast::error::RecvError::Lagged(n)) => {
-                        debug!(perdidos = n, "interface atrasada perdeu avisos");
-                    }
-                    Err(broadcast::error::RecvError::Closed) => break,
+                if !repassar(&mut escrita, aviso).await {
+                    break;
                 }
             }
         }
     }
     debug!("conexão de controle encerrada");
+}
+
+/// Manda um aviso à interface. `false` se a conexão deve encerrar.
+async fn repassar(
+    escrita: &mut (impl tokio::io::AsyncWrite + Unpin),
+    aviso: Result<Aviso, broadcast::error::RecvError>,
+) -> bool {
+    match aviso {
+        Ok(aviso) => quadros::escrever(escrita, &ParaInterface::Aviso(aviso))
+            .await
+            .is_ok(),
+        // Uma interface lenta pode perder avisos; ela se reconcilia pelo próximo estado, então um
+        // atraso não é motivo para derrubar a conexão.
+        Err(broadcast::error::RecvError::Lagged(n)) => {
+            debug!(perdidos = n, "interface atrasada perdeu avisos");
+            true
+        }
+        Err(broadcast::error::RecvError::Closed) => false,
+    }
 }
 
 /// Responde ao primeiro pedido de uma interface recusada com a razão da recusa, e fecha.
@@ -122,9 +141,15 @@ async fn responder(
     pedidos: &UnboundedSender<PedidoRecebido>,
     escrita: &mut (impl tokio::io::AsyncWrite + Unpin),
     pedido: Pedido,
+    leitor: ir_transferencia::Leitor,
 ) -> bool {
     let (responder, resposta) = oneshot::channel();
-    if pedidos.send(PedidoRecebido { pedido, responder }).is_err() {
+    let recebido = PedidoRecebido {
+        pedido,
+        leitor,
+        responder,
+    };
+    if pedidos.send(recebido).is_err() {
         return false; // o ator saiu; nada mais a fazer
     }
     let Ok(resposta) = resposta.await else {

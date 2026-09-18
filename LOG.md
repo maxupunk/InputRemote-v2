@@ -58,3 +58,5 @@ quê. Um registro que se reescreve não é registro.
 | 31 | 2026-09-17 | [O motor de transferência, e o nível a mais que a árvore ganhava](docs/logs/31-o-motor-de-transferencia.md) |
 | 32 | 2026-09-17 | [Arquivos atravessando, e a fronteira que o limite de linhas cobrou](docs/logs/32-arquivos-atravessando.md) |
 | 33 | 2026-09-17 | [O clipboard sem interceptar atalho, e o laço que a guarda desfaz](docs/logs/33-o-clipboard-sem-interceptar-atalho.md) |
+| 34 | 2026-09-18 | [Copiar aqui, colar lá — e o serviço que podia ler demais](docs/logs/34-copiar-aqui-colar-la.md) |
+| 35 | 2026-09-18 | [O texto pelo canal 4, o alcance da confirmação, e o enlace que só um lado achava vivo](docs/logs/35-o-texto-pelo-canal-4.md) |

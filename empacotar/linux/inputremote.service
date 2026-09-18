@@ -27,7 +27,11 @@ DeviceAllow=/dev/uinput rw
 
 # Endurecimento do que nao e necessario. Nao ha como ser mais restritivo sem perder o uinput.
 NoNewPrivileges=yes
-ProtectHome=yes
+# Somente leitura, e nao invisivel: copiar um arquivo da pasta pessoal e enviar para o par exige
+# que o servico o leia (ADR-0011). Quem decide *o que* ele pode ler e o ir-files, que so envia o
+# que o proprio usuario que pediu leria (permissao.rs) -- o sandbox so garante que gravar ali
+# continua impossivel. Com `yes`, todo Ctrl+C na pasta pessoal falhava como "nao sei enviar".
+ProtectHome=read-only
 ProtectKernelModules=yes
 ProtectControlGroups=yes
 RestrictRealtime=yes

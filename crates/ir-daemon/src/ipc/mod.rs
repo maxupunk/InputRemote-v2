@@ -11,12 +11,7 @@
 pub(crate) mod agente;
 pub(crate) mod controle;
 mod escuta;
-#[cfg(target_os = "linux")]
-mod grupo;
-mod porteiro;
 pub(crate) mod quadros;
-#[cfg(windows)]
-mod seguranca;
 
 use anyhow::Result;
 use ir_ipc::{Aviso, ComandoDoAgente, FatoDoAgente, Resposta};
@@ -28,6 +23,8 @@ use tokio::sync::oneshot;
 pub(crate) struct PedidoRecebido {
     /// O que a interface pediu.
     pub(crate) pedido: ir_ipc::Pedido,
+    /// Com a autoridade de quem pediu — o que o serviço pode ler **por** esta pessoa.
+    pub(crate) leitor: ir_transferencia::Leitor,
     /// Por onde o ator devolve a resposta.
     pub(crate) responder: oneshot::Sender<Resposta>,
 }

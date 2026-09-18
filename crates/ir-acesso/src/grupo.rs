@@ -11,14 +11,14 @@
 //! **usuário** pertence agora?". A resposta vem do banco de usuários (`getgrouplist`, que passa
 //! pelo NSS e enxerga também usuários de rede), e um `usermod` vale na conexão seguinte.
 //!
-//! Este módulo só consulta. Quem decide é [`super::porteiro`].
+//! Este módulo só consulta. Quem decide é [`crate::porteiro`].
 
 #![allow(unsafe_code)]
 
 use std::ffi::{CStr, CString};
 
 /// O grupo que o pacote cria e que dá acesso ao canal de controle.
-pub(crate) const GRUPO: &str = "inputremote";
+pub const GRUPO: &str = "inputremote";
 
 /// Tamanho do espaço para a entrada do banco de usuários.
 ///
@@ -30,13 +30,13 @@ const ESPACO_DA_ENTRADA: usize = 16 * 1024;
 const TENTATIVAS_DE_GRUPOS: usize = 4;
 
 /// O usuário efetivo deste processo — o dono do serviço.
-pub(crate) fn uid_efetivo() -> u32 {
+pub fn uid_efetivo() -> u32 {
     // SAFETY: `geteuid` não recebe parâmetro, não falha e não tem pré-condição.
     unsafe { libc::geteuid() }
 }
 
 /// O identificador numérico de um grupo, pelo nome.
-pub(crate) fn gid_do_grupo(nome: &str) -> Option<u32> {
+pub fn gid_do_grupo(nome: &str) -> Option<u32> {
     let nome_c = CString::new(nome).ok()?;
     // SAFETY: ponteiro válido terminado em nulo. O retorno aponta para memória estática da libc,
     // lida imediatamente e não guardada.
@@ -51,7 +51,7 @@ pub(crate) fn gid_do_grupo(nome: &str) -> Option<u32> {
 /// Os grupos a que o usuário `uid` pertence agora, segundo o banco de usuários.
 ///
 /// Vazio se o usuário não for encontrado — o que faz a conexão ser negada, nunca permitida.
-pub(crate) fn grupos_do_usuario(uid: u32) -> Vec<u32> {
+pub fn grupos_do_usuario(uid: u32) -> Vec<u32> {
     let Some((nome, gid_primario)) = entrada_do_usuario(uid) else {
         return Vec::new();
     };

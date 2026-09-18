@@ -120,6 +120,9 @@ impl Daemon {
             return resposta;
         }
         info!("par esquecido pela interface; conexão encerrada");
+        // O canal de arquivos com ele cai também: esquecido, ele não recebe mais nada daqui.
+        self.arquivos
+            .trocar_destino(crate::arquivos::destino(&self.config));
         if self.pareando() {
             self.encerrar_pareamento_sem_sucesso();
         }

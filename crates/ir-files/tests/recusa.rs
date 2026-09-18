@@ -194,3 +194,51 @@ async fn o_condutor_de_teste_nao_esconde_falha() {
     .await;
     assert!(matches!(fim, Fim::Falhou(_)), "{fim:?}");
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn quem_pede_nao_manda_o_que_nao_leria_sozinho() {
+    // O *confused deputy* que `permissao` fecha, com metadados de verdade. O serviço roda como root;
+    // quem pede é outro usuário. Um arquivo `0600` de outra pessoa não pode sair, e um `0644` pode.
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    let temp = temp("recusa-deputado");
+    let origem = temp.sub("origem");
+    let fechado = origem.join("fechado.txt");
+    let aberto = origem.join("aberto.txt");
+    escrever(&fechado, b"segredo").await;
+    escrever(&aberto, b"publico").await;
+    std::fs::set_permissions(&fechado, std::fs::Permissions::from_mode(0o600)).unwrap();
+    std::fs::set_permissions(&aberto, std::fs::Permissions::from_mode(0o644)).unwrap();
+    // A pasta tem de ser atravessável pelo "outro", senão nem o aberto passaria.
+    for pasta in [temp.caminho(), origem.as_path()] {
+        std::fs::set_permissions(pasta, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    let dono = std::fs::metadata(&fechado).unwrap().uid();
+    let outro = ir_files::Leitor::Usuario {
+        uid: dono.wrapping_add(4242),
+    };
+
+    let erro =
+        ir_files::manifesto::montar(TransferId(1), std::slice::from_ref(&fechado), outro.clone())
+            .await
+            .unwrap_err();
+    assert!(
+        matches!(erro, FileError::SemPermissao(_)),
+        "um 0600 alheio não pode sair: {erro}"
+    );
+    assert!(
+        ir_files::manifesto::montar(TransferId(2), std::slice::from_ref(&aberto), outro)
+            .await
+            .is_ok(),
+        "o que qualquer um lê, quem pede também manda"
+    );
+    // O próprio dono manda os dois.
+    let proprio = ir_files::Leitor::Usuario { uid: dono };
+    assert!(
+        ir_files::manifesto::montar(TransferId(3), &[fechado, aberto], proprio)
+            .await
+            .is_ok()
+    );
+}

@@ -60,7 +60,7 @@ pub mod time;
 
 pub use config::{Role, SessionConfig, Timings};
 pub use event::{
-    CarrierChoice, Command, CommandBatch, Injection, Input, LinkDown, Notice, TimerId,
+    CarrierChoice, ClipText, Command, CommandBatch, Injection, Input, LinkDown, Notice, TimerId,
 };
 pub use phase::Phase;
 pub use session::{CarrierSet, ConfigError, LocalIdentity, PeerInfo, Session};

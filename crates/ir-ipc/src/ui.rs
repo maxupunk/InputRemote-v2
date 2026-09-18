@@ -120,6 +120,18 @@ pub enum Pedido {
         /// Caminhos absolutos nesta máquina.
         caminhos: Vec<String>,
     },
+    /// Leve o clipboard deste computador para o outro, agora.
+    ///
+    /// O gatilho automático é a travessia: quando o controle sai desta máquina, o que está no
+    /// clipboard daqui vai junto ([ADR-0011](../../../docs/adr/0011-clipboard-na-travessia.md)).
+    /// Este pedido é o mesmo gatilho, à mão — para um atalho de teclado do ambiente gráfico ou um
+    /// item da bandeja, quando o usuário quer mandar sem levar o mouse até lá.
+    SincronizarClipboard,
+    /// Leve este texto, que o usuário copiou, para o clipboard do outro computador.
+    ///
+    /// Quem manda é o ajudante de clipboard, que lê na sessão do usuário. O serviço não lê o
+    /// clipboard de ninguém; ele só leva o que lhe é entregue.
+    OferecerTexto(crate::texto::TextoDoClipboard),
 }
 
 impl Pedido {
@@ -141,7 +153,9 @@ impl Pedido {
             // portão desta operação é o pareamento: só existe um par, confirmado por código de
             // seis dígitos nas duas telas, e a permissão de arquivos é revogável só para ele
             // ([04, §2](../../../docs/04-seguranca.md)).
-            | Self::EnviarArquivos { .. } => Autoridade::Configurar,
+            | Self::EnviarArquivos { .. }
+            | Self::SincronizarClipboard
+            | Self::OferecerTexto(_) => Autoridade::Configurar,
             // Tudo que decide **quem pode digitar** nesta máquina exige elevação.
             Self::IniciarPareamento { .. }
             | Self::ConfirmarPareamento { .. }
@@ -225,6 +239,14 @@ pub enum Aviso {
     /// começo e fim, e não uma propriedade da máquina. Enfiá-la no estado obrigaria a interface a
     /// diferenciar "não há transferência" de "havia uma e acabou".
     Transferencia(crate::transferencia::Transferencia),
+    /// Leia o clipboard desta máquina e ofereça ao par, se ele mudou.
+    ///
+    /// Vai para quem cuida do clipboard na sessão do usuário. Sem conteúdo nenhum: quem sabe o que
+    /// há no clipboard é quem está na sessão, e o serviço não deve nem precisar saber
+    /// ([ADR-0011](../../../docs/adr/0011-clipboard-na-travessia.md)).
+    LerClipboard,
+    /// Chegou este texto do par: ponha-o no clipboard desta sessão.
+    TextoRecebido(crate::texto::TextoDoClipboard),
     /// Uma tecla ficou divergente e foi corrigida.
     ///
     /// Muitos destes seguidos indicam perda no meio de conexão, e o número aparece no

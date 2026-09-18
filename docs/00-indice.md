@@ -35,6 +35,7 @@ Uma decisão só muda por um ADR novo que substitua o anterior — não por edi�
 | [0008](adr/0008-agente-com-thread-por-desktop.md) | Um agente por sessão, com uma thread por desktop |
 | [0009](adr/0009-canal-rfcomm-fixo-sem-sdp.md) | Canal RFCOMM fixo, sem SDP |
 | [0010](adr/0010-canal-de-dados-em-tcp-proprio.md) | O canal de dados em TCP próprio, fora da abstração de portador |
+| [0011](adr/0011-clipboard-na-travessia.md) | O clipboard sincroniza na travessia, por um ajudante que roda como o usuário |
 
 ## Registro do que foi feito
 

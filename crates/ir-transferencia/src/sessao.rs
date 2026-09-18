@@ -16,7 +16,6 @@
 //! resposta a uma transferência que **estamos enviando** é repassado por um canal para a outra
 //! tarefa. Sem essa separação, as duas metades brigariam pela mesma mensagem.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use ir_ipc::Aviso;
@@ -30,20 +29,18 @@ use crate::Ajuste;
 use crate::enviando::enviar;
 use crate::recebendo::receber;
 
-/// Quantas respostas de uma transferência nossa cabem na fila antes de o leitor esperar.
-///
-/// Pequena de propósito: se o lado que envia parou de ler as respostas, encher a fila é o sintoma
-/// certo, e não guardar megabytes de confirmações.
-const RESPOSTAS_EM_VOO: usize = 32;
-
 /// Conduz um enlace até ele cair.
 pub(crate) async fn conduzir(
     enlace: EnlaceDeDados,
     ajuste: &Ajuste,
-    pedidos: &mut mpsc::UnboundedReceiver<Vec<PathBuf>>,
+    pedidos: &mut mpsc::UnboundedReceiver<crate::PedidoDeEnvio>,
 ) {
     let remetente = Arc::new(Mutex::new(enlace.remetente));
-    let (respostas, recebe_respostas) = mpsc::channel(RESPOSTAS_EM_VOO);
+    // Sem limite, e de propósito. Era uma fila de 32, e com mais de 32 arquivos ela enchia: a leitura
+    // parava esperando vaga, o destino parava esperando a leitura para mandar o `Verified` seguinte,
+    // e este lado parava esperando o destino para mandar o bloco seguinte. As respostas são uma por
+    // arquivo, e o manifesto já as limita a 10 000 — o teto existe, só não é aqui.
+    let (respostas, recebe_respostas) = mpsc::unbounded_channel();
 
     let lendo = tokio::spawn(receber(
         enlace.destinatario,
