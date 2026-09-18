@@ -57,3 +57,4 @@ quê. Um registro que se reescreve não é registro.
 | 30 | 2026-09-17 | [O canal de dados em TCP, e o teto que o Noise nunca teria permitido](docs/logs/30-o-canal-de-dados-em-tcp.md) |
 | 31 | 2026-09-17 | [O motor de transferência, e o nível a mais que a árvore ganhava](docs/logs/31-o-motor-de-transferencia.md) |
 | 32 | 2026-09-17 | [Arquivos atravessando, e a fronteira que o limite de linhas cobrou](docs/logs/32-arquivos-atravessando.md) |
+| 33 | 2026-09-17 | [O clipboard sem interceptar atalho, e o laço que a guarda desfaz](docs/logs/33-o-clipboard-sem-interceptar-atalho.md) |

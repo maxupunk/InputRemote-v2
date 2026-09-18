@@ -399,7 +399,9 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Transporte do canal 5: `ir-net::bulk` — `u32` + corpo, `IK` sem pareamento, contador
       implícito, e a regra de colisão quando as duas pontas discam
       ([log 30](docs/logs/30-o-canal-de-dados-em-tcp.md))
-- [ ] `ir-clip`: texto, imagem PNG, lista de arquivos
+- [~] `ir-clip`: texto e lista de arquivos, com a guarda de eco — 36 testes. O backend do Windows
+      compila e está escrito (`AddClipboardFormatListener`, `CF_UNICODETEXT`, `CF_HDROP`); imagem
+      PNG e o backend do Linux (portal) faltam ([log 33](docs/logs/33-o-clipboard-sem-interceptar-atalho.md))
 - [x] `ir-files`: manifesto, blocos, BLAKE3, cotas, staging por RAII — 69 testes, incluindo a
       travessia de uma árvore inteira e treze casos de par hostil
       ([log 31](docs/logs/31-o-motor-de-transferencia.md))
@@ -412,7 +414,12 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       compasso de 5 ms da entrada ([log 32](docs/logs/32-arquivos-atravessando.md))
 - [ ] O canal de arquivos sobe com a chave fixada da **subida**: parear agora exige reiniciar o
       serviço para arquivos funcionarem. Falta um `watch` da chave do par
-- [ ] `ir-clip` ligado ao agente, nos dois sistemas, para o Ctrl+C e o Ctrl+V
+- [ ] `ir-clip` ligado ao agente: `ComandoDoAgente::PublicarClipboard`,
+      `FatoDoAgente::ClipboardMudou`, e a thread do vigia. É o que falta para o Ctrl+C
+- [ ] `[H]` Ctrl+C e Ctrl+V de ponta a ponta — no Windows exige o MSI instalado, porque o canal do
+      agente é restrito a SYSTEM
+- [ ] Backend de clipboard do Linux: portal `org.freedesktop.portal.Clipboard` (o GNOME não expõe
+      `wlr-data-control`)
 
 ## Etapa 9 — Interface
 

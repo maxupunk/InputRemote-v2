@@ -210,28 +210,35 @@ fn mostrar_resposta(resposta: &Resposta) -> bool {
 }
 
 /// Mostra um aviso. Devolve `true` quando não há mais o que esperar.
+fn mostrar_transferencia(t: &ir_ipc::Transferencia) -> bool {
+    let por_cento = (t.progresso() * 100.0).round();
+    let nome = if t.nome.is_empty() {
+        "(sem nome)"
+    } else {
+        &t.nome
+    };
+    println!(
+        "TRANSFERÊNCIA [{}] {nome} — {}/{} B ({por_cento:.0}%) — {:?}",
+        t.sentido.rotulo(),
+        t.bytes_feitos,
+        t.bytes_total,
+        t.fase
+    );
+    if let ir_ipc::Fase::Parada(motivo) = &t.fase {
+        println!("  motivo: {}", motivo.descricao());
+    }
+    // Acabou de vez: a bancada não tem por que continuar pendurada.
+    !t.em_curso()
+}
+
+/// Mostra um aviso. Devolve `true` quando não há mais o que esperar.
 fn mostrar_aviso(
     aviso: &ir_ipc::Aviso,
     escritor: &mut Box<dyn Write + Send>,
     confirmar_sozinho: bool,
 ) -> bool {
     match aviso {
-        ir_ipc::Aviso::Transferencia(t) => {
-            let por_cento = (t.progresso() * 100.0).round();
-            println!(
-                "TRANSFERÊNCIA [{}] {} — {}/{} B ({por_cento:.0}%) — {:?}",
-                t.sentido.rotulo(),
-                if t.nome.is_empty() { "(sem nome)" } else { &t.nome },
-                t.bytes_feitos,
-                t.bytes_total,
-                t.fase
-            );
-            if let ir_ipc::Fase::Parada(motivo) = &t.fase {
-                println!("  motivo: {}", motivo.descricao());
-            }
-            // Acabou de vez: a bancada não tem por que continuar pendurada.
-            !t.em_curso()
-        }
+        ir_ipc::Aviso::Transferencia(t) => mostrar_transferencia(t),
         ir_ipc::Aviso::CodigoDePareamento { digitos } => {
             let texto: String = digitos.iter().map(|d| char::from(b'0' + d)).collect();
             println!("CÓDIGO DE PAREAMENTO: {texto}");

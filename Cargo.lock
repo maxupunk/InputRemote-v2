@@ -2675,6 +2675,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ir-clip"
+version = "0.1.0-dev"
+dependencies = [
+ "blake3",
+ "ir-proto",
+ "thiserror 2.0.20",
+ "tracing",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "ir-crypto"
 version = "0.1.0-dev"
 dependencies = [
