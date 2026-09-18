@@ -1,0 +1,4 @@
+# O servico do InputRemote e o produto: sem ele nada atravessa. Habilitado na instalacao, pelo
+# mecanismo de presets do systemd, e nao por um `systemctl enable` solto no pacote -- assim quem
+# administra a maquina ainda pode vetar com um preset proprio de numero menor.
+enable inputremote.service

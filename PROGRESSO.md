@@ -228,6 +228,10 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [~] Unidade `systemd` no Linux — o RPM agora traz o serviço **e** a unidade, que roda como
       root (é quem tem `/dev/uinput`). Falta a regra `udev` e a política D-Bus, que só fazem
       sentido junto com o usuário dedicado do endurecimento
+- [x] Do pacote ao primeiro uso sem terminal no Linux: o serviço é habilitado e iniciado na
+      instalação e parado na remoção; a janela pede a senha pelo polkit, com a explicação, para
+      liberar o acesso — e entra na hora ([log 38](docs/logs/38-a-senha-pedida-pela-janela.md))
+- [ ] `[H]` O diálogo de senha do polkit, com a mão no teclado, no GNOME e no KDE ([log 38](docs/logs/38-a-senha-pedida-pela-janela.md))
 - [x] O empacotador acha os binários em `CARGO_TARGET_DIR` quando ele está definido, em vez de
       empacotar em silêncio os de `target\release` ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
 - [ ] Regra de firewall do serviço no instalador do Windows — sem ela, numa rede Pública o Windows

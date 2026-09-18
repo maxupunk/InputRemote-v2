@@ -230,3 +230,30 @@ fn sem_permissao_a_janela_diz_o_que_fazer_e_entra_assim_que_a_permissao_e_dada()
         servico.situacao() == Situacao::Conectado
     });
 }
+
+#[test]
+fn depois_de_ativar_a_janela_entra_na_hora_sem_esperar_o_intervalo_da_recusa() {
+    let mentira = ServicoDeMentira::subir();
+    mentira.recusando.store(true, Ordering::SeqCst);
+    let conector = ConectorDeTeste::default();
+    conector.apontar(mentira.endereco);
+
+    // Intervalo longo, como o de verdade: depois de uma recusa, a próxima tentativa sozinha só viria
+    // dez vezes mais tarde — uma eternidade para quem acabou de digitar a senha.
+    let servico = ServicoReal::com(Box::new(conector.clone()), Duration::from_secs(60));
+    assert_eq!(
+        servico.situacao(),
+        Situacao::Desconectado(Desconexao::SemPermissao)
+    );
+
+    mentira.recusando.store(false, Ordering::SeqCst);
+    let _ = servico.avisos();
+    assert_ne!(
+        servico.situacao(),
+        Situacao::Conectado,
+        "sem o aviso, a janela ainda estaria esperando o intervalo"
+    );
+
+    servico.tentar_agora();
+    assert_eq!(servico.situacao(), Situacao::Conectado);
+}

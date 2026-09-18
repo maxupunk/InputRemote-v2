@@ -62,3 +62,4 @@ quê. Um registro que se reescreve não é registro.
 | 35 | 2026-09-18 | [O texto pelo canal 4, o alcance da confirmação, e o enlace que só um lado achava vivo](docs/logs/35-o-texto-pelo-canal-4.md) |
 | 36 | 2026-09-18 | [O serviço instalado como origem, e a recusa pelo motivo certo](docs/logs/36-o-servico-instalado-como-origem.md) |
 | 37 | 2026-09-18 | [A bandeja, o ícone em branco e a rolagem de lado](docs/logs/37-a-bandeja-e-a-rolagem-de-lado.md) |
+| 38 | 2026-09-18 | [A senha pedida pela janela, e não um comando de terminal](docs/logs/38-a-senha-pedida-pela-janela.md) |

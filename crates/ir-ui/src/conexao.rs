@@ -117,6 +117,16 @@ impl Conexao {
         }
     }
 
+    /// Tenta de novo agora, sem esperar o intervalo.
+    ///
+    /// Para quando a janela sabe que algo mudou por ação dela — a ativação acabou de ligar o serviço
+    /// ou liberar o acesso. Esperar os dez segundos da recusa de permissão, nesse momento, faria a
+    /// pessoa achar que a senha não adiantou.
+    pub fn tentar_agora(&mut self) {
+        self.ultima_tentativa = None;
+        self.garantir();
+    }
+
     /// Faz um pedido. Sem ligação, falha com a razão em vez de travar ou mentir.
     pub fn pedir(&mut self, pedido: &Pedido) -> Resposta {
         self.garantir();

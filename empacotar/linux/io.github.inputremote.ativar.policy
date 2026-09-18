@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!--
+  O pedido de senha que a janela do InputRemote faz quando o servico nao esta ligado ou o usuario
+  ainda nao tem acesso a ele. A mensagem e o que aparece no dialogo do sistema: ela diz o que vai
+  mudar e por que, para a senha nao ser pedida as cegas.
+
+  O texto sem idioma marcado e o portugues, que e o idioma da janela: a traducao do polkit depende
+  do agente de autenticacao, e o pedido de senha nao pode sair num idioma diferente da tela que o
+  provocou.
+
+  `auth_admin`, e nao `auth_admin_keep`: e uma acao que acontece uma vez na vida da instalacao, e
+  nao ha por que deixar a autorizacao valendo por mais tempo que o clique.
+-->
+<policyconfig>
+  <vendor>InputRemote</vendor>
+  <vendor_url>https://github.com/inputremote/inputremote</vendor_url>
+  <icon_name>inputremote</icon_name>
+
+  <action id="io.github.inputremote.ativar">
+    <description>Ativar o InputRemote neste computador</description>
+    <description xml:lang="en">Turn on InputRemote on this computer</description>
+    <message>O InputRemote precisa de permissão de administrador uma única vez: para ligar o serviço que leva teclado e mouse de um computador ao outro, e para deixar você usá-lo por esta janela.</message>
+    <message xml:lang="en">InputRemote needs administrator permission once: to turn on its service, which sends keyboard and mouse between the computers, and to let you use it from this window.</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/inputremote/ativar</annotate>
+  </action>
+</policyconfig>

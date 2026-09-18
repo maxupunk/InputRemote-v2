@@ -16,6 +16,7 @@ import { Botao, Faixa } from "componentes.slint";
 import { Inicio } from "inicio.slint";
 import { Pareamento } from "pareamento.slint";
 import { Preferencias } from "preferencias.slint";
+import { SemServico } from "ativacao.slint";
 
 // O Rust só enxerga o que o arquivo de entrada exporta. Sem esta linha, `Dados` e `Acoes`
 // existem no Slint e não existem na ponte — que é o único jeito de a janela receber dados.
@@ -75,7 +76,7 @@ export component Janela inherits Window {
                 padding-right: Tema.e4;
                 spacing: Tema.e3;
 
-                if root.tela != 0: Voltar {
+                if root.tela != 0 && !Dados.desconectado: Voltar {
                     y: (parent.height - self.height) / 2;
                     acionado => {
                         root.tela = 0;
@@ -83,7 +84,7 @@ export component Janela inherits Window {
                 }
 
                 Text {
-                    text: root.tela == 0
+                    text: root.tela == 0 || Dados.desconectado
                         ? "InputRemote"
                         : (root.tela == 1 ? "Parear computador" : "Preferências");
                     vertical-alignment: center;
@@ -99,25 +100,6 @@ export component Janela inherits Window {
         Rectangle {
             height: Tema.traco;
             background: Tema.borda;
-        }
-
-        // Sem o serviço, a janela diz o que aconteceu e o que fazer — e continua tentando por
-        // conta própria. Não mostra dado inventado no lugar: quem precisa saber que o serviço
-        // parou não pode ser enganado por uma tela que parece estar funcionando.
-        if Dados.desconectado: Rectangle {
-            background: Tema.fundo;
-
-            VerticalLayout {
-                padding-left: Tema.e4;
-                padding-right: Tema.e4;
-                padding-top: Tema.e3;
-
-                Faixa {
-                    texto: Dados.desconexao + " " + Dados.desconexao-o-que-fazer;
-                    cor: Tema.atencao;
-                    cor-de-fundo: Tema.atencao-suave;
-                }
-            }
         }
 
         // A demonstração só existe quando pedida. Mesmo assim, avisa: dado inventado sem aviso é
@@ -180,7 +162,13 @@ export component Janela inherits Window {
                 padding: Tema.e4;
                 spacing: Tema.e4;
 
-                if root.tela == 0: Inicio {
+                // Sem o serviço, a janela diz o que aconteceu e o que fazer — e continua tentando
+                // por conta própria. Não mostra dado inventado no lugar, nem as telas que dependem
+                // dele: quem precisa saber que o serviço não está ali não pode ser enganado por uma
+                // tela que parece estar funcionando.
+                if Dados.desconectado: SemServico { }
+
+                if !Dados.desconectado && root.tela == 0: Inicio {
                     ir-para-pareamento => {
                         root.tela = 1;
                         Acoes.reiniciar-pareamento();
@@ -191,13 +179,13 @@ export component Janela inherits Window {
                     }
                 }
 
-                if root.tela == 1: Pareamento {
+                if !Dados.desconectado && root.tela == 1: Pareamento {
                     concluir => {
                         root.tela = 0;
                     }
                 }
 
-                if root.tela == 2: Preferencias { }
+                if !Dados.desconectado && root.tela == 2: Preferencias { }
             }
         }
     }

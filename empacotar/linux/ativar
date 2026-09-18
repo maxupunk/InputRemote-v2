@@ -1,0 +1,39 @@
+#!/bin/sh
+# Liga o InputRemote neste computador e da acesso a ele a quem pediu.
+#
+# Roda como root, e so por meio do `pkexec`: a janela o chama quando o servico nao responde ou
+# recusa o usuario, e o polkit mostra a explicacao de `io.github.inputremote.ativar` e pede a senha
+# de administrador. Nada aqui e interativo, e nada vem de argumento.
+#
+# Duas coisas, sempre as mesmas:
+#   1. habilitar e subir o servico, que passa a subir sozinho com o computador;
+#   2. por no grupo `inputremote` o usuario que pediu -- o grupo e o que abre o canal de controle
+#      (docs/02-arquitetura.md, secao 7). O servico confere o grupo no banco de usuarios na hora,
+#      entao vale sem sair da sessao nem reiniciar.
+#
+# Quem pediu vem de `PKEXEC_UID`, que o proprio pkexec define e o chamador nao escolhe. Aceitar
+# um nome de usuario por argumento deixaria qualquer pessoa com a senha de administrador por
+# engano liberar o acesso de outra conta -- a acao faz exatamente o que o dialogo disse.
+set -eu
+
+GRUPO=inputremote
+SERVICO=inputremote.service
+
+uid="${PKEXEC_UID:-}"
+if [ -z "$uid" ]; then
+    echo "use pela janela do InputRemote, ou: pkexec $0" >&2
+    exit 64
+fi
+
+if [ "$uid" -ne 0 ]; then
+    usuario=$(getent passwd "$uid" | cut -d: -f1)
+    if [ -z "$usuario" ]; then
+        echo "o usuario $uid nao existe" >&2
+        exit 67
+    fi
+    # O pacote cria o grupo; recria-lo aqui cobre quem o apagou a mao depois.
+    getent group "$GRUPO" >/dev/null || groupadd -r "$GRUPO"
+    usermod -aG "$GRUPO" "$usuario"
+fi
+
+systemctl enable --now "$SERVICO"

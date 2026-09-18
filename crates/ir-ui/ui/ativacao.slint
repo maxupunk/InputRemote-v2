@@ -1,0 +1,72 @@
+// O que a janela mostra enquanto não fala com o serviço.
+//
+// Substitui a tela inicial, e não fica em cima dela. A tela inicial sem serviço era um cartão de
+// estado vazio — um ponto verde sem texto e um selo em branco — e um botão de parear que não tinha
+// como funcionar: a janela parecia quebrada justamente na primeira vez que alguém a abria.
+//
+// Uma ação só, a que resolve. Onde o sistema sabe pedir a senha de administrador (o polkit, no
+// Linux), ela é um botão; o diálogo que abre é o do próprio sistema, com a explicação do que vai
+// mudar. Onde não sabe, a frase diz o que fazer.
+
+import { Tema } from "tema.slint";
+import { Dados, Acoes } from "dados.slint";
+import { Cartao, Botao, Ponto } from "componentes.slint";
+
+export component SemServico inherits VerticalLayout {
+    spacing: Tema.e4;
+
+    Cartao {
+        HorizontalLayout {
+            spacing: Tema.e2;
+
+            Ponto {
+                cor: Tema.atencao;
+                pulsando: Dados.ativando;
+                y: (parent.height - self.height) / 2;
+            }
+
+            Text {
+                text: Dados.ativando ? "Aguardando a autorização" : "Não conectado ao serviço";
+                font-size: Tema.fonte-nota;
+                font-weight: 600;
+                color: Tema.atencao;
+                vertical-alignment: center;
+            }
+
+            Rectangle { }
+        }
+
+        Text {
+            text: Dados.desconexao;
+            font-size: Tema.fonte-destaque;
+            color: Tema.texto;
+            wrap: word-wrap;
+        }
+
+        Text {
+            text: Dados.desconexao-o-que-fazer;
+            font-size: Tema.fonte-corpo;
+            color: Tema.texto-fraco;
+            wrap: word-wrap;
+        }
+    }
+
+    if Dados.ativacao-botao != "": Botao {
+        texto: Dados.ativando ? "Aguardando a senha de administrador…" : Dados.ativacao-botao;
+        primario: true;
+        habilitado: !Dados.ativando;
+        acionado => {
+            Acoes.ativar();
+        }
+    }
+
+    if Dados.ativacao-resultado != "": Text {
+        text: Dados.ativacao-resultado;
+        font-size: Tema.fonte-corpo;
+        color: Tema.ruim;
+        wrap: word-wrap;
+    }
+
+    // A sobra da altura fica aqui, e não dentro do cartão.
+    Rectangle { }
+}

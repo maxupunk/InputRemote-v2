@@ -18,8 +18,8 @@ use ir_ipc::{Autoridade, Aviso, Candidato, Falha, Pedido, Resposta};
 use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel, Weak};
 
 use crate::gerado::{Acoes, Dados, EtapaDoPareamento, Janela};
-use crate::ponte;
 use crate::servico::{Servico, Situacao};
+use crate::{ativacao, ponte};
 
 /// De quanto em quanto tempo a interface recolhe avisos e confere a ligação com o serviço.
 ///
@@ -107,16 +107,26 @@ impl Contexto {
 
     /// Põe a situação da ligação na faixa do topo da janela.
     fn mostrar_situacao(&self, situacao: Situacao) {
-        let (desconectado, frase, acao) = match situacao {
-            Situacao::Desconectado(motivo) => (true, motivo.frase(), motivo.o_que_fazer()),
-            Situacao::Conectado | Situacao::Simulado => (false, "", ""),
+        let orientacao = match situacao {
+            Situacao::Desconectado(motivo) => {
+                Some(ativacao::orientacao(motivo, ativacao::disponivel()))
+            }
+            Situacao::Conectado | Situacao::Simulado => None,
         };
         self.com_janela(|janela| {
             let dados = janela.global::<Dados>();
             dados.set_simulado(situacao == Situacao::Simulado);
-            dados.set_desconectado(desconectado);
-            dados.set_desconexao(frase.into());
-            dados.set_desconexao_o_que_fazer(acao.into());
+            dados.set_desconectado(orientacao.is_some());
+            let texto = |escolher: fn(&ativacao::Orientacao) -> &'static str| {
+                orientacao.as_ref().map_or("", escolher).into()
+            };
+            dados.set_desconexao(texto(|o| o.frase));
+            dados.set_desconexao_o_que_fazer(texto(|o| o.o_que_fazer));
+            dados.set_ativacao_botao(texto(|o| o.botao));
+            if orientacao.is_none() {
+                // Ligou: o resultado de uma tentativa anterior não vale mais nada.
+                dados.set_ativacao_resultado("".into());
+            }
         });
     }
 
@@ -236,6 +246,11 @@ pub fn abrir(
     }
     contexto.mostrar_situacao(situacao);
 
+    let depois = Rc::clone(&contexto);
+    let _ativacao = ativacao::ligar(&janela, move || {
+        depois.servico.tentar_agora();
+        depois.observar_conexao();
+    });
     ligar_configuracao(&janela, &contexto);
     ligar_pareamento(&janela, &contexto);
     ligar_sessao(&janela, &contexto);

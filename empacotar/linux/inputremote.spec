@@ -54,6 +54,15 @@ Requires:       coreutils
 # e sem ele a janela do usuario nao conversa com o servico (docs/02-arquitetura.md, secao 7).
 Requires(pre):  shadow-utils
 
+# O pedido de senha da janela: `pkexec` e o dialogo do ambiente grafico mostram a explicacao de
+# `io.github.inputremote.ativar` e so entao rodam o ajudante que liga o servico e da acesso a ele.
+Requires:       polkit
+# `systemctl preset`/`enable` nos roteiros de instalacao, e o `usermod` do ajudante.
+Requires(post): systemd
+Requires(preun): systemd
+Requires(postun): systemd
+Requires:       shadow-utils
+
 %description
 O ponteiro atravessa a borda da tela e passa a controlar o outro computador. Um teclado e um
 mouse servem os dois.
@@ -68,15 +77,41 @@ estiver no clipboard quando o mouse atravessa a borda, e poe no clipboard daqui 
 Ele roda como o usuario e fala pelo mesmo canal que a janela -- entao o usuario precisa estar no
 grupo `inputremote`.
 
-O servico nao sobe sozinho depois de instalado. Habilite com:
-
-    sudo systemctl enable --now inputremote
+O servico e habilitado e iniciado na instalacao. Na primeira vez que a janela abre, ela oferece
+"Ativar o InputRemote": o sistema pede a senha de administrador, uma unica vez, com a explicacao
+do que vai mudar, e o usuario passa a ter acesso ao servico -- sem terminal e sem reiniciar.
 
 %pre
 # Um grupo de sistema, sem usuario nenhum dentro. Quem for operar a maquina entra nele de
-# proposito -- e isso e uma decisao registrada do administrador, nao permissao frouxa.
+# proposito -- e isso e uma decisao registrada do administrador, nao permissao frouxa. A janela
+# oferece essa decisao pelo polkit ("Ativar o InputRemote"), e ela so acontece com a senha dele.
 getent group inputremote >/dev/null || groupadd -r inputremote
 exit 0
+
+%post
+# Primeira instalacao: o preset habilita, e o servico ja sobe. Sem isso a janela abria dizendo que
+# o servico nao responde, e a primeira experiencia com o produto era um comando de terminal.
+# Falhar aqui nao pode falhar a instalacao: a janela oferece ativar de novo.
+if [ "$1" -eq 1 ]; then
+    systemctl daemon-reload >/dev/null 2>&1 || :
+    systemctl preset inputremote.service >/dev/null 2>&1 || :
+    systemctl start inputremote.service >/dev/null 2>&1 || :
+fi
+
+%preun
+# Remocao (e nao atualizacao): para e desabilita antes de os arquivos sumirem. Sem isso o servico
+# continuava rodando um binario apagado ate o proximo reinicio.
+if [ "$1" -eq 0 ]; then
+    systemctl disable --now inputremote.service >/dev/null 2>&1 || :
+fi
+
+%postun
+systemctl daemon-reload >/dev/null 2>&1 || :
+# Atualizacao: o servico volta com o binario novo. So se ja estava rodando -- quem o parou de
+# proposito nao o ve subir sozinho por causa de uma atualizacao.
+if [ "$1" -ge 1 ]; then
+    systemctl try-restart inputremote.service >/dev/null 2>&1 || :
+fi
 
 %prep
 %autosetup -n %{name}-%{version}
@@ -101,6 +136,14 @@ install -Dpm 0644 empacotar/linux/inputremote.desktop \
 install -Dpm 0644 empacotar/linux/inputremote.service \
         %{buildroot}%{_prefix}/lib/systemd/system/%{name}.service
 
+# O ajudante que liga o servico e da acesso a quem pediu, e a politica do polkit que explica o
+# pedido de senha. `libexec`, e nao `bin`: nao e um comando para o usuario digitar.
+install -Dpm 0755 empacotar/linux/ativar %{buildroot}%{_libexecdir}/%{name}/ativar
+install -Dpm 0644 empacotar/linux/io.github.inputremote.ativar.policy \
+        %{buildroot}%{_datadir}/polkit-1/actions/io.github.inputremote.ativar.policy
+install -Dpm 0644 empacotar/linux/80-inputremote.preset \
+        %{buildroot}%{_prefix}/lib/systemd/system-preset/80-%{name}.preset
+
 # Um arquivo por tamanho, no lugar que o tema de icones procura. Um PNG grande sozinho obrigaria
 # cada lancador a reduzir por conta propria, e cada um reduz de um jeito.
 for tamanho in 16 22 24 32 48 64 128 256; do
@@ -119,11 +162,20 @@ desktop-file-validate %{buildroot}%{_sysconfdir}/xdg/autostart/inputremote-clipb
 %{_bindir}/inputremote-daemon
 %{_bindir}/inputremote-agent
 %{_prefix}/lib/systemd/system/%{name}.service
+%{_prefix}/lib/systemd/system-preset/80-%{name}.preset
+%dir %{_libexecdir}/%{name}
+%{_libexecdir}/%{name}/ativar
+%{_datadir}/polkit-1/actions/io.github.inputremote.ativar.policy
 %config(noreplace) %{_sysconfdir}/xdg/autostart/inputremote-clipboard.desktop
 %{_datadir}/applications/%{name}.desktop
 %{_datadir}/icons/hicolor/*/apps/%{name}.png
 
 %changelog
+* Fri Sep 18 2026 InputRemote <inputremote@example.invalid> - 0.1.0-0.1.dev
+- O servico e habilitado e iniciado na instalacao, e parado na remocao.
+- A janela pede a senha de administrador pelo polkit, com a explicacao, para ligar o servico e dar
+  acesso ao usuario, no lugar de mandar rodar comandos no terminal.
+
 * Fri Sep 18 2026 InputRemote <inputremote@example.invalid> - 0.1.0-0.1.dev
 - Copiar e colar: o ajudante de clipboard entra, iniciado com a sessao, e arquivos atravessam por TCP.
 - ProtectHome=read-only: o servico precisa ler o que o usuario copia da pasta pessoal.

@@ -246,6 +246,28 @@ precisará que o ajudante do usuário entregue o conteúdo, e não o caminho.
 `Type=notify`: o serviço só se declara pronto depois que os dispositivos `uinput` foram
 confirmados pelo `udev` (§2.2). Assim, "serviço ativo" significa "capaz de injetar".
 
+### 7.1. Da instalação ao primeiro uso, sem terminal
+
+O `dnf` e a loja de programas não fazem perguntas durante a instalação — nem deveriam: um pacote
+que para esperando resposta trava atualizações automáticas. Então o que precisa de decisão fica
+para a janela, e o que não precisa acontece sozinho:
+
+| Momento | O que acontece | Quem decide |
+|---|---|---|
+| instalar | o preset `80-inputremote.preset` habilita o serviço, e o `%post` o inicia | o pacote |
+| primeira abertura da janela | o serviço recusa quem não está no grupo `inputremote`; a janela mostra **"Liberar o acesso"** com o que vai mudar | — |
+| clique | `pkexec /usr/libexec/inputremote/ativar`: o diálogo do sistema mostra a mensagem de `io.github.inputremote.ativar` e pede a senha de administrador | o administrador |
+| depois da senha | o ajudante põe no grupo quem pediu (`PKEXEC_UID`) e garante o serviço habilitado e ligado; a janela reconecta na hora, sem sair da sessão | — |
+| atualizar | `try-restart`: volta com o binário novo, se estava rodando | o pacote |
+| remover | `disable --now` antes de os arquivos sumirem | o pacote |
+
+O ajudante não aceita argumento nenhum: quem entra no grupo é quem pediu, pelo `PKEXEC_UID` que o
+próprio `pkexec` define. A janela nunca vê a senha nem roda nada como root. Sem polkit ou sem o
+ajudante (uma compilação de desenvolvimento), a janela volta a mostrar a instrução por texto.
+
+O grupo não é apagado na remoção, como manda a convenção do Fedora para grupos de sistema: um grupo
+removido e recriado com outro número deixaria arquivos com dono órfão.
+
 ## 8. Bluetooth
 
 BlueZ pelo D-Bus do sistema, com `org.bluez.ProfileManager1.RegisterProfile` publicando o

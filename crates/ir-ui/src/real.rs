@@ -69,6 +69,12 @@ impl Servico for ServicoReal {
         Autoridade::Elevado
     }
 
+    fn tentar_agora(&self) {
+        if let Ok(mut conexao) = self.conexao.lock() {
+            conexao.tentar_agora();
+        }
+    }
+
     fn situacao(&self) -> Situacao {
         self.conexao.lock().map_or(
             Situacao::Desconectado(Desconexao::ServicoParado),

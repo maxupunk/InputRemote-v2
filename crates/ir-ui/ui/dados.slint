@@ -90,6 +90,17 @@ export global Dados {
     /// O que fazer a respeito. Aparece sempre junto da frase: "não deu" sem "e agora?" não ajuda.
     in property <string> desconexao-o-que-fazer;
 
+    /// O texto do botão que resolve a desconexão sozinho, pedindo a senha de administrador ao
+    /// sistema — vazio onde não há como (no Windows, ou sem o polkit). Com ele, "o que fazer" deixa
+    /// de ser um comando de terminal e vira um clique.
+    in property <string> ativacao-botao;
+
+    /// Se a ativação está em curso: o diálogo de senha do sistema está aberto.
+    in property <bool> ativando: false;
+
+    /// O que aconteceu com a última ativação, quando não deu certo — vazio no resto do tempo.
+    in property <string> ativacao-resultado;
+
     /// A etapa do pareamento.
     in property <EtapaDoPareamento> etapa: EtapaDoPareamento.escolhendo;
 
@@ -152,6 +163,8 @@ export global Acoes {
     callback mostrar-diagnostico();
     /// Descartar o recado.
     callback descartar-recado();
+    /// Ligar o serviço e dar acesso a este usuário, com a senha de administrador.
+    callback ativar();
 }
 
 /// As cores de cada nível de saúde, num lugar só, para as três telas concordarem.

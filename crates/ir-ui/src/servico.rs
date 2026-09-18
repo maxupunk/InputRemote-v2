@@ -35,6 +35,10 @@ pub trait Servico {
     /// A janela mostra isso na cara. Uma interface que finge estar funcionando é pior que uma que
     /// não abre — e uma que diz só "não funciona", sem dizer o que fazer, não é muito melhor.
     fn situacao(&self) -> Situacao;
+
+    /// Algo que impedia a ligação acabou de mudar por ação desta janela: tente de novo agora, em
+    /// vez de esperar o próximo intervalo. Sem efeito onde não há ligação a refazer.
+    fn tentar_agora(&self) {}
 }
 
 /// A ligação da interface com o serviço.
