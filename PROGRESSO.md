@@ -429,14 +429,15 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       descritor aberto: `/etc/shadow` no clipboard foi recusado na bancada
       ([log 34](docs/logs/34-copiar-aqui-colar-la.md))
 - [~] `[H]` Ctrl+C e Ctrl+V de arquivos de ponta a ponta — nos dois sentidos pela rede, com
-      SHA-256 idêntico e o destino no clipboard do outro lado; falta o Windows instalado como
-      origem e o Ctrl+V à mão no Nautilus
+      SHA-256 idêntico e o destino no clipboard do outro lado, com o serviço instalado dos dois
+      lados ([log 36](docs/logs/36-o-servico-instalado-como-origem.md)); falta o Ctrl+V à mão no Nautilus
       ([log 34](docs/logs/34-copiar-aqui-colar-la.md))
 - [x] Texto atravessando pelo canal 4 da sessão, em qualquer portador, até 256 KiB, conferido por
       BLAKE3: nos dois sentidos na bancada, e 218 KB em 2,8 s sem queda de sessão ([log 35](docs/logs/35-o-texto-pelo-canal-4.md))
-- [~] O serviço do Windows (SYSTEM) sabe quem pediu o envio: token do cliente do *pipe* em nível de
-      identificação e `AccessCheck` no arquivo já aberto (`ir-acesso`). Testado com *pipe* real e com
-      ACL que nega; falta o serviço instalado ([log 35](docs/logs/35-o-texto-pelo-canal-4.md))
+- [x] O serviço do Windows (SYSTEM) sabe quem pediu o envio: token do cliente do *pipe* em nível de
+      identificação e `AccessCheck` no arquivo já aberto (`ir-acesso`). Com o serviço instalado, uma
+      pasta saiu e um arquivo que só o SYSTEM lê foi recusado ([log 36](docs/logs/36-o-servico-instalado-como-origem.md))
+- [ ] Uma cópia recusada é oferecida duas vezes no Windows (dois avisos de mudança) ([log 36](docs/logs/36-o-servico-instalado-como-origem.md))
 - [ ] `[H]` Com troca rápida de usuário no Windows, o texto que chega vai aos ajudantes das duas
       sessões ([log 35](docs/logs/35-o-texto-pelo-canal-4.md))
 
