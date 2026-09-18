@@ -11,6 +11,7 @@
 //! controle <endereco> parear AC:50:DE:47:EB:28   # pede, espera o código e confirma
 //! controle <endereco> aguardar                   # só espera o código e confirma
 //! controle <endereco> confirmar                  # confirma agora, se houver código na tela
+//! controle <endereco> enviar C:\caminho\arquivo      # manda arquivos e acompanha o progresso
 //! ```
 //!
 //! `aguardar` existe por causa de uma corrida: quem **recebe** o pareamento só tem o que
@@ -44,7 +45,7 @@ fn main() {
     let mut args = std::env::args().skip(1);
     let (Some(endereco), Some(acao)) = (args.next(), args.next()) else {
         return println!(
-            "uso: controle <endereco> estado|diagnostico|aguardar|confirmar|parear <par>"
+            "uso: controle <endereco> estado|diagnostico|aguardar|confirmar|parear <par>|enviar <caminho>"
         );
     };
 
@@ -88,6 +89,27 @@ fn montar(acao: &str, argumento: Option<String>) -> Result<Roteiro, String> {
             pedido: None,
             confirmar_sozinho: true,
         }),
+        // Vários caminhos separados por `;`, para dar conta do caso de copiar mais de uma coisa.
+        "enviar" => match argumento {
+            Some(lista) => {
+                let caminhos: Vec<String> = lista
+                    .split(';')
+                    .map(str::trim)
+                    .filter(|caminho| !caminho.is_empty())
+                    .map(str::to_owned)
+                    .collect();
+                if caminhos.is_empty() {
+                    return Err("nenhum caminho para enviar".to_owned());
+                }
+                Ok(Roteiro {
+                    pedido: Some(Pedido::EnviarArquivos { caminhos }),
+                    // A transferência acontece depois da resposta, e o que interessa vem por
+                    // aviso: ficar escutando é o ponto.
+                    confirmar_sozinho: true,
+                })
+            }
+            None => Err("falta o caminho a enviar".to_owned()),
+        },
         "parear" => match argumento {
             Some(candidato) => Ok(Roteiro {
                 pedido: Some(Pedido::IniciarPareamento { candidato }),
@@ -194,6 +216,22 @@ fn mostrar_aviso(
     confirmar_sozinho: bool,
 ) -> bool {
     match aviso {
+        ir_ipc::Aviso::Transferencia(t) => {
+            let por_cento = (t.progresso() * 100.0).round();
+            println!(
+                "TRANSFERÊNCIA [{}] {} — {}/{} B ({por_cento:.0}%) — {:?}",
+                t.sentido.rotulo(),
+                if t.nome.is_empty() { "(sem nome)" } else { &t.nome },
+                t.bytes_feitos,
+                t.bytes_total,
+                t.fase
+            );
+            if let ir_ipc::Fase::Parada(motivo) = &t.fase {
+                println!("  motivo: {}", motivo.descricao());
+            }
+            // Acabou de vez: a bancada não tem por que continuar pendurada.
+            !t.em_curso()
+        }
         ir_ipc::Aviso::CodigoDePareamento { digitos } => {
             let texto: String = digitos.iter().map(|d| char::from(b'0' + d)).collect();
             println!("CÓDIGO DE PAREAMENTO: {texto}");

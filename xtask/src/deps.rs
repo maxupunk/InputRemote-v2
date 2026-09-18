@@ -30,6 +30,17 @@ const ALLOWED: &[(&str, &[&str])] = &[
         &["ir-proto", "ir-crypto", "ir-net", "ir-bt"],
     ),
     ("ir-files", &["ir-proto"]),
+    // A fronteira da transferência: o único lugar que conhece o motor e a porta ao mesmo tempo.
+    (
+        "ir-transferencia",
+        &[
+            "ir-proto",
+            "ir-crypto",
+            "ir-ipc",
+            "ir-transporte",
+            "ir-files",
+        ],
+    ),
     ("ir-input", &["ir-proto"]),
     ("ir-clip", &["ir-proto"]),
     (
@@ -42,6 +53,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "ir-ipc",
             "ir-transporte",
             "ir-files",
+            "ir-transferencia",
             "ir-input",
         ],
     ),

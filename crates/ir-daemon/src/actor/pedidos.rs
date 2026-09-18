@@ -69,9 +69,33 @@ impl Daemon {
             Pedido::DefinirBorda(borda) => self.trocar_borda(borda.no_protocolo()),
             Pedido::DefinirPapel(papel) => self.trocar_papel(role_de(papel)),
             Pedido::Diagnostico => Resposta::Diagnostico(self.diagnostico()),
+            Pedido::EnviarArquivos { caminhos } => self.enviar_arquivos(caminhos),
             // A tela de bloqueio é N2: depende do agente no desktop seguro, que ainda não entra.
             // O curinga cobre também variantes futuras do contrato ainda não tratadas aqui.
             _ => Resposta::Falha(Falha::ForaDeContexto),
+        }
+    }
+
+    /// Encaminha um pedido de envio para a tarefa de transferência.
+    ///
+    /// O ator **não espera** a transferência: ela pode levar minutos, e ele gira a cada 5 ms. A
+    /// resposta é "recebi o pedido", e o que acontece depois chega por
+    /// [`Aviso::Transferencia`](ir_ipc::Aviso::Transferencia).
+    ///
+    /// Caminho vazio é recusado aqui, e não lá: é o único erro que se pode ver sem tocar o disco.
+    fn enviar_arquivos(&self, caminhos: Vec<String>) -> Resposta {
+        let caminhos: Vec<std::path::PathBuf> = caminhos
+            .into_iter()
+            .map(std::path::PathBuf::from)
+            .filter(|caminho| !caminho.as_os_str().is_empty())
+            .collect();
+        if caminhos.is_empty() {
+            return Resposta::Falha(Falha::ForaDeContexto);
+        }
+        if self.arquivos.enviar(caminhos) {
+            Resposta::Feito
+        } else {
+            Resposta::Falha(Falha::ForaDeContexto)
         }
     }
 

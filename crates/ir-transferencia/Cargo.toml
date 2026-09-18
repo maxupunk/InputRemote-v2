@@ -1,0 +1,29 @@
+[package]
+name = "ir-transferencia"
+description = "A transferência de arquivos em curso: o canal de dados conduzido, fora do compasso da entrada."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ir-proto.workspace = true
+ir-crypto.workspace = true
+# O motor (o que transferir) e a porta (por onde). Este crate é o único lugar que conhece os dois
+# ao mesmo tempo — é a fronteira que ele existe para desenhar, como o `ir-transporte` faz para os
+# portadores de entrada.
+ir-files.workspace = true
+ir-transporte.workspace = true
+# Só para contar à interface o que está acontecendo. Nenhum tipo de fio atravessa
+# (docs/02-arquitetura.md §2.1).
+ir-ipc.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros", "time", "sync", "fs", "io-util"] }
+
+[lints]
+workspace = true

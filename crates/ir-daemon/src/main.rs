@@ -5,12 +5,13 @@
 //! roda o ator central ([02, §4](../../../docs/02-arquitetura.md)).
 
 mod actor;
+#[cfg(windows)]
+mod arquivos;
 mod commands;
 mod config;
 mod ipc;
 #[cfg(windows)]
 mod lancador;
-#[cfg(windows)]
 mod service;
 
 use std::io::BufRead;
@@ -84,6 +85,7 @@ async fn executar(parada: watch::Receiver<bool>) -> Result<()> {
     let peer = cfg.peer_addr.as_deref().and_then(Endereco::ler);
 
     let canais = abrir_canais()?;
+    let arquivos = arquivos::abrir(&cfg, &dir, &identity, &canais.avisos);
 
     let mut daemon = Daemon::new(Parts {
         session: actor::nova_sessao(role, edge, identidade.clone()),
@@ -101,6 +103,7 @@ async fn executar(parada: watch::Receiver<bool>) -> Result<()> {
         edge,
         agente: canais.agente,
         identidade_local: identidade,
+        arquivos,
     });
 
     dar_partida(&mut daemon, screen);

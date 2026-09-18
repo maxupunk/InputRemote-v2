@@ -352,8 +352,9 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       no caminho — hoje cai pelo prazo de 1 s. Falta decidir entre prazo de queda maior e soltar
       tudo em 1 s mantendo a sessão ([log 24](docs/logs/24-a-borda-e-do-servidor.md))
 - [~] Confiabilidade sobre UDP — a de `ir-session` já existe e é testada; falta o ensaio de perda de 5% ponta a ponta
-- [~] TCP de dados — `ir-net::bulk` existe, com enquadramento `u32`, `Noise_IK`, enlace
-      cheio-duplex e 38 testes; falta ligá-lo ao serviço, que é Etapa 8
+- [x] TCP de dados — `ir-net::bulk`, ligado ao serviço pelo `ir-transferencia`. Provado entre
+      duas instâncias: canal de pé em 8 ms, árvore de 8 itens atravessando nos dois sentidos com
+      SHA-256 idêntico ([log 32](docs/logs/32-arquivos-atravessando.md))
       ([log 30](docs/logs/30-o-canal-de-dados-em-tcp.md), [ADR-0010](docs/adr/0010-canal-de-dados-em-tcp-proprio.md))
 - [ ] `[H]` Latência dentro da meta, medida entre duas máquinas
 
@@ -402,11 +403,15 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] `ir-files`: manifesto, blocos, BLAKE3, cotas, staging por RAII — 69 testes, incluindo a
       travessia de uma árvore inteira e treze casos de par hostil
       ([log 31](docs/logs/31-o-motor-de-transferencia.md))
-- [~] Progresso e cancelamento — o motor conta os bytes e o cancelamento não deixa rastro
-      (provado por teste); falta levar os dois à interface
+- [~] Progresso e cancelamento — o motor conta, o serviço anuncia por `Aviso::Transferencia` e a
+      ferramenta de bancada mostra a barra; falta a tela do Slint
+      ([log 32](docs/logs/32-arquivos-atravessando.md))
       ([log 31](docs/logs/31-o-motor-de-transferencia.md))
 - [ ] `[H]` Transferência de 5 GB degrada a entrada em no máximo 10% — exige as duas máquinas
-- [ ] Ligar `ir-files` ao `ir-net::bulk` no serviço: é o que falta para copiar e colar de verdade
+- [x] Ligar `ir-files` ao `ir-net::bulk` no serviço — `ir-transferencia`, na tarefa dele, fora do
+      compasso de 5 ms da entrada ([log 32](docs/logs/32-arquivos-atravessando.md))
+- [ ] O canal de arquivos sobe com a chave fixada da **subida**: parear agora exige reiniciar o
+      serviço para arquivos funcionarem. Falta um `watch` da chave do par
 - [ ] `ir-clip` ligado ao agente, nos dois sistemas, para o Ctrl+C e o Ctrl+V
 
 ## Etapa 9 — Interface

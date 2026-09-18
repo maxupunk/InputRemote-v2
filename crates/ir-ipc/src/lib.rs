@@ -57,6 +57,7 @@ pub mod cliente;
 pub mod codec;
 pub mod falha;
 pub mod status;
+pub mod transferencia;
 pub mod ui;
 pub mod vocabulario;
 
@@ -66,5 +67,6 @@ pub use falha::Falha;
 pub use status::{
     Estado, Latencia, LinkState, MotivoDaQueda, MotivoDoPortador, Papel, ParConhecido,
 };
+pub use transferencia::{Fase, Motivo, Sentido, Transferencia};
 pub use ui::{Autoridade, Aviso, Candidato, ParaInterface, Pedido, Resposta};
 pub use vocabulario::{Borda, Maquina, Nivel, Nome, Portador, Recursos};

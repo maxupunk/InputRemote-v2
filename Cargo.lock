@@ -2698,6 +2698,7 @@ dependencies = [
  "ir-ipc",
  "ir-proto",
  "ir-session",
+ "ir-transferencia",
  "ir-transporte",
  "libc",
  "rand 0.8.8",
@@ -2779,6 +2780,19 @@ dependencies = [
  "ir-geometry",
  "ir-proto",
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "ir-transferencia"
+version = "0.1.0-dev"
+dependencies = [
+ "ir-crypto",
+ "ir-files",
+ "ir-ipc",
+ "ir-proto",
+ "ir-transporte",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

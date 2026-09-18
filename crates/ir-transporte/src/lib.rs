@@ -32,9 +32,11 @@
     )
 )]
 
+pub mod dados;
 mod radio;
 mod rede;
 
+pub use self::dados::{Destinatario, EnlaceDeDados, Porta, Remetente};
 pub use self::radio::Radio;
 pub use self::rede::Rede;
 

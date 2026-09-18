@@ -78,6 +78,11 @@ pub(crate) struct Parts {
     pub(crate) agente: broadcast::Sender<ComandoDoAgente>,
     /// Quem esta máquina é, guardada para recriar a sessão numa troca de papel ou de borda.
     pub(crate) identidade_local: LocalIdentity,
+    /// Por onde pedir um envio de arquivos.
+    ///
+    /// Só isto: o ator não conduz transferência, não conhece o socket de dados e não vê bloco
+    /// nenhum. Ele encaminha o pedido e segue no compasso da entrada.
+    pub(crate) arquivos: ir_transferencia::Pedidos,
 }
 
 impl Daemon {
@@ -111,6 +116,7 @@ impl Daemon {
             agente: parts.agente,
             agente_pronto: false,
             identidade_local: parts.identidade_local,
+            arquivos: parts.arquivos,
             ultimo_arranjo: None,
         }
     }

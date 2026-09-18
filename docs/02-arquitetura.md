@@ -85,7 +85,8 @@ crates/
 ├── ir-transporte/ a fronteira dos portadores: rede e rádio por uma porta só
 ├── ir-input/      traits de captura/injeção + backends por SO
 ├── ir-clip/       modelos de clipboard + backends por SO
-├── ir-files/      manifesto, blocos, BLAKE3, cotas, staging
+├── ir-files/      manifesto, blocos, BLAKE3, cotas, staging ......... sem rede
+├── ir-transferencia/ a transferência conduzida: o motor ligado à porta
 ├── ir-daemon/     binário do serviço
 ├── ir-agent/      binário do agente
 └── ir-ui/         interface (Slint): biblioteca testável + binário fino
@@ -98,7 +99,8 @@ ir-daemon ──► ir-session ──► ir-proto ──► (nada)
     │              └──────► ir-geometry ──► ir-proto
     ├──► ir-transporte ──► ir-net ──► ir-crypto ──► ir-proto
     │                 └──► ir-bt  ──► ir-crypto
-    ├──► ir-files ──► ir-proto
+    ├──► ir-transferencia ──► ir-files ──► ir-proto
+    │                    └──► ir-transporte
     ├──► ir-input
     └──► ir-ipc
 
@@ -115,6 +117,11 @@ Proibições verificadas automaticamente:
 - o `ir-daemon` **NÃO DEVE** falar com `ir-net` ou `ir-bt` direto: quem escolhe o portador é
   o `ir-session`, e quem o alcança é o `ir-transporte`. Foi a ausência dessa fronteira que
   deixou o serviço mandando por um portador o que a sessão marcara para outro.
+
+O `ir-transferencia` nasceu de uma fronteira **comprovada**, e não prevista: o serviço passou de
+2 500 linhas de produção no dia em que a transferência entrou nele. É para isso que aquele limite
+existe — ele não pede um número maior, pede a fronteira que estava faltando
+([09, §1](09-padroes-de-codigo.md), [log 32](logs/32-arquivos-atravessando.md)).
 
 Foi a ausência dessas setas que permitiu ao v1 acumular 10.491 linhas no crate da GUI.
 

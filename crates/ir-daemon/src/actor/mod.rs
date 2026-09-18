@@ -91,6 +91,8 @@ pub(crate) struct Daemon {
     identidade_local: LocalIdentity,
     /// O último arranjo de telas conhecido, para a sessão recriada nascer sabendo onde ficam.
     ultimo_arranjo: Option<ScreenLayout>,
+    /// Por onde pedir um envio de arquivos. O ator encaminha e segue; não conduz nada.
+    pub(crate) arquivos: ir_transferencia::Pedidos,
 }
 
 /// A cada quantas batidas de 5 ms se tenta reconectar. 600 × 5 ms = 3 s.

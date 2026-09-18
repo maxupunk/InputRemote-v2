@@ -20,6 +20,7 @@ ir-crypto.workspace = true
 # que existem dois é o `ir-transporte`. Foi a ausência dessa fronteira que deixou o serviço
 # mandando pela rede o que a sessão marcara como Bluetooth.
 ir-transporte.workspace = true
+ir-transferencia.workspace = true
 ir-input.workspace = true
 ir-ipc.workspace = true
 tokio.workspace = true

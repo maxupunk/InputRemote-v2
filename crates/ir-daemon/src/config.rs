@@ -37,6 +37,12 @@ pub struct Config {
     /// Pares já pareados.
     #[serde(default)]
     pub peers: Vec<PinnedPeer>,
+    /// Onde os arquivos recebidos ficam. Vazio significa `<estado>/recebidos`.
+    ///
+    /// Configurável porque a pasta de estado pode estar num disco pequeno, e uma transferência de
+    /// 5 GB não deve ser obrigada a caber junto com a configuração.
+    #[serde(default)]
+    pub recebidos: Option<String>,
 }
 
 /// Um par pareado, com a chave estática fixada.
@@ -58,6 +64,7 @@ impl Default for Config {
             screen_height: 1080,
             peer_addr: None,
             peers: Vec::new(),
+            recebidos: None,
         }
     }
 }
@@ -89,6 +96,15 @@ impl Config {
             "bottom" => Ok(Edge::Bottom),
             other => bail!("borda inválida: {other}"),
         }
+    }
+
+    /// Onde os arquivos recebidos ficam.
+    #[must_use]
+    pub fn pasta_de_recebidos(&self, dir: &Path) -> PathBuf {
+        self.recebidos
+            .as_deref()
+            .filter(|texto| !texto.trim().is_empty())
+            .map_or_else(|| dir.join("recebidos"), PathBuf::from)
     }
 
     /// A primeira chave de par fixada, se houver.

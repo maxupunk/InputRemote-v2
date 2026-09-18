@@ -110,6 +110,16 @@ pub enum Pedido {
     Encerrar,
     /// Monte o relatório de diagnóstico.
     Diagnostico,
+    /// Mande estes arquivos e pastas para o outro computador.
+    ///
+    /// No uso normal quem dispara isto **não é a interface**: é o clipboard. O usuário aperta
+    /// Ctrl+C, o agente percebe a mudança e conta ao serviço. Este pedido existe para a mesma
+    /// coisa ser alcançável sem janela — pela ferramenta de bancada, pelo diagnóstico, e por quem
+    /// prefere um comando a um atalho.
+    EnviarArquivos {
+        /// Caminhos absolutos nesta máquina.
+        caminhos: Vec<String>,
+    },
 }
 
 impl Pedido {
@@ -124,7 +134,14 @@ impl Pedido {
             | Self::DefinirBorda(_)
             | Self::FixarPortador(_)
             | Self::Procurar
-            | Self::Encerrar => Autoridade::Configurar,
+            | Self::Encerrar
+            // Mandar arquivo é ação com consequência: o conteúdo sai desta máquina. Mas exigir
+            // elevação aqui seria exigir elevação **a cada colagem**, já que é este o caminho que
+            // o Ctrl+C vai usar — e uma permissão que atrapalha o uso normal acaba desligada. O
+            // portão desta operação é o pareamento: só existe um par, confirmado por código de
+            // seis dígitos nas duas telas, e a permissão de arquivos é revogável só para ele
+            // ([04, §2](../../../docs/04-seguranca.md)).
+            | Self::EnviarArquivos { .. } => Autoridade::Configurar,
             // Tudo que decide **quem pode digitar** nesta máquina exige elevação.
             Self::IniciarPareamento { .. }
             | Self::ConfirmarPareamento { .. }
@@ -202,6 +219,12 @@ pub enum Aviso {
         /// Se deu certo.
         sucesso: bool,
     },
+    /// Uma transferência de arquivos mudou de estado.
+    ///
+    /// Vem como aviso, e não dentro do [`Estado`], porque a transferência é um acontecimento com
+    /// começo e fim, e não uma propriedade da máquina. Enfiá-la no estado obrigaria a interface a
+    /// diferenciar "não há transferência" de "havia uma e acabou".
+    Transferencia(crate::transferencia::Transferencia),
     /// Uma tecla ficou divergente e foi corrigida.
     ///
     /// Muitos destes seguidos indicam perda no meio de conexão, e o número aparece no
