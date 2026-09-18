@@ -234,14 +234,12 @@ impl Daemon {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
-    use std::path::PathBuf;
-
     use ir_session::{Command, Notice};
 
     use super::*;
-    use crate::actor::bancada::{Bancada, diretorio};
+    use crate::actor::bancada::{Bancada, Diretorio, diretorio};
 
-    fn daemon(papel: Role) -> (Daemon, PathBuf) {
+    fn daemon(papel: Role) -> (Daemon, Diretorio) {
         let bancada = Bancada::nova(papel);
         (bancada.daemon, bancada.dir)
     }

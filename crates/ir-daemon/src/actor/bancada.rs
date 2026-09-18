@@ -105,8 +105,8 @@ impl Transporte for TransporteDeMentira {
 /// O serviço montado, com as duas pontas por onde os testes o observam.
 pub(super) struct Bancada {
     pub(super) daemon: Daemon,
-    /// Onde este serviço grava o estado.
-    pub(super) dir: PathBuf,
+    /// Onde este serviço grava o estado. Apagado junto com a bancada.
+    pub(super) dir: Diretorio,
     /// O que o serviço mandou para o agente.
     pub(super) agente: broadcast::Receiver<ComandoDoAgente>,
     /// O transporte de rede, para conferir o que foi pedido a ele.
@@ -163,13 +163,34 @@ impl Bancada {
     }
 }
 
-/// Um diretório de estado vazio e só deste teste.
-pub(super) fn diretorio() -> PathBuf {
+/// Um diretório de estado vazio e só deste teste, apagado quando o teste termina.
+///
+/// Apagar não é capricho: sem isso cada `cargo test` deixava vinte pastas no TEMP, e a máquina de
+/// desenvolvimento chegou a ter mais de seiscentas.
+pub(super) fn diretorio() -> Diretorio {
     let n = PROXIMO.fetch_add(1, Ordering::SeqCst);
     let dir = std::env::temp_dir().join(format!("ir-bancada-{}-{n}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("cria o diretório");
-    dir
+    Diretorio(dir)
+}
+
+/// Um diretório de teste que se apaga ao sair de escopo, inclusive quando o teste falha.
+#[derive(Debug)]
+pub(super) struct Diretorio(PathBuf);
+
+impl std::ops::Deref for Diretorio {
+    type Target = PathBuf;
+
+    fn deref(&self) -> &PathBuf {
+        &self.0
+    }
+}
+
+impl Drop for Diretorio {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 fn identidade() -> LocalIdentity {
