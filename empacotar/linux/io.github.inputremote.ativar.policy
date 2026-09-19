@@ -22,8 +22,8 @@
   <action id="io.github.inputremote.ativar">
     <description>Ativar o InputRemote neste computador</description>
     <description xml:lang="en">Turn on InputRemote on this computer</description>
-    <message>O InputRemote precisa de permissão de administrador uma única vez: para ligar o serviço que leva teclado e mouse de um computador ao outro, e para deixar você usá-lo por esta janela.</message>
-    <message xml:lang="en">InputRemote needs administrator permission once: to turn on its service, which sends keyboard and mouse between the computers, and to let you use it from this window.</message>
+    <message>O InputRemote precisa de permissão de administrador uma única vez: para ligar o serviço que leva teclado e mouse de um computador ao outro, liberá-lo na rede local e deixar você usá-lo por esta janela.</message>
+    <message xml:lang="en">InputRemote needs administrator permission once: to turn on its service, which sends keyboard and mouse between the computers, allow it on the local network, and let you use it from this window.</message>
     <defaults>
       <allow_any>no</allow_any>
       <allow_inactive>no</allow_inactive>

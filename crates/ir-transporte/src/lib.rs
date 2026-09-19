@@ -33,11 +33,13 @@
 )]
 
 pub mod dados;
+pub mod descoberta;
 mod radio;
 mod rede;
 
 pub use self::dados::{Destinatario, EnlaceDeDados, Porta, Remetente};
-pub use self::radio::Radio;
+pub use self::descoberta::{Descoberta, Encontrado};
+pub use self::radio::{Pareados, Radio};
 pub use self::rede::Rede;
 
 use std::net::SocketAddr;

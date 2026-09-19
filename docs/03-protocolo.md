@@ -279,10 +279,19 @@ SYSTEM. É o ponto mais sensível do produto inteiro.
 
 ## 10. Descoberta
 
-`_inputremote._udp.local` por mDNS, anunciando: id da máquina, nome legível, versão do
-protocolo, porta e se já existe pareamento com quem pergunta (por um identificador
-derivado, não pela chave). O anúncio **NÃO DEVE** conter nome de usuário, chave, código
-de pareamento nem conteúdo de clipboard.
+Uma pergunta por broadcast na porta **52524/UDP**, que todo serviço escuta. Quem procura manda
+`IRDESC?` + versão ao broadcast de cada sub-rede IPv4 local (e ao geral), duas vezes em ~2 s; cada
+serviço responde, por unicast, com `IRDESC!` + versão + a porta em que atende (u16 LE) + id da
+instalação + nome da máquina (cada um com um byte de tamanho, até 63 bytes). O candidato é o
+**endereço de onde a resposta veio**, na porta anunciada. A resposta **NÃO DEVE** conter nome de
+usuário, chave, código de pareamento nem conteúdo de clipboard.
 
-Endereço e porta manuais sempre disponíveis, para redes que isolam clientes entre si.
-Porta padrão 52525, UDP e TCP.
+Era mDNS (`_inputremote._udp.local`) até a bancada de 2026-09-19: no Windows, a 5353 já está aberta
+por outros programas (Chrome, Quick Share) na conta do usuário, e o Windows não deixa o serviço, que
+é SYSTEM, compartilhá-la — ele não anunciava nem ouvia. Uma porta só do produto não tem com quem
+disputar, e a resposta vinda do endereço certo dispensa escolher entre os endereços anunciados (WSL,
+Hyper-V, Docker). Ver `ir_net::descoberta` e o [log 39](logs/39-parear-sem-configurar-nada.md).
+
+A lista de "Parear" junta a rede, os dispositivos Bluetooth pareados no sistema e o endereço da
+configuração. Endereço e porta digitados na janela sempre disponíveis, para redes que isolam
+clientes entre si. Porta padrão 52525, UDP e TCP; descoberta em 52524/UDP.

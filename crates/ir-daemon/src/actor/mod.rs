@@ -24,6 +24,7 @@ use ir_transporte::{Endereco, Transporte};
 mod agente;
 #[cfg(test)]
 mod bancada;
+mod discagem;
 mod enlace;
 mod papel;
 mod parada;
@@ -60,6 +61,8 @@ pub(crate) struct Daemon {
     /// Vai além do clique em "São iguais": até o outro lado responder, a reconexão não disca por
     /// cima e o prazo continua valendo (log 25).
     pub(crate) pareamento: Option<Pareamento>,
+    /// O pedido de pareamento que saiu daqui e ainda não teve código ([`discagem`]).
+    pub(crate) discagem: Option<discagem::Discagem>,
     /// Se a próxima posição absoluta deve **semear** o ponteiro (sem atravessar) em vez de virar
     /// movimento. Ligado ao estabelecer e ao retomar o controle, para o cursor real e o modelo da
     /// sessão começarem no mesmo ponto.
@@ -93,6 +96,8 @@ pub(crate) struct Daemon {
     ultimo_arranjo: Option<ScreenLayout>,
     /// Por onde pedir um envio de arquivos. O ator encaminha e segue; não conduz nada.
     pub(crate) arquivos: ir_transferencia::Pedidos,
+    /// Quem está por perto para parear. A busca roda fora do ator e responde direto à janela.
+    pub(crate) descoberta: ir_transporte::Descoberta,
 }
 
 /// A cada quantas batidas de 5 ms se tenta reconectar. 600 × 5 ms = 3 s.
@@ -132,6 +137,7 @@ impl Daemon {
         if self.ticks.is_multiple_of(RECONNECT_TICKS) {
             // Antes de reconectar: um código vencido é o que libera a reconexão de novo.
             self.vencer_pareamento_se_preciso();
+            self.vencer_discagem_se_preciso();
             self.reconnect_if_needed();
             self.garantir_agente();
         }
@@ -198,10 +204,12 @@ impl Daemon {
     }
 
     pub(crate) fn on_pairing_code(&mut self, code: [u8; 6], peer_static: ir_crypto::PublicKey) {
+        self.discagem_atendida();
         self.pending_peer = Some(peer_static);
         self.pareamento = Some(Pareamento {
             desde: Instant::now(),
             conferido: false,
+            digitos: code,
         });
         let digits: String = code.iter().map(|d| char::from(b'0' + d)).collect();
         info!("código de pareamento: {digits}");

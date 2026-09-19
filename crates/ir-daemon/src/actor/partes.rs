@@ -78,6 +78,8 @@ pub(crate) struct Parts {
     pub(crate) agente: broadcast::Sender<ComandoDoAgente>,
     /// Quem esta máquina é, guardada para recriar a sessão numa troca de papel ou de borda.
     pub(crate) identidade_local: LocalIdentity,
+    /// Quem está por perto para parear: rede e rádio.
+    pub(crate) descoberta: ir_transporte::Descoberta,
     /// Por onde pedir um envio de arquivos.
     ///
     /// Só isto: o ator não conduz transferência, não conhece o socket de dados e não vê bloco
@@ -103,6 +105,7 @@ impl Daemon {
             config: parts.config,
             pending_peer: None,
             pareamento: None,
+            discagem: None,
             // Ninguém fixou nada até a interface pedir: a escolha começa automática.
             portador_fixado: None,
             seed_pointer: true,
@@ -117,6 +120,7 @@ impl Daemon {
             agente_pronto: false,
             identidade_local: parts.identidade_local,
             arquivos: parts.arquivos,
+            descoberta: parts.descoberta,
             ultimo_arranjo: None,
         }
     }

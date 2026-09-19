@@ -170,6 +170,89 @@ pub const fn portador_do_indice(indice: i32) -> Option<Portador> {
     }
 }
 
+/// A porta em que o serviço escuta quando ninguém muda (`docs/03-protocolo.md` §10).
+const PORTA_PADRAO: u16 = 52525;
+
+/// O endereço que a pessoa digitou, no formato que o serviço entende — ou por que não serve.
+///
+/// Aceita o IP sozinho (a porta é a padrão), `ip:porta`, e o endereço Bluetooth (`AA:BB:CC:DD:EE:FF`).
+/// Nome de máquina não: resolver nome exigiria DNS, e numa rede sem ele o erro seria mudo.
+///
+/// # Errors
+///
+/// A frase que a tela mostra embaixo do campo.
+pub fn ler_endereco_digitado(texto: &str) -> Result<String, &'static str> {
+    let texto = texto.trim();
+    if texto.is_empty() {
+        return Err("Digite o endereço do outro computador.");
+    }
+    if let Ok(endereco) = texto.parse::<std::net::SocketAddr>() {
+        return Ok(endereco.to_string());
+    }
+    if let Ok(ip) = texto.parse::<std::net::IpAddr>() {
+        return Ok(std::net::SocketAddr::new(ip, PORTA_PADRAO).to_string());
+    }
+    if e_bluetooth(texto) {
+        return Ok(texto.to_ascii_uppercase());
+    }
+    Err(
+        "Esse endereço não foi reconhecido. Use o IP do outro computador, como 192.168.0.10,          ou o endereço Bluetooth dele, como AC:50:DE:47:EB:28.",
+    )
+}
+
+/// Seis pares hexadecimais separados por dois-pontos.
+fn e_bluetooth(texto: &str) -> bool {
+    let partes: Vec<&str> = texto.split(':').collect();
+    partes.len() == 6
+        && partes
+            .iter()
+            .all(|parte| parte.len() == 2 && parte.chars().all(|c| c.is_ascii_hexdigit()))
+}
+
+#[cfg(test)]
+mod tests_do_endereco {
+    use super::*;
+
+    #[test]
+    fn o_ip_sozinho_ganha_a_porta_padrao() {
+        assert_eq!(
+            ler_endereco_digitado(" 10.0.0.135 ").unwrap(),
+            "10.0.0.135:52525"
+        );
+    }
+
+    #[test]
+    fn a_porta_digitada_e_respeitada() {
+        assert_eq!(
+            ler_endereco_digitado("10.0.0.135:52526").unwrap(),
+            "10.0.0.135:52526"
+        );
+    }
+
+    #[test]
+    fn o_endereco_bluetooth_serve_em_qualquer_caixa() {
+        assert_eq!(
+            ler_endereco_digitado("ac:50:de:47:eb:28").unwrap(),
+            "AC:50:DE:47:EB:28"
+        );
+    }
+
+    #[test]
+    fn o_que_nao_e_endereco_volta_com_o_motivo() {
+        for lixo in [
+            "",
+            "   ",
+            "fedora.local",
+            "10.0.0",
+            "AC:50:DE:47:EB",
+            "10.0.0.1:porta",
+        ] {
+            let motivo = ler_endereco_digitado(lixo).unwrap_err();
+            assert!(motivo.len() > 20, "{lixo:?}: {motivo}");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use ir_ipc::status::{Latencia, MotivoDaQueda};

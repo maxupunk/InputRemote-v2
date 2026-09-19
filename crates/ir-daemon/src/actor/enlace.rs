@@ -61,7 +61,10 @@ impl Daemon {
             } => self.on_established(chave_do_par, de, portador),
             Fato::Quadro { bytes, .. } => self.on_frame(&bytes, portador),
             Fato::Caiu { motivo, .. } => self.on_link_down(&motivo, portador),
-            Fato::Erro { mensagem, .. } => warn!(%portador, mensagem, "erro de transporte"),
+            Fato::Erro { mensagem, .. } => {
+                warn!(%portador, mensagem, "erro de transporte");
+                self.discagem_com_erro(portador);
+            }
         }
     }
 

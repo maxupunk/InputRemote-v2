@@ -66,6 +66,12 @@ export component Janela inherits Window {
         root.tela = 0;
     }
 
+    /// Vai para a tela de pareamento. O serviço a chama quando chega um código que esta janela não
+    /// pediu: é o outro computador pedindo o pareamento, e a comparação precisa estar na frente.
+    public function mostrar-pareamento() {
+        root.tela = 1;
+    }
+
     VerticalLayout {
         Rectangle {
             background: Tema.superficie;

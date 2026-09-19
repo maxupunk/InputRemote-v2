@@ -183,9 +183,7 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       `ir_ipc::cliente`, com E/S sobreposta, porque um *pipe* síncrono trava a escrita enquanto
       outra thread espera ler. Provado por teste contra *named pipe* real, com um segundo teste
       mostrando que o jeito antigo trava ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
-- [ ] A janela aberta no meio de um pareamento recebe o código pendente — hoje o código vai por
-      aviso uma vez só, e uma janela que conecta depois fica sem ele até o ciclo seguinte
-      ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
+- [x] A janela aberta no meio de um pareamento recebe o código pendente ([log 39](docs/logs/39-parear-sem-configurar-nada.md))
 - [ ] Uma leitura presa termina quando a janela descarta o canal com o serviço vivo — hoje a
       thread (e o runtime do cliente) ficam até o serviço fechar o *pipe* ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
 
@@ -234,8 +232,8 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [ ] `[H]` O diálogo de senha do polkit, com a mão no teclado, no GNOME e no KDE ([log 38](docs/logs/38-a-senha-pedida-pela-janela.md))
 - [x] O empacotador acha os binários em `CARGO_TARGET_DIR` quando ele está definido, em vez de
       empacotar em silêncio os de `target\release` ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
-- [ ] Regra de firewall do serviço no instalador do Windows — sem ela, numa rede Pública o Windows
-      não pode ser chamado, e na bancada só funcionou com ele discando ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
+- [x] Regra de firewall do serviço no instalador do Windows (sub-rede local, por programa) e serviço
+      do firewalld no Linux ([log 39](docs/logs/39-parear-sem-configurar-nada.md))
 - [ ] Assinatura com certificado de verdade e GPG no RPM ([Etapa 10](#etapa-10--qualidade-e-lançamento))
 
 ---
@@ -328,10 +326,13 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 ## Etapa 4 — Rede
 - [x] `ir-net`: UDP de entrada cifrado, com o endpoint por canais
 - [x] Pareamento de ponta a ponta testado (dois endpoints em loopback; código igual, confirmação dupla, quadro atravessa)
-- [~] Descoberta mDNS + endereço manual — a descoberta existe em `ir-net` (`discovery.rs`), mas o
-      serviço **não a usa**: o "Procurar" oferece só o `peer_addr` do arquivo de configuração. O
-      endereço manual só existe editando esse arquivo como administrador. Estava marcado como feito;
-      a bancada mostrou que não funciona de ponta a ponta ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
+- [x] Descoberta na rede local e endereço manual — pergunta própria por broadcast (52524/UDP), no
+      lugar do mDNS que o serviço do Windows (SYSTEM) não conseguia usar; a lista junta rede,
+      Bluetooth pareado e o endereço da configuração, e a janela aceita o endereço digitado ([log 39](docs/logs/39-parear-sem-configurar-nada.md))
+- [x] Um pedido de pareamento sem resposta termina em até 20 s com motivo (`Falha::ParNaoRespondeu`),
+      e o handshake reenvia por até 12 s em vez de desistir no primeiro datagrama ([log 39](docs/logs/39-parear-sem-configurar-nada.md))
+- [x] Quem recebe o pedido vai sozinho para os seis dígitos, até saindo da bandeja; o código é
+      recontado à janela que abre depois ([log 39](docs/logs/39-parear-sem-configurar-nada.md))
 - [ ] O vencimento do código de pareamento é registrado como vencimento, e não com
       `reason="códigos diferentes"`, que aponta para alguém no meio ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
 - [x] Investigar `o handshake seguro falhou` registrado no cliente durante uma rediscagem de
@@ -470,8 +471,8 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       mostra o código que o pareamento cifrado gera e a confirmação nas duas telas fecha o par
       ([log 14](docs/logs/14-servico-de-ponta-a-ponta.md)). No Windows instalado não fechava até
       `7c1aea0`: o clique ficava preso no *pipe* síncrono ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
-- [ ] Informar o endereço do outro computador pela janela, sem editar arquivo como administrador
-      ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
+- [x] Informar o endereço do outro computador pela janela, sem editar arquivo como administrador
+      ([log 39](docs/logs/39-parear-sem-configurar-nada.md))
 - [ ] "Parear" com um pareamento automático já em curso não reinicia o *handshake* nem troca o
       código das duas telas ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
 - [ ] Botões acessíveis: `accessible-role` e ação padrão, para leitor de tela e automação

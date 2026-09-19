@@ -119,6 +119,9 @@ export global Dados {
     /// A explicação do que deu errado no pareamento, quando deu.
     in property <string> erro;
 
+    /// Por que o endereço digitado não serve, ou vazio.
+    in property <string> endereco-erro;
+
     /// Um recado sobre uma ação que falhou fora do pareamento, ou vazio.
     ///
     /// Separado de `erro` porque aparece em outro lugar: `erro` pertence à tela de pareamento,
@@ -144,6 +147,11 @@ export global Acoes {
     callback fixar-portador(int);
     /// Procurar computadores para parear.
     callback procurar();
+    /// Procurar de novo sem apagar a lista: a busca de fundo enquanto a tela está aberta, para o
+    /// outro computador aparecer assim que for aberto.
+    callback atualizar-busca();
+    /// Parear com o endereço digitado, para redes em que a busca não alcança.
+    callback parear-endereco(string);
     /// Começar o pareamento com o candidato desta posição da lista.
     ///
     /// Posição, e não nome: dois computadores podem se chamar igual, e a tela não é o lugar de

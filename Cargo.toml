@@ -56,7 +56,8 @@ zeroize = { version = "1.8", features = ["derive"] }
 subtle = "2.6"
 rand = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "macros", "io-util"] }
-mdns-sd = "0.11"
+# As sub-redes IPv4 desta máquina, para a descoberta perguntar ao broadcast de cada uma.
+if-addrs = "0.13"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"

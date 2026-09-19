@@ -149,6 +149,9 @@ impl Endpoint {
                             let datagram = buf.get(..len).unwrap_or(&[]).to_vec();
                             self.on_datagram(from, &datagram).await;
                         }
+                        // O ICMP de "porta inalcançável" de um envio anterior (ver `handshake`):
+                        // não é erro deste socket, e virava uma linha de aviso a cada tentativa.
+                        Err(error) if error.kind() == std::io::ErrorKind::ConnectionReset => {}
                         Err(error) => {
                             let _ = self.events.send(NetEvent::Error(error.to_string()));
                         }

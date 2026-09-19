@@ -7,6 +7,8 @@
 
 import { Tema } from "tema.slint";
 import { Dados, Acoes, EtapaDoPareamento } from "dados.slint";
+import { LineEdit } from "std-widgets.slint";
+
 import { Cartao, Botao, Faixa, Secao } from "componentes.slint";
 
 component Digito inherits Rectangle {
@@ -73,11 +75,77 @@ component Candidato inherits Rectangle {
     }
 }
 
+/// O endereço digitado, para redes em que a busca não alcança.
+///
+/// Escondido atrás de um link: no caso comum o outro computador aparece na lista sozinho, e um
+/// campo de endereço sempre à vista faria parecer que digitar é o caminho normal.
+component EnderecoDigitado inherits VerticalLayout {
+    property <bool> aberto: false;
+
+    spacing: Tema.e2;
+
+    if !root.aberto: Text {
+        text: "Não aparece? Digite o endereço";
+        font-size: Tema.fonte-nota;
+        color: Tema.acao;
+
+        TouchArea {
+            mouse-cursor: MouseCursor.pointer;
+            clicked => {
+                root.aberto = true;
+            }
+        }
+    }
+
+    if root.aberto: Text {
+        text: "O IP do outro computador (Configurações de rede, no sistema dele), ou o endereço "
+            + "Bluetooth, se os dois já estiverem emparelhados.";
+        font-size: Tema.fonte-nota;
+        color: Tema.texto-fraco;
+        wrap: word-wrap;
+    }
+
+    if root.aberto: HorizontalLayout {
+        spacing: Tema.e2;
+
+        campo := LineEdit {
+            placeholder-text: "192.168.0.10";
+            accepted(texto) => {
+                Acoes.parear-endereco(texto);
+            }
+        }
+
+        Botao {
+            texto: "Parear";
+            acionado => {
+                Acoes.parear-endereco(campo.text);
+            }
+        }
+    }
+
+    if Dados.endereco-erro != "": Text {
+        text: Dados.endereco-erro;
+        font-size: Tema.fonte-nota;
+        color: Tema.ruim;
+        wrap: word-wrap;
+    }
+}
+
 /// O fluxo de pareamento, do zero ao par confirmado.
 export component Pareamento inherits VerticalLayout {
     callback concluir();
 
     spacing: Tema.e4;
+
+    // Enquanto a lista está na tela, procura de novo a cada poucos segundos: o outro computador
+    // aparece assim que for aberto, sem ninguém clicar em "Procurar de novo".
+    Timer {
+        interval: 5s;
+        running: Dados.etapa == EtapaDoPareamento.escolhendo;
+        triggered => {
+            Acoes.atualizar-busca();
+        }
+    }
 
     // Pareamento decide quem pode digitar na tela de bloqueio desta máquina. Sem elevação o
     // serviço vai recusar, e é melhor dizer isso antes do usuário procurar o outro computador
@@ -98,9 +166,8 @@ export component Pareamento inherits VerticalLayout {
         if Dados.candidatos.length == 0: Text {
             text: Dados.procurando
                 ? "Procurando…"
-                : "Nenhum computador encontrado. O InputRemote precisa estar instalado e "
-                    + "rodando no outro computador, na mesma rede ou emparelhado por "
-                    + "Bluetooth no sistema.";
+                : "Nenhum computador por perto ainda. Abra o InputRemote no outro "
+                    + "computador: ele aparece aqui sozinho, se os dois estiverem na mesma rede.";
             font-size: Tema.fonte-corpo;
             color: Tema.texto-fraco;
             wrap: word-wrap;
@@ -120,18 +187,26 @@ export component Pareamento inherits VerticalLayout {
                 Acoes.procurar();
             }
         }
+
+        EnderecoDigitado { }
     }
 
     if Dados.etapa == EtapaDoPareamento.esperando: Cartao {
+        // Duas esperas diferentes na mesma etapa: antes do código, chamando o outro lado; depois de
+        // "São iguais", esperando ele conferir também.
         Text {
-            text: "Aguardando o outro computador…";
+            text: Dados.digitos[0] == ""
+                ? "Chamando o outro computador…"
+                : "Aguardando o outro computador conferir…";
             font-size: Tema.fonte-destaque;
             color: Tema.texto;
         }
 
         Text {
-            text: "Abra o InputRemote no outro computador se ele ainda não estiver aberto. "
-                + "O código vale 2 minutos.";
+            text: Dados.digitos[0] == ""
+                ? "O código aparece nas duas telas assim que ele responder. Se não responder "
+                    + "em alguns segundos, esta tela avisa."
+                : "Falta clicar em \"São iguais\" na outra tela. O código vale 2 minutos.";
             font-size: Tema.fonte-corpo;
             color: Tema.texto-fraco;
             wrap: word-wrap;

@@ -16,8 +16,25 @@ use crate::wire::{self, Mode};
 /// Buffer de recepção de um datagrama de handshake. As mensagens do Noise são pequenas.
 const BUF: usize = 2048;
 
-/// Quanto esperar por cada mensagem do par antes de desistir do handshake.
+/// Quanto esperar por cada mensagem do par antes de reenviar a nossa — ou de desistir, na
+/// reconexão, que o serviço já repete a cada rodada.
 const STEP_TIMEOUT: Duration = Duration::from_millis(1500);
+
+/// Quanto um **pareamento** espera o outro lado, reenviando a cada [`STEP_TIMEOUT`].
+///
+/// Um datagrama perdido era o pareamento perdido: o iniciador mandava a primeira mensagem uma vez,
+/// esperava 1,5 s e desistia em silêncio, com a janela dizendo "Aguardando" para sempre. Doze
+/// segundos cobrem perda na rede e o outro serviço reiniciando, e ainda cabem na paciência de quem
+/// clicou.
+const PAREAMENTO_ESPERA: Duration = Duration::from_secs(12);
+
+/// O que um passo de leitura precisa para retransmitir: o que foi enviado por último, o que chegou
+/// por último, e até quando esperar.
+struct Reenvio<'a> {
+    enviado: Option<&'a [u8]>,
+    recebido: Option<&'a [u8]>,
+    prazo: Duration,
+}
 
 /// O que dizer ao par ao iniciar: parear do zero, ou reconectar com a chave dele fixada.
 #[derive(Debug, Clone, Copy)]
@@ -64,14 +81,7 @@ pub async fn drive_initiator(
         ConnectMode::Pair => Handshake::pair_initiator(identity)?,
         ConnectMode::Reconnect(peer_key) => Handshake::reconnect_initiator(identity, peer_key)?,
     };
-    run(
-        socket,
-        peer,
-        handshake,
-        mode.wire_mode(),
-        matches!(mode, ConnectMode::Pair),
-    )
-    .await
+    run_desde(socket, peer, handshake, mode.wire_mode(), None).await
 }
 
 /// Conduz o handshake como respondedor, a partir do primeiro datagrama já recebido.
@@ -95,18 +105,27 @@ pub async fn drive_responder(
         Mode::Reconnect => Handshake::reconnect_responder(identity)?,
     };
     handshake.read_message(message)?;
-    run(socket, peer, handshake, mode, matches!(mode, Mode::Pair)).await
+    run_desde(socket, peer, handshake, mode, Some(first)).await
 }
 
-/// O laço comum: alterna escrever e ler até o handshake terminar.
-async fn run(
+/// O laço comum: alterna escrever e ler até o handshake terminar. `primeiro` é o datagrama que o
+/// respondedor já leu, para reconhecer quando ele chegar de novo.
+async fn run_desde(
     socket: &UdpSocket,
     peer: SocketAddr,
     mut handshake: Handshake,
     mode: Mode,
-    is_pairing: bool,
+    primeiro: Option<&[u8]>,
 ) -> Result<Established> {
+    let is_pairing = matches!(mode, Mode::Pair);
+    let prazo = if is_pairing {
+        PAREAMENTO_ESPERA
+    } else {
+        STEP_TIMEOUT
+    };
     let mut buf = [0u8; BUF];
+    let mut enviado: Option<Vec<u8>> = None;
+    let mut recebido: Option<Vec<u8>> = primeiro.map(<[u8]>::to_vec);
     // No máximo seis passos cobrem XX (3) e IK (2) com folga, mesmo contando o já lido.
     for _ in 0..6 {
         if handshake.is_finished() {
@@ -116,10 +135,17 @@ async fn run(
             let message = handshake.write_message()?;
             let datagram = wire::handshake_datagram(mode, &message);
             socket.send_to(&datagram, peer).await?;
+            enviado = Some(datagram);
         } else {
-            let datagram = recv_from_peer(socket, peer, &mut buf).await?;
+            let reenvio = Reenvio {
+                enviado: enviado.as_deref(),
+                recebido: recebido.as_deref(),
+                prazo,
+            };
+            let datagram = receber_reenviando(socket, peer, &mut buf, &reenvio).await?;
             let (_, message) = wire::parse_handshake(&datagram).ok_or(NetError::Malformed)?;
             handshake.read_message(message)?;
+            recebido = Some(datagram);
         }
     }
 
@@ -143,13 +169,54 @@ async fn run(
     })
 }
 
-/// Recebe um datagrama do par, ignorando o que vier de outros endereços.
-async fn recv_from_peer(socket: &UdpSocket, peer: SocketAddr, buf: &mut [u8]) -> Result<Vec<u8>> {
+/// Espera a próxima mensagem do par até o prazo, reenviando a nossa a cada [`STEP_TIMEOUT`].
+///
+/// Um datagrama igual ao último recebido é o par repetindo porque a nossa resposta se perdeu: a
+/// resposta vai de novo, e a espera continua. Lê-lo como mensagem nova quebraria o handshake.
+async fn receber_reenviando(
+    socket: &UdpSocket,
+    peer: SocketAddr,
+    buf: &mut [u8],
+    reenvio: &Reenvio<'_>,
+) -> Result<Vec<u8>> {
+    let limite = tokio::time::Instant::now() + reenvio.prazo;
     loop {
-        let recv = tokio::time::timeout(STEP_TIMEOUT, socket.recv_from(buf))
+        let falta = limite.saturating_duration_since(tokio::time::Instant::now());
+        if falta.is_zero() {
+            return Err(NetError::HandshakeTimeout);
+        }
+        match recv_from_peer(socket, peer, buf, falta.min(STEP_TIMEOUT)).await {
+            Ok(datagram) if Some(datagram.as_slice()) == reenvio.recebido => {}
+            Ok(datagram) => return Ok(datagram),
+            Err(NetError::HandshakeTimeout) => {}
+            Err(outro) => return Err(outro),
+        }
+        if let Some(enviado) = reenvio.enviado {
+            socket.send_to(enviado, peer).await?;
+        }
+    }
+}
+
+/// Recebe um datagrama do par, ignorando o que vier de outros endereços.
+async fn recv_from_peer(
+    socket: &UdpSocket,
+    peer: SocketAddr,
+    buf: &mut [u8],
+    espera: Duration,
+) -> Result<Vec<u8>> {
+    loop {
+        let recv = tokio::time::timeout(espera, socket.recv_from(buf))
             .await
-            .map_err(|_| NetError::HandshakeTimeout)??;
-        let (len, from) = recv;
+            .map_err(|_| NetError::HandshakeTimeout)?;
+        let (len, from) = match recv {
+            Ok(recebido) => recebido,
+            // No Windows, um envio a uma porta sem ninguém volta como ICMP "porta inalcançável", e
+            // o **próximo** `recv_from` do socket falha com `WSAECONNRESET`. Num socket UDP sem
+            // conexão isso não diz nada sobre o par — é o outro serviço ainda não de pé —, e
+            // desistir aqui era desistir do pareamento que o reenvio existe para salvar.
+            Err(erro) if erro.kind() == std::io::ErrorKind::ConnectionReset => continue,
+            Err(erro) => return Err(erro.into()),
+        };
         if from != peer {
             continue; // datagrama de outra origem no meio do handshake
         }

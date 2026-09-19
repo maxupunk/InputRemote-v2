@@ -13,6 +13,7 @@ mod ipc;
 mod lancador;
 #[cfg(windows)]
 mod service;
+mod transportes;
 
 use std::io::BufRead;
 use std::sync::Arc;
@@ -21,7 +22,6 @@ use anyhow::{Context, Result};
 use ir_proto::peer::{Capabilities, MachineName, PrivilegedInputLevel};
 use ir_proto::screens::ScreenLayout;
 use ir_session::{LocalIdentity, Role};
-use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::{mpsc, watch};
 use tracing::info;
 // Só o caminho sem agente (Linux) relata backend de entrada indisponível.
@@ -29,7 +29,7 @@ use tracing::info;
 use tracing::warn;
 
 use crate::actor::{CaptureRx, Daemon, Entradas, Parts};
-use ir_transporte::{Endereco, Fato, Radio, Rede, Transporte};
+use ir_transporte::Endereco;
 
 /// Ponto de entrada.
 ///
@@ -77,24 +77,24 @@ async fn executar(parada: watch::Receiver<bool>) -> Result<()> {
     // Tamanho de tela: da plataforma quando ela sabe, senão da configuração.
     let screen = ir_input::primary_screen_size().unwrap_or((cfg.screen_width, cfg.screen_height));
 
-    let (rede, radio, transportes) = abrir_transportes(cfg.port, &identity).await?;
+    let abertos = transportes::abrir(cfg.port, &identity, machine_id_from(&identity)).await?;
 
     let (capturer, injector, capture_rx) = build_io(role);
     let identidade = identidade_local(&identity);
-    // O endereço do par pode ser `ip:porta` ou um endereço de rádio; é ele que diz o portador.
-    let peer = cfg.peer_addr.as_deref().and_then(Endereco::ler);
 
     let canais = abrir_canais()?;
     let arquivos = arquivos::abrir(&cfg, &dir, &identity, &canais.avisos);
 
     let mut daemon = Daemon::new(Parts {
         session: actor::nova_sessao(role, edge, identidade.clone()),
-        rede,
-        radio,
+        rede: abertos.rede,
+        radio: abertos.radio,
+        descoberta: abertos.descoberta,
         injector,
         capturer,
         screen,
-        peer,
+        // `ip:porta` ou endereço de rádio: é o endereço que diz o portador.
+        peer: cfg.peer_addr.as_deref().and_then(Endereco::ler),
         data_dir: dir,
         config: cfg,
         avisos: canais.avisos,
@@ -110,7 +110,7 @@ async fn executar(parada: watch::Receiver<bool>) -> Result<()> {
 
     daemon
         .run(Entradas {
-            transportes,
+            transportes: abertos.fatos,
             capture: capture_rx,
             confirm: spawn_stdin_reader(),
             pedidos: canais.pedidos,
@@ -127,51 +127,6 @@ fn dar_partida(daemon: &mut Daemon, screen: (u32, u32)) {
     daemon.connect_if_possible();
     // O agente nasce junto com o serviço; o laço periódico só cuida de ressubi-lo se ele cair.
     daemon.garantir_agente();
-}
-
-/// Sobe os dois transportes de entrada e devolve as pontas.
-///
-/// **Um canal de fatos só para os dois.** Cada fato já diz por onde veio, e é isso que permite
-/// ao laço central ter um caminho de código para ambos os portadores — um canal por transporte
-/// faria o laço crescer a cada portador novo.
-async fn abrir_transportes(
-    porta: u16,
-    identidade: &Arc<ir_crypto::Identity>,
-) -> Result<(
-    Arc<dyn Transporte>,
-    Option<Arc<dyn Transporte>>,
-    mpsc::UnboundedReceiver<Fato>,
-)> {
-    let (fatos, transportes) = mpsc::unbounded_channel();
-    let rede: Arc<dyn Transporte> =
-        Arc::new(Rede::abrir(porta, Arc::clone(identidade), fatos.clone()).await?);
-    let radio = abrir_radio(Arc::clone(identidade), fatos);
-    Ok((rede, radio, transportes))
-}
-
-/// Abre o rádio Bluetooth, se houver um.
-///
-/// **Não abrir não é falha do serviço.** Sem adaptador, com ele desligado, ou com o canal do
-/// produto ocupado, o que resta é a rede — e é exatamente essa ausência que a política única do
-/// `ir-session` transforma em "Bluetooth indisponível; usando a rede local", com o motivo
-/// aparecendo na tela em vez de ficar escondido.
-fn abrir_radio(
-    identidade: Arc<ir_crypto::Identity>,
-    fatos: UnboundedSender<Fato>,
-) -> Option<Arc<dyn Transporte>> {
-    match Radio::abrir(identidade, fatos) {
-        Ok(radio) => {
-            info!("rádio Bluetooth aberto; é o portador preferido para teclado e mouse");
-            Some(Arc::new(radio) as Arc<dyn Transporte>)
-        }
-        Err(erro) => {
-            info!(%erro, "Bluetooth indisponível; a sessão vai usar a rede local");
-            if let Some(o_que_fazer) = erro.o_que_fazer() {
-                info!("{o_que_fazer}");
-            }
-            None
-        }
-    }
 }
 
 /// Os dois canais de IPC do serviço, já no ar.
@@ -389,7 +344,5 @@ fn feed_screens(daemon: &mut Daemon, screen: (u32, u32)) {
 }
 
 fn hostname() -> String {
-    std::env::var("COMPUTERNAME")
-        .or_else(|_| std::env::var("HOSTNAME"))
-        .unwrap_or_else(|_| "computador".to_owned())
+    transportes::nome_da_maquina()
 }

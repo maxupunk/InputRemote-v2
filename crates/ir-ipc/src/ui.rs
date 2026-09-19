@@ -233,6 +233,11 @@ pub enum Aviso {
         /// Se deu certo.
         sucesso: bool,
     },
+    /// O pareamento pedido por esta máquina não começou, por este motivo.
+    ///
+    /// Separado de [`Self::PareamentoConcluido`] porque aqui há o que dizer: não houve código, e o
+    /// motivo decide o que a pessoa faz — abrir o programa do outro lado, ou digitar o endereço.
+    PareamentoFalhou(crate::Falha),
     /// Uma transferência de arquivos mudou de estado.
     ///
     /// Vem como aviso, e não dentro do [`Estado`], porque a transferência é um acontecimento com

@@ -73,7 +73,7 @@ dependência a menos e nada para o usuário digitar. Ver [04, §3.2](04-seguranc
 | Área | Escolha | Observação |
 |---|---|---|
 | UDP e TCP | `tokio::net` | sockets crus; a confiabilidade do canal de entrada é nossa, e é pequena ([03, §4.1](03-protocolo.md)) |
-| Descoberta | `mdns-sd` | funcionou bem no v1; sem dependência de daemon do sistema |
+| Descoberta | própria, por broadcast (`ir_net::descoberta`) + `if-addrs` | o `mdns-sd` saiu: no Windows o serviço (SYSTEM) não compartilha a 5353 com programas do usuário ([03, §10](03-protocolo.md)) |
 
 **Não usamos QUIC.** `quinn` + `rustls` + `rcgen` + `tokio-rustls` somavam quatro
 dependências grandes no v1 para resolver, na rede, um problema que o Bluetooth continuava

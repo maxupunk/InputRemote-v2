@@ -33,12 +33,15 @@ impl Daemon {
     }
 
     /// A ação de cada pedido. A autoridade é conferida no transporte, não aqui.
-    fn tratar(&mut self, pedido: Pedido, leitor: ir_transferencia::Leitor) -> Resposta {
+    pub(super) fn tratar(&mut self, pedido: Pedido, leitor: ir_transferencia::Leitor) -> Resposta {
         match pedido {
             Pedido::Estado => Resposta::Estado(self.estado()),
-            Pedido::Acompanhar => Resposta::Feito,
+            Pedido::Acompanhar => {
+                self.recontar_codigo_pendente();
+                Resposta::Feito
+            }
             Pedido::Procurar => {
-                self.anunciar_candidato();
+                self.procurar();
                 Resposta::Feito
             }
             Pedido::IniciarPareamento { candidato } => self.iniciar_pareamento(&candidato),
@@ -121,23 +124,37 @@ impl Daemon {
         }
     }
 
-    /// Anuncia o par configurado como candidato, no lugar da descoberta (ainda não ligada).
-    fn anunciar_candidato(&self) {
-        let mut candidatos = Vec::new();
-        if let Some(endereco) = self.peer {
-            let portador = Portador::from(endereco.portador());
-            candidatos.push(Candidato {
-                rotulo: format!("Computador em {endereco}"),
-                endereco: endereco.to_string(),
-                // O portador vem do próprio endereço, e não de um presumido: um endereço de
-                // rádio na lista precisa aparecer como Bluetooth, senão a tela promete uma coisa
-                // e o serviço faz outra.
-                portador,
+    /// Procura quem está por perto — rede e rádio — e conta à janela quando terminar.
+    ///
+    /// A busca leva segundos e roda numa tarefa própria: o ator não espera, e o resultado vai direto
+    /// aos avisos. O endereço da configuração (ou o do último par) entra como candidato marcado.
+    fn procurar(&self) {
+        let configurado = self
+            .config
+            .peer_addr
+            .as_deref()
+            .and_then(Endereco::ler)
+            .or_else(|| {
+                self.config
+                    .peers
+                    .first()
+                    .and_then(|par| par.addr.as_deref())
+                    .and_then(Endereco::ler)
             });
-        }
-        let _ = self
-            .avisos
-            .send(Aviso::CandidatosEncontrados { candidatos });
+        let busca = self.descoberta.procurar(configurado);
+        let avisos = self.avisos.clone();
+        tokio::spawn(async move {
+            let candidatos = busca
+                .await
+                .into_iter()
+                .map(|encontrado| Candidato {
+                    rotulo: encontrado.rotulo,
+                    endereco: encontrado.endereco.to_string(),
+                    portador: Portador::from(encontrado.endereco.portador()),
+                })
+                .collect();
+            let _ = avisos.send(Aviso::CandidatosEncontrados { candidatos });
+        });
     }
 
     /// Começa a parear com o endereço escolhido.
@@ -159,6 +176,7 @@ impl Daemon {
         if let Some(transporte) = self.transporte(alvo.portador()) {
             transporte.conectar(alvo, None);
         }
+        self.discagem_comecou(alvo.portador());
         Resposta::Feito
     }
 

@@ -5,11 +5,13 @@
 # recusa o usuario, e o polkit mostra a explicacao de `io.github.inputremote.ativar` e pede a senha
 # de administrador. Nada aqui e interativo, e nada vem de argumento.
 #
-# Duas coisas, sempre as mesmas:
+# Tres coisas, sempre as mesmas:
 #   1. habilitar e subir o servico, que passa a subir sozinho com o computador;
 #   2. por no grupo `inputremote` o usuario que pediu -- o grupo e o que abre o canal de controle
 #      (docs/02-arquitetura.md, secao 7). O servico confere o grupo no banco de usuarios na hora,
-#      entao vale sem sair da sessao nem reiniciar.
+#      entao vale sem sair da sessao nem reiniciar;
+#   3. liberar as portas do produto no firewall, quando ha firewalld: sem isso, numa zona que nao
+#      as abre, o outro computador nao acha este nem consegue parear com ele.
 #
 # Quem pediu vem de `PKEXEC_UID`, que o proprio pkexec define e o chamador nao escolhe. Aceitar
 # um nome de usuario por argumento deixaria qualquer pessoa com a senha de administrador por
@@ -37,3 +39,10 @@ if [ "$uid" -ne 0 ]; then
 fi
 
 systemctl enable --now "$SERVICO"
+
+# O servico `inputremote` do firewalld vem no pacote. Permanente e em execucao, sem `--reload`,
+# que derrubaria conexoes de outros programas. Falhar aqui nao desfaz o resto.
+if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+    firewall-cmd --permanent --add-service=inputremote >/dev/null || true
+    firewall-cmd --add-service=inputremote >/dev/null || true
+fi

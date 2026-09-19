@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  As portas do InputRemote para o firewalld: teclado e mouse (UDP), arquivos (TCP) e a descoberta
+  na rede local (UDP 52524, a pergunta "quem esta ai?" por broadcast). Instalado em
+  /usr/lib/firewalld/services/inputremote.xml, e ligado na zona padrao pelo ajudante de ativacao,
+  com a senha de administrador. A zona padrao da estacao de
+  trabalho do Fedora ja abre essas portas; outras zonas e outras distribuicoes, nao.
+-->
+<service>
+  <short>InputRemote</short>
+  <description>Compartilha teclado, mouse, clipboard e arquivos entre dois computadores da rede local.</description>
+  <port protocol="udp" port="52525"/>
+  <port protocol="tcp" port="52525"/>
+  <port protocol="udp" port="52524"/>
+</service>

@@ -63,3 +63,4 @@ quê. Um registro que se reescreve não é registro.
 | 36 | 2026-09-18 | [O serviço instalado como origem, e a recusa pelo motivo certo](docs/logs/36-o-servico-instalado-como-origem.md) |
 | 37 | 2026-09-18 | [A bandeja, o ícone em branco e a rolagem de lado](docs/logs/37-a-bandeja-e-a-rolagem-de-lado.md) |
 | 38 | 2026-09-18 | [A senha pedida pela janela, e não um comando de terminal](docs/logs/38-a-senha-pedida-pela-janela.md) |
+| 39 | 2026-09-19 | [Parear sem configurar nada: a descoberta que não existia, e o mDNS que o Windows não deixava usar](docs/logs/39-parear-sem-configurar-nada.md) |

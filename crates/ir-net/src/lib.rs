@@ -29,7 +29,7 @@
 )]
 
 pub mod bulk;
-pub mod discovery;
+pub mod descoberta;
 pub mod endpoint;
 pub mod error;
 pub mod handshake;
@@ -37,7 +37,7 @@ pub mod link;
 pub mod turno;
 pub mod wire;
 
-pub use discovery::{Candidate, Discovery};
+pub use descoberta::{Anuncio, Candidate, PORTA_DA_DESCOBERTA};
 pub use endpoint::{Endpoint, EndpointHandle, NetCommand, NetEvent, bind};
 pub use error::{NetError, Result};
 pub use handshake::{ConnectMode, Established};

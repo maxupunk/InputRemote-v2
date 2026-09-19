@@ -130,6 +130,7 @@ impl Bancada {
         let daemon = Daemon::new(Parts {
             // A bancada exercita o ator, e o canal de arquivos não faz parte dele.
             arquivos: ir_transferencia::Pedidos::desligada(),
+            descoberta: ir_transporte::Descoberta::desligada(),
             session: nova_sessao(papel, Edge::Right, identidade()),
             rede: Arc::clone(&rede) as Arc<dyn Transporte>,
             radio: Some(Arc::clone(&radio) as Arc<dyn Transporte>),

@@ -32,6 +32,8 @@ pub(crate) struct Pareamento {
     pub(super) desde: Instant,
     /// Se o usuário já disse que o código confere, e só falta o outro computador.
     pub(super) conferido: bool,
+    /// Os seis dígitos, para a janela que abrir depois também recebê-los.
+    pub(super) digitos: [u8; 6],
 }
 
 /// Se um pareamento começado em `desde` já passou do prazo em `agora`.
@@ -95,6 +97,18 @@ impl Daemon {
         if self.pareando() {
             warn!("o enlace caiu no meio do pareamento");
             self.encerrar_pareamento_sem_sucesso();
+        }
+    }
+
+    /// Conta de novo o código em comparação, para uma janela que acabou de começar a acompanhar.
+    ///
+    /// Sem isto, o código ia por aviso uma vez só: a janela aberta depois dele — ou tirada da
+    /// bandeja — ficava sem nada para comparar enquanto a outra tela mostrava os dígitos.
+    pub(super) fn recontar_codigo_pendente(&self) {
+        if let Some(pareamento) = self.pareamento.filter(|p| !p.conferido) {
+            let _ = self.avisos.send(Aviso::CodigoDePareamento {
+                digitos: pareamento.digitos,
+            });
         }
     }
 

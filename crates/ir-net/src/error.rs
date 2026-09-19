@@ -50,8 +50,4 @@ pub enum NetError {
     /// ouvir, e não "erro de E/S".
     #[error("o par encerrou a conexão")]
     Closed,
-
-    /// A descoberta por mDNS falhou.
-    #[error("a descoberta na rede falhou: {0}")]
-    Discovery(String),
 }

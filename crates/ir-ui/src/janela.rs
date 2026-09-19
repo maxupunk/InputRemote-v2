@@ -8,6 +8,8 @@
 //! é sinal de que a regra foi duplicada — o serviço já decide, e uma segunda cópia da regra na
 //! interface é a cópia que vai ficar desatualizada.
 
+mod pareamento;
+
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
@@ -139,6 +141,7 @@ impl Contexto {
                 self.etapa(EtapaDoPareamento::Concluido);
                 self.sincronizar();
             }
+            Aviso::PareamentoFalhou(falha) => self.falha_no_pareamento(falha),
             Aviso::PareamentoConcluido { sucesso: false } => {
                 // Uma recusa que a própria janela pediu já está na tela com o motivo certo, e o
                 // aviso que chega atrás dela não pode trocá-lo por um genérico. Fora isso, a
@@ -152,36 +155,6 @@ impl Contexto {
             // um número alto significa perda no meio do caminho, e em lugar nenhum mais.
             _ => {}
         }
-    }
-
-    fn mostrar_candidatos(&self, candidatos: Vec<Candidato>) {
-        let rotulos: Vec<SharedString> = candidatos
-            .iter()
-            .map(|candidato| {
-                // O nome sozinho não distingue o mesmo computador achado por dois meios.
-                let meio = candidato.portador.nome();
-                SharedString::from(format!("{} · {meio}", candidato.rotulo))
-            })
-            .collect();
-        *self.candidatos.borrow_mut() = candidatos;
-        self.com_janela(|janela| {
-            let dados = janela.global::<Dados>();
-            dados.set_candidatos(ModelRc::new(VecModel::from(rotulos.clone())));
-            dados.set_procurando(false);
-        });
-    }
-
-    fn mostrar_codigo(&self, digitos: [u8; 6]) {
-        let caixas: Vec<SharedString> = digitos
-            .iter()
-            .map(|digito| SharedString::from(digito.to_string()))
-            .collect();
-        self.com_janela(|janela| {
-            janela
-                .global::<Dados>()
-                .set_digitos(ModelRc::new(VecModel::from(caixas.clone())));
-        });
-        self.etapa(EtapaDoPareamento::Comparando);
     }
 
     fn etapa(&self, etapa: EtapaDoPareamento) {
@@ -252,7 +225,7 @@ pub fn abrir(
         depois.observar_conexao();
     });
     ligar_configuracao(&janela, &contexto);
-    ligar_pareamento(&janela, &contexto);
+    pareamento::ligar(&janela, &contexto);
     ligar_sessao(&janela, &contexto);
     contexto.sincronizar();
 
@@ -296,63 +269,6 @@ fn ligar_configuracao(janela: &Janela, contexto: &Rc<Contexto>) {
         if let Some(maquina) = alvo.par_corrente() {
             alvo.enviar(Pedido::PermitirTelaDeBloqueio { maquina, permitir });
         }
-    });
-}
-
-fn ligar_pareamento(janela: &Janela, contexto: &Rc<Contexto>) {
-    let acoes = janela.global::<Acoes>();
-
-    let alvo = Rc::clone(contexto);
-    acoes.on_procurar(move || {
-        alvo.com_janela(|janela| {
-            let dados = janela.global::<Dados>();
-            dados.set_procurando(true);
-            dados.set_candidatos(ModelRc::new(VecModel::from(Vec::<SharedString>::new())));
-        });
-        alvo.enviar(Pedido::Procurar);
-    });
-
-    let alvo = Rc::clone(contexto);
-    acoes.on_iniciar_pareamento(move |posicao| {
-        let escolhido = usize::try_from(posicao)
-            .ok()
-            .and_then(|posicao| alvo.candidatos.borrow().get(posicao).cloned());
-        let Some(candidato) = escolhido else {
-            alvo.recado(Some(Falha::ForaDeContexto));
-            return;
-        };
-        alvo.enviar(Pedido::IniciarPareamento {
-            candidato: candidato.endereco,
-        });
-        alvo.etapa(EtapaDoPareamento::Esperando);
-    });
-
-    let alvo = Rc::clone(contexto);
-    acoes.on_confirmar_pareamento(move |conferiu| {
-        // A recusa vai para a tela de pareamento, e não para o recado da janela: o usuário está
-        // dentro de um fluxo, e tirá-lo dali para mostrar um aviso avulso perderia o contexto.
-        if let Resposta::Falha(falha) = alvo.servico.pedir(Pedido::ConfirmarPareamento { conferiu })
-        {
-            alvo.falha_no_pareamento(falha);
-        } else {
-            // Deste lado confere; falta o outro computador. Ficar na comparação depois do clique
-            // fazia parecer que o botão não tinha funcionado (log 25).
-            if conferiu {
-                alvo.etapa(EtapaDoPareamento::Esperando);
-            }
-            alvo.sincronizar();
-        }
-    });
-
-    let alvo = Rc::clone(contexto);
-    acoes.on_reiniciar_pareamento(move || {
-        alvo.com_janela(|janela| {
-            let dados = janela.global::<Dados>();
-            dados.set_erro(SharedString::new());
-            dados.set_erro_o_que_fazer(SharedString::new());
-            dados.set_digitos(seis_vazios());
-        });
-        alvo.etapa(EtapaDoPareamento::Escolhendo);
     });
 }
 

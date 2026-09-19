@@ -24,6 +24,8 @@ use crate::{Endereco, Fato, Transporte};
 #[derive(Debug)]
 pub struct Radio {
     comandos: UnboundedSender<BtCommand>,
+    /// O rádio do sistema, guardado para a busca poder listar os pareados.
+    sistema: Arc<ir_bt::RadioDoSistema>,
 }
 
 impl Radio {
@@ -35,11 +37,31 @@ impl Radio {
     /// **não** deve insistir. Qualquer outro erro se o canal do produto não puder ser aberto.
     pub fn abrir(identidade: Arc<Identity>, fatos: UnboundedSender<Fato>) -> ir_bt::Result<Self> {
         let radio = Arc::new(ir_bt::abrir_radio()?);
-        let alca = Endpoint::spawn(radio, identidade);
+        let alca = Endpoint::spawn(Arc::clone(&radio), identidade);
         tokio::spawn(repassar(alca.events, fatos));
         Ok(Self {
             comandos: alca.commands,
+            sistema: radio,
         })
+    }
+
+    /// Uma alça para listar os dispositivos pareados no sistema, que pode ir para outra tarefa.
+    #[must_use]
+    pub fn pareados(&self) -> Pareados {
+        Pareados(Arc::clone(&self.sistema))
+    }
+}
+
+/// Lista os pareados do sistema, fora da tarefa do ator.
+#[derive(Debug, Clone)]
+pub struct Pareados(Arc<ir_bt::RadioDoSistema>);
+
+impl Pareados {
+    /// Os dispositivos pareados; vazio se o rádio não disser.
+    pub async fn listar(&self) -> Vec<ir_bt::Dispositivo> {
+        ir_bt::Radio::pareados(self.0.as_ref())
+            .await
+            .unwrap_or_default()
     }
 }
 

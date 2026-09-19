@@ -63,6 +63,13 @@ pub enum Falha {
     /// tela, e parecia que o botão não funcionava (log 25).
     #[error("o pareamento não chegou ao fim")]
     PareamentoInterrompido,
+    /// Pediu-se o pareamento, e o outro computador não respondeu.
+    ///
+    /// Sem esta, a janela ficava em "Aguardando o outro computador" para sempre: o pedido saía, o
+    /// outro lado não estava lá — serviço parado, endereço de outra rede, porta errada —, e nada
+    /// voltava para dizer isso.
+    #[error("o outro computador não respondeu")]
+    ParNaoRespondeu,
 }
 
 impl Falha {
@@ -103,6 +110,10 @@ impl Falha {
                 "Comece o pareamento de novo por um dos computadores e compare o código novo nas \
                  duas telas."
             }
+            Self::ParNaoRespondeu => {
+                "Abra o InputRemote no outro computador e confira se os dois estão na mesma rede. \
+                 Se ele não aparecer na lista, digite o endereço dele."
+            }
         }
     }
 }
@@ -125,6 +136,7 @@ mod tests {
             Falha::PapelIndisponivel,
             Falha::BordaDoServidor,
             Falha::PareamentoInterrompido,
+            Falha::ParNaoRespondeu,
         ];
         for falha in falhas {
             assert!(!falha.to_string().is_empty(), "{falha:?} sem descrição");
@@ -155,6 +167,7 @@ mod tests {
             (Falha::PapelIndisponivel, 8),
             (Falha::BordaDoServidor, 9),
             (Falha::PareamentoInterrompido, 10),
+            (Falha::ParNaoRespondeu, 11),
         ];
         for (falha, indice) in esperado {
             let bytes = postcard::to_allocvec(&falha).expect("serializa");

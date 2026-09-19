@@ -143,6 +143,9 @@ install -Dpm 0644 empacotar/linux/io.github.inputremote.ativar.policy \
         %{buildroot}%{_datadir}/polkit-1/actions/io.github.inputremote.ativar.policy
 install -Dpm 0644 empacotar/linux/80-inputremote.preset \
         %{buildroot}%{_prefix}/lib/systemd/system-preset/80-%{name}.preset
+# As portas do produto como servico do firewalld; o ajudante de ativacao o liga na zona padrao.
+install -Dpm 0644 empacotar/linux/inputremote-firewalld.xml \
+        %{buildroot}%{_prefix}/lib/firewalld/services/%{name}.xml
 
 # Um arquivo por tamanho, no lugar que o tema de icones procura. Um PNG grande sozinho obrigaria
 # cada lancador a reduzir por conta propria, e cada um reduz de um jeito.
@@ -166,11 +169,18 @@ desktop-file-validate %{buildroot}%{_sysconfdir}/xdg/autostart/inputremote-clipb
 %dir %{_libexecdir}/%{name}
 %{_libexecdir}/%{name}/ativar
 %{_datadir}/polkit-1/actions/io.github.inputremote.ativar.policy
+%dir %{_prefix}/lib/firewalld
+%dir %{_prefix}/lib/firewalld/services
+%{_prefix}/lib/firewalld/services/%{name}.xml
 %config(noreplace) %{_sysconfdir}/xdg/autostart/inputremote-clipboard.desktop
 %{_datadir}/applications/%{name}.desktop
 %{_datadir}/icons/hicolor/*/apps/%{name}.png
 
 %changelog
+* Sat Sep 19 2026 InputRemote <inputremote@example.invalid> - 0.1.0-0.1.dev
+- Parear sem configurar nada: descoberta na rede local (mDNS) e lista dos Bluetooth pareados.
+- As portas do produto como servico do firewalld, ligado pelo ajudante de ativacao.
+
 * Fri Sep 18 2026 InputRemote <inputremote@example.invalid> - 0.1.0-0.1.dev
 - O servico e habilitado e iniciado na instalacao, e parado na remocao.
 - A janela pede a senha de administrador pelo polkit, com a explicacao, para ligar o servico e dar

@@ -86,6 +86,8 @@ fn montar(acao: &str, argumento: Option<String>) -> Result<Roteiro, String> {
         // O gatilho da travessia, à mão: o ajudante da sessão lê o clipboard e oferece ao par.
         "sincronizar" => simples(Pedido::SincronizarClipboard),
         "diagnostico" => simples(Pedido::Diagnostico),
+        // A mesma busca do botão "Procurar": rede (mDNS) e Bluetooth pareado. A lista chega por aviso.
+        "procurar" => simples(Pedido::Procurar),
         // O que o ajudante faz quando há texto no clipboard, sem precisar de clipboard.
         "texto" => argumento
             .and_then(ir_ipc::TextoDoClipboard::novo)

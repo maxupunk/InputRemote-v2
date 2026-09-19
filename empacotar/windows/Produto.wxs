@@ -17,7 +17,8 @@
     TemAgente   1 quando inputremote-agent.exe existe
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
-     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension"
+     xmlns:fire="http://schemas.microsoft.com/wix/FirewallExtension">
   <Product Id="*"
            Name="InputRemote"
            Language="1033"
@@ -131,7 +132,18 @@
       <Component Id="Servico" Guid="*" Win64="yes">
         <File Id="inputremote_daemon.exe"
               Source="$(var.Binarios)\inputremote-daemon.exe"
-              KeyPath="yes" />
+              KeyPath="yes">
+          <!-- Entrada liberada para o servico, so na sub-rede local. Sem esta regra, numa rede
+               marcada como Publica o Windows nao podia ser chamado nem respondia a descoberta: o
+               outro computador nao o achava, e parear so funcionava com o Windows discando (log 21).
+               Por programa, e nao por porta: cobre a porta de teclado e mouse, a de arquivos e o
+               mDNS, e some junto com o servico na desinstalacao. -->
+          <fire:FirewallException Id="FirewallServico"
+                                  Name="InputRemote"
+                                  Scope="localSubnet"
+                                  Profile="all"
+                                  IgnoreFailure="yes" />
+        </File>
         <ServiceInstall Id="ServicoInputRemote"
                         Name="InputRemote"
                         DisplayName="InputRemote"
