@@ -9,4 +9,6 @@ Terminal=false
 Categories=Utility;Settings;HardwareSettings;
 Keywords=kvm;teclado;mouse;keyboard;
 StartupNotify=true
-StartupWMClass=inputremote-ui
+# O mesmo que a janela declara em `set_xdg_app_id` (ir-ui/src/main.rs), e o mesmo nome deste
+# arquivo: e assim que o ambiente grafico liga a janela aberta a este atalho, e mostra o icone.
+StartupWMClass=inputremote

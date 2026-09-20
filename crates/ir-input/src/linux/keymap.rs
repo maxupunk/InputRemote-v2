@@ -109,6 +109,10 @@ const MAP: &[(u16, Key)] = &[
     (0x62, Key::KEY_KP0),
     (0x63, Key::KEY_KPDOT),
     (0x65, Key::KEY_COMPOSE),
+    // As teclas do ABNT2 que o teclado americano não tem (ver `windows::scancode`).
+    (0x64, Key::KEY_102ND),
+    (0x85, Key::KEY_KPCOMMA),
+    (0x87, Key::KEY_RO),
     (0xE0, Key::KEY_LEFTCTRL),
     (0xE1, Key::KEY_LEFTSHIFT),
     (0xE2, Key::KEY_LEFTALT),
@@ -134,4 +138,23 @@ pub fn hid_to_key(usage: HidUsage) -> Option<Key> {
 #[must_use]
 pub fn all_keys() -> Vec<Key> {
     MAP.iter().map(|(_, key)| *key).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A lista de `ir-proto` é o contrato entre os dois backends: uma tecla que só um deles saiba
+    /// traduzir some na travessia naquele sentido, calada. Foi o caso do PrintScreen e do teclado
+    /// numérico, que o Windows não sabia capturar.
+    #[test]
+    fn o_linux_injeta_todas_as_teclas_do_contrato() {
+        for usage in ir_proto::input::teclado_completo() {
+            assert!(
+                hid_to_key(usage).is_some(),
+                "HID {:#04x} sem tecla no Linux",
+                usage.get()
+            );
+        }
+    }
 }

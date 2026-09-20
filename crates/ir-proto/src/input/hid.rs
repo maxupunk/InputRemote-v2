@@ -23,6 +23,39 @@ use serde::{Deserialize, Serialize};
 #[serde(transparent)]
 pub struct HidUsage(pub u16);
 
+/// As faixas de teclas que o produto carrega, em HID Usage da página 0x07.
+///
+/// É o contrato entre os dois backends de `ir-input`, e é contra ele que os dois são testados: uma
+/// tecla que só um lado saiba traduzir **some** na travessia naquele sentido, sem erro e sem
+/// registro. Foi assim que o `PrintScreen` e o teclado numérico inteiro deixaram de sair do
+/// Windows, e ninguém viu até alguém apertar.
+///
+/// Cobre o teclado de 104 teclas e as três que o ABNT2 brasileiro tem a mais. De fora ficam as
+/// teclas dos teclados japonês e coreano, e o `Pause`, que o Windows manda como uma sequência de
+/// três scancodes. Teclas de mídia e de energia vivem em outras páginas, e acrescentá-las muda o
+/// protocolo (ver [`HidUsage`]).
+const FAIXAS_DO_TECLADO: &[(u16, u16)] = &[
+    // Letras, dígitos, pontuação, Enter, Esc, Backspace, Tab, espaço.
+    (0x04, 0x31),
+    // Caps Lock, F1–F12, PrintScreen, Scroll Lock, Pause, o bloco de navegação, Num Lock e o
+    // teclado numérico inteiro.
+    (0x33, 0x63),
+    // A `\ |` dos teclados não americanos e a tecla de menu de contexto.
+    (0x64, 0x65),
+    // A vírgula do teclado numérico e a `/ ? °`, as outras duas do ABNT2.
+    (0x85, 0x85),
+    (0x87, 0x87),
+    // Os oito modificadores.
+    (0xE0, 0xE7),
+];
+
+/// Todas as teclas do contrato, uma a uma.
+pub fn teclado_completo() -> impl Iterator<Item = HidUsage> {
+    FAIXAS_DO_TECLADO
+        .iter()
+        .flat_map(|(primeira, ultima)| (*primeira..=*ultima).map(HidUsage))
+}
+
 impl HidUsage {
     /// Menor valor com significado na página 0x07.
     pub const MIN: Self = Self(0x04);

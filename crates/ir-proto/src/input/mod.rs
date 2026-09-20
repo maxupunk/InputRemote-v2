@@ -16,7 +16,7 @@ mod pressed;
 
 pub use button::{Button, Buttons};
 pub use event::{PointerDelta, PointerPosition, WheelDelta};
-pub use hid::HidUsage;
+pub use hid::{HidUsage, teclado_completo};
 pub use modifiers::Modifiers;
 pub use pressed::PressedKeys;
 

@@ -333,6 +333,13 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       e o handshake reenvia por até 12 s em vez de desistir no primeiro datagrama ([log 39](docs/logs/39-parear-sem-configurar-nada.md))
 - [x] Quem recebe o pedido vai sozinho para os seis dígitos, até saindo da bandeja; o código é
       recontado à janela que abre depois ([log 39](docs/logs/39-parear-sem-configurar-nada.md))
+- [x] Teclado inteiro atravessando do Windows: `PrintScreen`, `Scroll Lock`, o teclado numérico e a
+      tecla de menu entraram na tabela de scancodes, e os dois backends são testados contra
+      `ir_proto::input::teclado_completo()` — inclusive as três teclas a mais do ABNT2 brasileiro,
+      que faltavam nos dois lados. Falta o `Pause`, que é a sequência `E1 1D 45`
+      ([log 40](docs/logs/40-o-ajudante-que-ninguem-subia.md))
+- [x] A janela do Linux declara `app_id`, e o ambiente gráfico a liga ao `.desktop`: ícone na barra
+      e o lançador reconhecendo a janela aberta ([log 40](docs/logs/40-o-ajudante-que-ninguem-subia.md))
 - [x] A lista de "Parear" mostra do Bluetooth só computadores (classe maior 0x01 da *Class of
       Device*); fones, alto-falantes e teclados pareados no sistema ficam de fora ([log 40](docs/logs/40-o-ajudante-que-ninguem-subia.md))
 - [ ] O vencimento do código de pareamento é registrado como vencimento, e não com
