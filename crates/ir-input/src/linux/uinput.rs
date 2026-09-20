@@ -26,6 +26,7 @@ use ir_proto::input::{Button, HidUsage, PointerPosition, WheelDelta};
 
 use crate::error::{InputError, Result};
 use crate::linux::keymap::{all_keys, hid_to_key};
+use crate::pendentes::Pendentes;
 use crate::{InjectEvent, Injector};
 
 /// O maior valor absoluto de um eixo do ponteiro. `0..=65535` cobre o desktop virtual inteiro,
@@ -36,6 +37,8 @@ const ABS_MAX: i32 = 65_535;
 pub struct UinputInjector {
     keyboard: VirtualDevice,
     pointer: VirtualDevice,
+    /// O que este injetor apertou e ainda não soltou.
+    pendentes: Pendentes,
 }
 
 impl core::fmt::Debug for UinputInjector {
@@ -54,7 +57,11 @@ impl UinputInjector {
     pub fn open() -> Result<Self> {
         let keyboard = build_keyboard()?;
         let pointer = build_pointer()?;
-        Ok(Self { keyboard, pointer })
+        Ok(Self {
+            keyboard,
+            pointer,
+            pendentes: Pendentes::nova(),
+        })
     }
 
     fn key_event(&mut self, usage: HidUsage, pressed: bool) -> Result<()> {
@@ -124,28 +131,46 @@ impl UinputInjector {
 impl Injector for UinputInjector {
     fn inject(&mut self, event: InjectEvent) -> Result<()> {
         match event {
-            InjectEvent::Key { usage, pressed } => self.key_event(usage, pressed),
-            InjectEvent::Button { button, pressed } => self.button_event(button, pressed),
+            InjectEvent::Key { usage, pressed } => {
+                self.key_event(usage, pressed)?;
+                self.pendentes.tecla(usage, pressed);
+                Ok(())
+            }
+            InjectEvent::Button { button, pressed } => {
+                self.button_event(button, pressed)?;
+                self.pendentes.botao(button, pressed);
+                Ok(())
+            }
             InjectEvent::Wheel(delta) => self.wheel_event(delta),
             InjectEvent::Pointer(position) => self.pointer_event(position),
         }
     }
 
+    /// Solta o que **este injetor** apertou — e nada mais.
+    ///
+    /// Soltava toda tecla e todo botão que o dispositivo sabe emitir. Aqui isso não abre menu como
+    /// no Windows, mas é a mesma mentira: o produto dizia ao sistema que soltou o que nunca
+    /// apertou. Continua idempotente, que era a razão de soltar tudo.
     fn release_all(&mut self) -> Result<()> {
-        // Solta toda tecla e todo botão que o dispositivo saiba emitir. É idempotente: soltar o
-        // que já está solto não tem efeito, e é a rede de segurança contra tecla presa.
-        let mut events = Vec::new();
-        for key in all_keys() {
-            events.push(InputEvent::new(EventType::KEY, key.code(), 0));
-        }
-        self.keyboard
-            .emit(&events)
-            .map_err(|e| InputError::Io(e.to_string()))?;
-
-        let buttons: Vec<InputEvent> = Button::ALL
-            .iter()
-            .map(|b| InputEvent::new(EventType::KEY, button_key(*b).code(), 0))
+        let (teclas, botoes) = self.pendentes.soltar();
+        let events: Vec<InputEvent> = teclas
+            .into_iter()
+            .filter_map(hid_to_key)
+            .map(|key| InputEvent::new(EventType::KEY, key.code(), 0))
             .collect();
+        if !events.is_empty() {
+            self.keyboard
+                .emit(&events)
+                .map_err(|e| InputError::Io(e.to_string()))?;
+        }
+
+        let buttons: Vec<InputEvent> = botoes
+            .into_iter()
+            .map(|b| InputEvent::new(EventType::KEY, button_key(b).code(), 0))
+            .collect();
+        if buttons.is_empty() {
+            return Ok(());
+        }
         self.pointer
             .emit(&buttons)
             .map_err(|e| InputError::Io(e.to_string()))

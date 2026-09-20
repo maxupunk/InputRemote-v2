@@ -170,12 +170,6 @@ pub fn scancode_to_hid(scancode: u16, extended: bool) -> Option<HidUsage> {
         })
 }
 
-/// Todos os scancodes conhecidos, para soltar tudo.
-#[must_use]
-pub fn all_scancodes() -> Vec<(u16, bool)> {
-    MAP.iter().map(|(_, code, ext)| (*code, *ext)).collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

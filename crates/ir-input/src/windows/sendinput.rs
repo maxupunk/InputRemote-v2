@@ -22,37 +22,59 @@ use crate::error::{InputError, Result};
 /// Botões laterais, na parte alta de `mouseData`.
 const XBUTTON1: u16 = 0x0001;
 const XBUTTON2: u16 = 0x0002;
-use crate::windows::scancode::{all_scancodes, hid_to_scancode};
+use crate::pendentes::Pendentes;
+use crate::windows::scancode::hid_to_scancode;
 use crate::{InjectEvent, Injector};
 
 /// O injetor por `SendInput`. Sem estado próprio: cada evento é uma chamada.
 #[derive(Debug, Default)]
-pub struct SendInputInjector;
+pub struct SendInputInjector {
+    /// O que este injetor apertou e ainda não soltou.
+    pendentes: Pendentes,
+}
 
 impl SendInputInjector {
     /// Um injetor novo.
     #[must_use]
     pub const fn new() -> Self {
-        Self
+        Self {
+            pendentes: Pendentes::nova(),
+        }
     }
 }
 
 impl Injector for SendInputInjector {
     fn inject(&mut self, event: InjectEvent) -> Result<()> {
         match event {
-            InjectEvent::Key { usage, pressed } => inject_key(usage, pressed),
-            InjectEvent::Button { button, pressed } => send(&[button_input(button, pressed)]),
+            InjectEvent::Key { usage, pressed } => {
+                inject_key(usage, pressed)?;
+                self.pendentes.tecla(usage, pressed);
+                Ok(())
+            }
+            InjectEvent::Button { button, pressed } => {
+                send(&[button_input(button, pressed)])?;
+                self.pendentes.botao(button, pressed);
+                Ok(())
+            }
             InjectEvent::Wheel(delta) => inject_wheel(delta),
             InjectEvent::Pointer(position) => send(&[pointer_input(position)]),
         }
     }
 
+    /// Solta o que **este injetor** apertou — e nada mais.
+    ///
+    /// Soltar o que não está preso não é inócuo no Windows: um botão direito solto abre o menu de
+    /// contexto do programa em foco, e um Alt solto ativa a barra de menus. Era o que acontecia a
+    /// cada volta do ponteiro ao servidor ([log 40](../../../docs/logs/40-o-ajudante-que-ninguem-subia.md)).
     fn release_all(&mut self) -> Result<()> {
+        let (teclas, botoes) = self.pendentes.soltar();
         let mut inputs = Vec::new();
-        for (scancode, extended) in all_scancodes() {
-            inputs.push(key_input(scancode, extended, false));
+        for usage in teclas {
+            if let Some((scancode, extended)) = hid_to_scancode(usage) {
+                inputs.push(key_input(scancode, extended, false));
+            }
         }
-        for button in Button::ALL {
+        for button in botoes {
             inputs.push(button_input(button, false));
         }
         send(&inputs)

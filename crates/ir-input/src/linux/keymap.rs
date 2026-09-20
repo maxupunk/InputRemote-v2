@@ -145,7 +145,7 @@ mod tests {
     use super::*;
 
     /// A lista de `ir-proto` é o contrato entre os dois backends: uma tecla que só um deles saiba
-    /// traduzir some na travessia naquele sentido, calada. Foi o caso do PrintScreen e do teclado
+    /// traduzir some na travessia naquele sentido, calada. Foi o caso do `PrintScreen` e do teclado
     /// numérico, que o Windows não sabia capturar.
     #[test]
     fn o_linux_injeta_todas_as_teclas_do_contrato() {

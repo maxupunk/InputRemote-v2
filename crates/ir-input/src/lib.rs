@@ -30,6 +30,7 @@ use std::sync::mpsc::Sender;
 use ir_proto::input::{Button, HidUsage, PointerPosition, WheelDelta};
 
 pub mod error;
+mod pendentes;
 pub use error::{InputError, Result};
 
 #[cfg(target_os = "linux")]

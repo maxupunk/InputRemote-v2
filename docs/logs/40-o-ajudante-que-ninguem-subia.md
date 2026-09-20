@@ -69,6 +69,14 @@ A lista das teclas que o produto carrega virou contrato em `ir_proto::input::TEC
 sentido, calada. Junto, uma ferramenta de bancada — `cargo run -p ir-input --example teclas` — que
 mostra o que o gancho capturou, para a pergunta "esta tecla atravessa?" não exigir as duas máquinas.
 
+**O menu de contexto que aparecia a cada volta do ponteiro.** Voltando do cliente para o servidor,
+o programa em foco no Windows abria um menu — o do botão direito, diferente em cada programa. A
+causa é o "solta tudo", o comando mais importante do produto: ele era **literal**, e soltava toda
+tecla e todo botão que o backend sabe emitir, tivessem sido apertados ou não. No Windows soltar o
+que não está preso não é inócuo: o botão direito solto gera o menu de contexto do programa em foco,
+e o Alt solto ativa a barra de menus. Agora cada injetor guarda o que apertou (`ir-input/pendentes`)
+e solta só isso, nos dois sistemas — continuando idempotente, que era a razão de soltar tudo.
+
 **A janela sem ícone no Linux.** A janela nascia sem `app_id`: o GNOME não tinha como ligá-la ao
 `inputremote.desktop`, e por isso ela aparecia sem ícone na barra e o lançador não a reconhecia como
 já aberta. Agora a interface declara `slint::set_xdg_app_id("inputremote")` antes de a janela
@@ -91,6 +99,9 @@ Testes novos:
 - a decisão de relançar: tolerância para o ajudante vivo reconectar, e a mesma folga para o
   lançado ligar;
 - a trava de instância única;
+- o "solta tudo" soltando só o que foi injetado: nada quando nada foi apertado (o defeito do menu),
+  o modificador que continua apertado depois de a letra sair, e a repetição do teclado não
+  duplicando;
 - as teclas que faltavam: `PrintScreen` (com e sem Alt) contra o asterisco do numérico, os dígitos
   do numérico contra o bloco de navegação, e a conferência dos **dois** backends contra
   `teclado_completo()`;
@@ -98,6 +109,23 @@ Testes novos:
   alto-falante, teclado, mouse, relógio e classe ausente saem; o `Class=` do BlueZ lido;
 - a guarda de dupla codificação.
 
-**Bancada:** _a preencher com o resultado dos pacotes novos nas duas máquinas._
+**Bancada**, Windows (`SAMSUNG-MAXUEL`) e Fedora 44 (10.0.0.135), **pareados só pelo Bluetooth**,
+com os pacotes novos dos dois lados:
 
-**Verificação:** _a preencher._
+| O que | Resultado |
+|---|---|
+| Ajudante depois de instalar, Windows | o serviço o lançou sozinho: `ajudante de clipboard lançado na sessão do usuário pid=44748` |
+| Ajudante depois de instalar, Linux | subiu na sessão aberta, sem novo login, e o serviço registrou `ajudante de clipboard ligado` |
+| Canal de arquivos sem endereço de rede | `par achado na rede local para o canal de arquivos achado=10.0.0.135:52525`, e `canal de arquivos estabelecido` 40 ms depois |
+| Texto Windows → Linux | chegou e foi publicado (`o que chegou está no clipboard`), inclusive numa cópia que o usuário fez por conta própria |
+| Texto Linux → Windows | `IR-L2W-13465` no clipboard do Windows |
+| Arquivo Windows → Linux | SHA-256 idêntico em `/var/lib/inputremote/recebidos` |
+| Arquivo Linux → Windows | SHA-256 idêntico em `%ProgramData%\InputRemoteecebidos` |
+
+Uma armadilha da bancada, de novo (já estava no [log 34](34-copiar-aqui-colar-la.md)): com o protetor de
+tela do GNOME ativo, o compositor não entrega a seleção, e `wl-paste` fica pendurado até o prazo. O
+que acorda a tela por SSH é
+`busctl --user call org.gnome.ScreenSaver /org/gnome/ScreenSaver org.gnome.ScreenSaver SetActive b false`.
+
+**Verificação:** 852 testes no Windows; `verificar.sh` verde no container do Fedora; clippy e
+`cargo xtask check`, agora com a conferência de dupla codificação.
