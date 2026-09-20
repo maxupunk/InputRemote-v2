@@ -146,6 +146,7 @@ impl Bancada {
             edge: Edge::Right,
             agente,
             identidade_local: identidade(),
+            ajudantes: crate::ipc::Ajudantes::default(),
         });
         Self {
             daemon,

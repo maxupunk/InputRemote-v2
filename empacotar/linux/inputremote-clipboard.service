@@ -1,0 +1,25 @@
+# O ajudante de clipboard, como unidade do systemd do usuario.
+#
+# Antes era um autostart do XDG, que so vale no login: instalar ou atualizar o pacote com o usuario
+# ja dentro deixava copiar e colar parado ate o proximo login, e um ajudante que morresse nao
+# voltava. Aqui ele sobe com a sessao grafica, volta sempre que sair, e o pacote o (re)inicia nas
+# sessoes abertas (ajudante-nas-sessoes).
+#
+# Instalado em /usr/lib/systemd/user, e ligado a graphical-session.target por um link que vem no
+# pacote: e so na sessao grafica que ha clipboard, e e dela que o wl-clipboard precisa
+# (WAYLAND_DISPLAY, que o ambiente grafico passa ao systemd do usuario).
+[Unit]
+Description=InputRemote - copiar e colar entre os dois computadores
+PartOf=graphical-session.target
+After=graphical-session.target
+# Sem limite de tentativas: sem o ajudante a copia nao atravessa, e desistir seria o defeito de
+# antes com outro nome.
+StartLimitIntervalSec=0
+
+[Service]
+ExecStart=/usr/bin/inputremote-agent --clipboard
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target

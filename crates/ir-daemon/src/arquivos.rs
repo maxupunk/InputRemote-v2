@@ -20,6 +20,7 @@ pub(crate) fn abrir(
     dir: &std::path::Path,
     identidade: &Arc<ir_crypto::Identity>,
     avisos: &tokio::sync::broadcast::Sender<ir_ipc::Aviso>,
+    descoberta: &ir_transporte::Descoberta,
 ) -> ir_transferencia::Pedidos {
     ir_transferencia::iniciar(ir_transferencia::Ajuste {
         porta: cfg.port,
@@ -27,8 +28,15 @@ pub(crate) fn abrir(
         cota: ir_transferencia::Cota::default(),
         identidade: Arc::clone(identidade),
         destino: destino(cfg),
+        localizar: localizador(descoberta),
         avisos: avisos.clone(),
     })
+}
+
+/// Onde o par está na rede, pela descoberta: é o que dá arquivos a quem pareou pelo Bluetooth.
+fn localizador(descoberta: &ir_transporte::Descoberta) -> ir_transferencia::Localizador {
+    let descoberta = descoberta.clone();
+    Arc::new(move |chave| Box::pin(descoberta.localizar(crate::machine_id_of(&chave))))
 }
 
 /// Com quem trocar arquivos, pelo que a configuração diz agora.

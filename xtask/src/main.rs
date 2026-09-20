@@ -9,6 +9,7 @@
 //! cargo xtask check-limits   tamanho de arquivo, função e crate
 //! cargo xtask check-deps     as setas de docs/02 §2, e a pureza do núcleo
 //! cargo xtask check-logs     nenhum log com conteúdo digitado
+//! cargo xtask check-texto    nenhum texto em UTF-8 codificado duas vezes
 //! ```
 
 #![cfg_attr(
@@ -25,6 +26,7 @@ mod deps;
 mod limits;
 mod logs;
 mod scan;
+mod texto;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -52,13 +54,14 @@ fn run() -> Result<bool> {
     let root = repository_root()?;
 
     let checks: Vec<Check> = match task.as_str() {
-        "check" => vec![Check::Limits, Check::Deps, Check::Logs],
+        "check" => vec![Check::Limits, Check::Deps, Check::Logs, Check::Texto],
         "check-limits" => vec![Check::Limits],
         "check-deps" => vec![Check::Deps],
         "check-logs" => vec![Check::Logs],
+        "check-texto" => vec![Check::Texto],
         other => bail!(
             "tarefa desconhecida: `{other}`. \
-             Use `check`, `check-limits`, `check-deps` ou `check-logs`."
+             Use `check`, `check-limits`, `check-deps`, `check-logs` ou `check-texto`."
         ),
     };
 
@@ -70,6 +73,7 @@ fn run() -> Result<bool> {
             Check::Limits => limits::check(&files),
             Check::Deps => deps::check(&root)?,
             Check::Logs => logs::check(&files),
+            Check::Texto => texto::check(&files),
         };
         report(check.name(), &found);
         violations.extend(found);
@@ -95,6 +99,7 @@ enum Check {
     Limits,
     Deps,
     Logs,
+    Texto,
 }
 
 impl Check {
@@ -103,6 +108,7 @@ impl Check {
             Self::Limits => "limites de tamanho",
             Self::Deps => "setas de dependência e pureza",
             Self::Logs => "privacidade dos logs",
+            Self::Texto => "texto sem dupla codificação",
         }
     }
 }

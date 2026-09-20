@@ -115,14 +115,11 @@
         <File Id="inputremote_agent.exe"
               Source="$(var.Binarios)\inputremote-agent.exe"
               KeyPath="yes" />
-        <!-- O ajudante de clipboard: o mesmo executavel, rodando como cada usuario que entra, e
-             nao como SYSTEM. O clipboard e dado do usuario (ADR-0011). HKLM\...\Run inicia o
-             ajudante na sessao de todo usuario, com a autoridade dele. -->
-        <RegistryValue Root="HKLM"
-                       Key="Software\Microsoft\Windows\CurrentVersion\Run"
-                       Name="InputRemoteClipboard"
-                       Type="string"
-                       Value="&quot;[#inputremote_agent.exe]&quot; --clipboard" />
+        <!-- O ajudante de clipboard e o mesmo executavel, com o argumento de clipboard, rodando
+             como o usuario. Nao ha mais entrada na chave Run: ela so valia no login, e instalar ou
+             atualizar com o usuario dentro deixava copiar e colar parado ate o proximo. Quem o
+             lanca agora e o servico, na sessao de console e com o token de quem entrou, e de novo
+             sempre que ele faltar (ir-daemon, zelador). -->
       </Component>
       <?endif?>
 
@@ -136,8 +133,8 @@
           <!-- Entrada liberada para o servico, so na sub-rede local. Sem esta regra, numa rede
                marcada como Publica o Windows nao podia ser chamado nem respondia a descoberta: o
                outro computador nao o achava, e parear so funcionava com o Windows discando (log 21).
-               Por programa, e nao por porta: cobre a porta de teclado e mouse, a de arquivos e o
-               mDNS, e some junto com o servico na desinstalacao. -->
+               Por programa, e nao por porta: cobre a porta de teclado e mouse, a de arquivos e a
+               descoberta, e some junto com o servico na desinstalacao. -->
           <fire:FirewallException Id="FirewallServico"
                                   Name="InputRemote"
                                   Scope="localSubnet"

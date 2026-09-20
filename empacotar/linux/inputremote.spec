@@ -72,7 +72,8 @@ e mouse por /dev/uinput -- o caminho que funciona tambem no greeter, na tela de 
 console.
 
 A injecao por uinput entra abaixo do compositor, e o proprio servico a faz. O que roda na sessao
-do usuario e so o ajudante de clipboard, iniciado com a sessao: ele leva ao outro computador o que
+do usuario e so o ajudante de clipboard, uma unidade do systemd do usuario que sobe com a sessao
+grafica e volta sempre que sair: ele leva ao outro computador o que
 estiver no clipboard quando o mouse atravessa a borda, e poe no clipboard daqui o que chegar de la.
 Ele roda como o usuario e fala pelo mesmo canal que a janela -- entao o usuario precisa estar no
 grupo `inputremote`.
@@ -98,10 +99,17 @@ if [ "$1" -eq 1 ]; then
     systemctl start inputremote.service >/dev/null 2>&1 || :
 fi
 
+%posttrans
+# Instalacao ou atualizacao, ja com o pacote velho fora: o ajudante de clipboard sobe (ou volta, com
+# o binario novo) nas sessoes graficas abertas. A unidade sozinha so subiria no proximo login --
+# e copiar e colar ficaria parado ate la, sem nada na tela dizendo por que.
+%{_libexecdir}/%{name}/ajudante-nas-sessoes >/dev/null 2>&1 || :
+
 %preun
 # Remocao (e nao atualizacao): para e desabilita antes de os arquivos sumirem. Sem isso o servico
 # continuava rodando um binario apagado ate o proximo reinicio.
 if [ "$1" -eq 0 ]; then
+    %{_libexecdir}/%{name}/ajudante-nas-sessoes parar >/dev/null 2>&1 || :
     systemctl disable --now inputremote.service >/dev/null 2>&1 || :
 fi
 
@@ -126,8 +134,14 @@ cargo build --release --locked --bin inputremote-ui --bin inputremote-daemon --b
 install -Dpm 0755 target/release/inputremote-ui %{buildroot}%{_bindir}/inputremote-ui
 install -Dpm 0755 target/release/inputremote-daemon %{buildroot}%{_bindir}/inputremote-daemon
 install -Dpm 0755 target/release/inputremote-agent %{buildroot}%{_bindir}/inputremote-agent
-# Iniciado com a sessao grafica de cada usuario, pelo mecanismo padrao do XDG.
-install -Dpm 0644 empacotar/linux/inputremote-clipboard.desktop         %{buildroot}%{_sysconfdir}/xdg/autostart/inputremote-clipboard.desktop
+# O ajudante de clipboard: unidade do usuario, ligada a sessao grafica por um link que vem no
+# pacote -- vale para todo usuario, sem `systemctl --global enable` nem preset.
+install -Dpm 0644 empacotar/linux/inputremote-clipboard.service \
+        %{buildroot}%{_prefix}/lib/systemd/user/%{name}-clipboard.service
+install -d %{buildroot}%{_prefix}/lib/systemd/user/graphical-session.target.wants
+ln -s ../%{name}-clipboard.service \
+        %{buildroot}%{_prefix}/lib/systemd/user/graphical-session.target.wants/%{name}-clipboard.service
+install -Dpm 0755 empacotar/linux/ajudante-nas-sessoes %{buildroot}%{_libexecdir}/%{name}/ajudante-nas-sessoes
 install -Dpm 0644 empacotar/linux/inputremote.desktop \
         %{buildroot}%{_datadir}/applications/%{name}.desktop
 
@@ -156,7 +170,6 @@ done
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
-desktop-file-validate %{buildroot}%{_sysconfdir}/xdg/autostart/inputremote-clipboard.desktop
 
 %files
 %license LICENSE
@@ -168,17 +181,24 @@ desktop-file-validate %{buildroot}%{_sysconfdir}/xdg/autostart/inputremote-clipb
 %{_prefix}/lib/systemd/system-preset/80-%{name}.preset
 %dir %{_libexecdir}/%{name}
 %{_libexecdir}/%{name}/ativar
+%{_libexecdir}/%{name}/ajudante-nas-sessoes
+%{_prefix}/lib/systemd/user/%{name}-clipboard.service
+%dir %{_prefix}/lib/systemd/user/graphical-session.target.wants
+%{_prefix}/lib/systemd/user/graphical-session.target.wants/%{name}-clipboard.service
 %{_datadir}/polkit-1/actions/io.github.inputremote.ativar.policy
 %dir %{_prefix}/lib/firewalld
 %dir %{_prefix}/lib/firewalld/services
 %{_prefix}/lib/firewalld/services/%{name}.xml
-%config(noreplace) %{_sysconfdir}/xdg/autostart/inputremote-clipboard.desktop
 %{_datadir}/applications/%{name}.desktop
 %{_datadir}/icons/hicolor/*/apps/%{name}.png
 
 %changelog
 * Sat Sep 19 2026 InputRemote <inputremote@example.invalid> - 0.1.0-0.1.dev
-- Parear sem configurar nada: descoberta na rede local (mDNS) e lista dos Bluetooth pareados.
+- O ajudante de clipboard vira unidade do systemd do usuario, com Restart=always, e o pacote o
+  (re)inicia nas sessoes abertas: instalar ou atualizar nao deixa mais copiar e colar parado.
+
+* Sat Sep 19 2026 InputRemote <inputremote@example.invalid> - 0.1.0-0.1.dev
+- Parear sem configurar nada: descoberta na rede local e lista dos Bluetooth pareados.
 - As portas do produto como servico do firewalld, ligado pelo ajudante de ativacao.
 
 * Fri Sep 18 2026 InputRemote <inputremote@example.invalid> - 0.1.0-0.1.dev

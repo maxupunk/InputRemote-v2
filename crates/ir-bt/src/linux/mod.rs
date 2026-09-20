@@ -154,6 +154,7 @@ fn recolher_do_adaptador(adaptador: &Path, encontrados: &mut Vec<Dispositivo>) {
             // Sem D-Bus não dá para saber se o rádio está ligado a ele agora. Dizer "não" é
             // honesto: o sistema conecta sozinho quando alguém abre um canal.
             conectado: false,
+            classe: info.classe,
         });
     }
 }

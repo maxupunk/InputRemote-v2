@@ -78,6 +78,8 @@ pub(crate) struct Parts {
     pub(crate) agente: broadcast::Sender<ComandoDoAgente>,
     /// Quem esta máquina é, guardada para recriar a sessão numa troca de papel ou de borda.
     pub(crate) identidade_local: LocalIdentity,
+    /// Quantos ajudantes de clipboard estão ligados, para o diagnóstico.
+    pub(crate) ajudantes: crate::ipc::Ajudantes,
     /// Quem está por perto para parear: rede e rádio.
     pub(crate) descoberta: ir_transporte::Descoberta,
     /// Por onde pedir um envio de arquivos.
@@ -121,6 +123,7 @@ impl Daemon {
             identidade_local: parts.identidade_local,
             arquivos: parts.arquivos,
             descoberta: parts.descoberta,
+            ajudantes: parts.ajudantes,
             ultimo_arranjo: None,
         }
     }

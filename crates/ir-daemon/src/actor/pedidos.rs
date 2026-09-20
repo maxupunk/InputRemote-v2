@@ -40,6 +40,8 @@ impl Daemon {
                 self.recontar_codigo_pendente();
                 Resposta::Feito
             }
+            // Quem conta o ajudante é a conexão dele (`ipc::controle`); aqui não há o que fazer.
+            Pedido::AcompanharClipboard => Resposta::Feito,
             Pedido::Procurar => {
                 self.procurar();
                 Resposta::Feito
@@ -202,7 +204,7 @@ impl Daemon {
     fn diagnostico(&self) -> String {
         format!(
             "papel: {:?}\nfase: {}\nenlace seguro: {}\npares gravados: {}\nendereço do par: {}\n\
-             rádio Bluetooth: {}\nportador em uso: {}",
+             rádio Bluetooth: {}\nportador em uso: {}\najudantes de clipboard ligados: {}",
             self.session.role(),
             self.session.phase(),
             self.linked,
@@ -218,6 +220,7 @@ impl Daemon {
             self.session
                 .carrier()
                 .map_or("nenhum", |portador| Portador::from(portador).nome_tecnico()),
+            self.ajudantes.ligados(),
         )
     }
 

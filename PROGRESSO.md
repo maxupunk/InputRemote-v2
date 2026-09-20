@@ -333,6 +333,8 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       e o handshake reenvia por até 12 s em vez de desistir no primeiro datagrama ([log 39](docs/logs/39-parear-sem-configurar-nada.md))
 - [x] Quem recebe o pedido vai sozinho para os seis dígitos, até saindo da bandeja; o código é
       recontado à janela que abre depois ([log 39](docs/logs/39-parear-sem-configurar-nada.md))
+- [x] A lista de "Parear" mostra do Bluetooth só computadores (classe maior 0x01 da *Class of
+      Device*); fones, alto-falantes e teclados pareados no sistema ficam de fora ([log 40](docs/logs/40-o-ajudante-que-ninguem-subia.md))
 - [ ] O vencimento do código de pareamento é registrado como vencimento, e não com
       `reason="códigos diferentes"`, que aponta para alguém no meio ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
 - [x] Investigar `o handshake seguro falhou` registrado no cliente durante uma rediscagem de
@@ -443,6 +445,12 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       identificação e `AccessCheck` no arquivo já aberto (`ir-acesso`). Com o serviço instalado, uma
       pasta saiu e um arquivo que só o SYSTEM lê foi recusado ([log 36](docs/logs/36-o-servico-instalado-como-origem.md))
 - [ ] Uma cópia recusada é oferecida duas vezes no Windows (dois avisos de mudança) ([log 36](docs/logs/36-o-servico-instalado-como-origem.md))
+- [x] O ajudante de clipboard sempre de pé: o serviço do Windows o lança na sessão do usuário e o
+      relança quando falta; no Linux, unidade do `systemd` do usuário com `Restart=always`, que o
+      pacote (re)inicia nas sessões abertas. Instalar ou atualizar não deixa mais copiar e colar
+      parado até o próximo login ([log 40](docs/logs/40-o-ajudante-que-ninguem-subia.md))
+- [x] Arquivos entre pares pareados pelo Bluetooth: o canal de arquivos acha o par na rede local
+      pela descoberta, pelo id de máquina da chave fixada ([log 40](docs/logs/40-o-ajudante-que-ninguem-subia.md))
 - [ ] `[H]` Com troca rápida de usuário no Windows, o texto que chega vai aos ajudantes das duas
       sessões ([log 35](docs/logs/35-o-texto-pelo-canal-4.md))
 

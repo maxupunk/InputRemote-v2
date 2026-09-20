@@ -39,11 +39,28 @@ pub(crate) fn como_servico() -> bool {
     COMO_SERVICO.load(Ordering::Relaxed)
 }
 
-/// O caminho do executável do agente, ao lado do nosso.
+/// O caminho do executável do agente, ao lado do nosso — erro se ele não estiver lá.
 fn caminho_do_agente() -> Result<std::path::PathBuf> {
-    Ok(std::env::current_exe()
+    let exe = std::env::current_exe()
         .context("descobrindo o próprio executável")?
-        .with_file_name("inputremote-agent.exe"))
+        .with_file_name("inputremote-agent.exe");
+    if !exe.exists() {
+        bail!("o executável do agente não está em {}", exe.display());
+    }
+    Ok(exe)
+}
+
+/// Lança o ajudante de clipboard na sessão de console, **como o usuário que entrou nela**.
+///
+/// Não como SYSTEM: o clipboard é dado do usuário, e o ajudante não pode pedir ao serviço nada que o
+/// usuário não pudesse pedir pela janela ([ADR-0011](../../../docs/adr/0011-clipboard-na-travessia.md)).
+///
+/// # Errors
+///
+/// Sem sessão de console, sem ninguém dentro dela (a tela de login), ou se o sistema recusar.
+pub(crate) fn lancar_ajudante_de_clipboard() -> Result<u32> {
+    let exe = caminho_do_agente()?;
+    janela::lancar_como_usuario(&exe, "--clipboard")
 }
 
 /// Lança o agente, pelo caminho que o nosso contexto exigir.
@@ -53,9 +70,6 @@ fn caminho_do_agente() -> Result<std::path::PathBuf> {
 /// Erro se o executável do agente não existir, ou se o sistema recusar o lançamento.
 pub(crate) fn lancar_agente() -> Result<u32> {
     let exe = caminho_do_agente()?;
-    if !exe.exists() {
-        bail!("o executável do agente não está em {}", exe.display());
-    }
     if como_servico() {
         return janela::lancar_na_sessao_de_console(&exe);
     }
@@ -75,7 +89,8 @@ mod janela {
         TOKEN_ADJUST_SESSIONID, TOKEN_ALL_ACCESS, TOKEN_ASSIGN_PRIMARY, TOKEN_DUPLICATE,
         TOKEN_QUERY, TokenPrimary, TokenSessionId, TokenUIAccess,
     };
-    use windows::Win32::System::RemoteDesktop::WTSGetActiveConsoleSessionId;
+    use windows::Win32::System::Environment::{CreateEnvironmentBlock, DestroyEnvironmentBlock};
+    use windows::Win32::System::RemoteDesktop::{WTSGetActiveConsoleSessionId, WTSQueryUserToken};
     use windows::Win32::System::Threading::{
         CREATE_NO_WINDOW, CREATE_UNICODE_ENVIRONMENT, CreateProcessAsUserW, GetCurrentProcess,
         OpenProcessToken, PROCESS_INFORMATION, STARTUPINFOW,
@@ -99,6 +114,34 @@ mod janela {
         resultado
     }
 
+    /// Lança `exe argumentos` na sessão de console, com o token e o ambiente de quem entrou nela.
+    pub(super) fn lancar_como_usuario(exe: &std::path::Path, argumentos: &str) -> Result<u32> {
+        let sessao = sessao_de_console().context("nenhuma sessão de console ainda")?;
+        let mut token = HANDLE::default();
+        // SAFETY: `token` é um destino válido. Exige `SeTcbPrivilege`, que `LocalSystem` tem; sem
+        // ninguém na sessão, a chamada falha, e é esse o erro que volta.
+        unsafe { WTSQueryUserToken(sessao, std::ptr::from_mut(&mut token)) }
+            .context("ninguém entrou na sessão de console")?;
+
+        // O ambiente do usuário (`APPDATA`, `TEMP`…), e não o do SYSTEM, que o processo herdaria.
+        let mut ambiente: *mut std::ffi::c_void = std::ptr::null_mut();
+        // SAFETY: `ambiente` é um destino válido e `token` é o token primário que acabou de vir.
+        let com_ambiente = unsafe {
+            CreateEnvironmentBlock(std::ptr::from_mut(&mut ambiente), Some(token), false)
+        }
+        .is_ok();
+        let linha = format!("\"{}\" {argumentos}", exe.display());
+        let resultado =
+            criar_processo(token, &linha, com_ambiente.then_some(ambiente.cast_const()));
+        if com_ambiente {
+            // SAFETY: o bloco veio de `CreateEnvironmentBlock` e não é mais usado.
+            unsafe { DestroyEnvironmentBlock(ambiente) }.ok();
+        }
+        // SAFETY: o token já foi usado; fechá-lo é correto em qualquer resultado.
+        unsafe { CloseHandle(token) }.ok();
+        resultado
+    }
+
     /// Move o token para a sessão, marca `UIAccess` e cria o processo.
     fn preparar_e_criar(token: HANDLE, sessao: u32, exe: &std::path::Path) -> Result<u32> {
         mover_para_sessao(token, sessao).context("movendo o token de sessão")?;
@@ -107,7 +150,10 @@ mod janela {
         if let Err(erro) = marcar_ui_access(token) {
             tracing::warn!(%erro, "TokenUIAccess recusado; o agente fica limitado ao N1");
         }
-        criar_processo(token, exe)
+        let Some(texto) = exe.to_str() else {
+            bail!("o caminho do agente não é texto válido");
+        };
+        criar_processo(token, &format!("\"{texto}\""), None)
     }
 
     /// A sessão de console, ou nada se ainda não houver.
@@ -182,17 +228,15 @@ mod janela {
         Ok(())
     }
 
-    /// Cria o processo do agente com o token preparado.
-    fn criar_processo(token: HANDLE, exe: &std::path::Path) -> Result<u32> {
-        let Some(texto) = exe.to_str() else {
-            bail!("o caminho do agente não é texto válido");
-        };
+    /// Cria o processo com o token preparado, e o ambiente dado (ou o nosso).
+    fn criar_processo(
+        token: HANDLE,
+        linha: &str,
+        ambiente: Option<*const std::ffi::c_void>,
+    ) -> Result<u32> {
         // A linha de comando precisa ser gravável e terminada em nulo, e viver até o fim da
         // chamada — por isso um `Vec` próprio, e não um ponteiro para literal.
-        let mut linha: Vec<u16> = format!("\"{texto}\"")
-            .encode_utf16()
-            .chain(std::iter::once(0))
-            .collect();
+        let mut linha: Vec<u16> = linha.encode_utf16().chain(std::iter::once(0)).collect();
 
         let desktop = HSTRING::from(DESKTOP);
         let inicio = STARTUPINFOW {
@@ -213,7 +257,7 @@ mod janela {
                 None,
                 false,
                 CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW,
-                None,
+                ambiente,
                 None,
                 std::ptr::from_ref(&inicio),
                 std::ptr::from_mut(&mut info),

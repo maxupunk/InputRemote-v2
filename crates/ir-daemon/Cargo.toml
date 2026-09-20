@@ -54,6 +54,8 @@ features = [
     # O descritor de segurança dos canais de IPC, escrito em SDDL: é o que decide quem pode
     # falar com o serviço, e sem ele o padrão do SYSTEM tranca a própria interface do lado de fora.
     "Win32_Security_Authorization",
+    # O ambiente do usuário para o ajudante de clipboard, lançado com o token dele.
+    "Win32_System_Environment",
     "Win32_System_RemoteDesktop",
     "Win32_System_Threading",
 ]

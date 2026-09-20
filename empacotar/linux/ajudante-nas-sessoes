@@ -1,0 +1,39 @@
+#!/bin/sh
+# Inicia (ou reinicia) o ajudante de clipboard em toda sessao grafica aberta agora -- ou o para.
+#
+#   ajudante-nas-sessoes           depois de instalar ou atualizar: sobe o binario novo ja
+#   ajudante-nas-sessoes parar     antes de remover
+#
+# Roda como root, pelos roteiros do pacote. Existe porque a unidade do usuario so sobe sozinha no
+# login: sem isto, quem instala com a sessao aberta fica sem copiar e colar ate sair e entrar de
+# novo -- o defeito que ja aconteceu duas vezes.
+#
+# So mexe em quem esta com a sessao grafica ativa. Falhar com um usuario nao para os outros, e
+# nunca falha o pacote.
+set -u
+
+UNIDADE=inputremote-clipboard.service
+acao="${1:-iniciar}"
+
+# Versoes antigas subiam o ajudante pelo autostart do XDG, fora desta unidade. Ele seguiria vivo,
+# com o binario velho, ao lado do novo; sai agora, e a unidade assume.
+pkill -f '^/usr/bin/inputremote-agent --clipboard$' 2>/dev/null || :
+
+for usuario in $(loginctl list-users --no-legend 2>/dev/null | awk '{print $2}'); do
+    alvo="--user --machine=${usuario}@"
+    # shellcheck disable=SC2086
+    systemctl $alvo is-active --quiet graphical-session.target 2>/dev/null || continue
+    case "$acao" in
+        parar)
+            # shellcheck disable=SC2086
+            systemctl $alvo stop "$UNIDADE" 2>/dev/null || :
+            ;;
+        *)
+            # shellcheck disable=SC2086
+            systemctl $alvo daemon-reload 2>/dev/null || :
+            # shellcheck disable=SC2086
+            systemctl $alvo restart "$UNIDADE" 2>/dev/null || :
+            ;;
+    esac
+done
+exit 0

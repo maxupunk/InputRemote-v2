@@ -42,6 +42,8 @@ use ir_ipc::transferencia::{Fase, Sentido, Transferencia};
 use ir_ipc::{Aviso, Falha, ParaInterface, Pedido, Resposta, TextoDoClipboard};
 use tracing::{debug, info, warn};
 
+mod instancia;
+
 /// Quanto esperar para tentar o serviço de novo.
 ///
 /// O ajudante nasce com a sessão e pode chegar antes do serviço; e o serviço pode ser reiniciado
@@ -81,6 +83,18 @@ enum Evento {
 /// Só quando não há clipboard nenhum nesta sessão — um *greeter*, um console. Aí não há o que
 /// fazer, e sair é mais honesto que girar.
 pub(crate) fn servir() -> Result<()> {
+    // Vive até o processo sair: é ela que faz um segundo ajudante desistir.
+    let _trava = match instancia::ser_o_unico() {
+        Ok(Some(trava)) => Some(trava),
+        Ok(None) => {
+            info!("já há um ajudante de clipboard deste usuário; este sai");
+            return Ok(());
+        }
+        Err(erro) => {
+            warn!(%erro, "sem a trava de instância única; seguindo assim mesmo");
+            None
+        }
+    };
     let mut clip = ir_clip::abrir().context("abrindo o clipboard da sessão")?;
     let (eventos, recebe) = mpsc::channel();
     vigiar_em_thread(eventos.clone());
@@ -104,7 +118,7 @@ pub(crate) fn servir() -> Result<()> {
 fn conectar(endereco: &str, eventos: &Sender<Evento>) -> Result<Box<dyn Write + Send>> {
     let (mut escrita, leitura) = ir_ipc::cliente::abrir(endereco)
         .with_context(|| format!("abrindo o canal de controle em {endereco}"))?;
-    pedir(escrita.as_mut(), &Pedido::Acompanhar)?;
+    pedir(escrita.as_mut(), &Pedido::AcompanharClipboard)?;
     let eventos = eventos.clone();
     thread::spawn(move || ler_avisos(leitura, &eventos));
     Ok(escrita)

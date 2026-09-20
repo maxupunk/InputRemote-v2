@@ -276,6 +276,7 @@ pub(super) fn pareados() -> Vec<Dispositivo> {
                 endereco: BdAddr::de_u64(endereco_de(&info)),
                 nome: nome_de(&info),
                 conectado: info.fConnected.as_bool(),
+                classe: info.ulClassofDevice,
             });
         }
         info.dwSize = tamanho_de::<BLUETOOTH_DEVICE_INFO>();

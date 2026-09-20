@@ -47,8 +47,21 @@ e a mesma cópia não sai duas vezes (`Eco`, com o segundo resumo). `Pedido::Sin
 dispara o mesmo gatilho à mão, para um atalho de teclado ou um item de bandeja.
 
 **2. Quem cuida do clipboard é um ajudante que roda como o usuário**, `inputremote-agent --clipboard`,
-iniciado pela própria sessão (autostart do XDG no Linux), falando pelo **canal de controle** — o
-mesmo da interface, com o portão por credencial que já existe.
+falando pelo **canal de controle** — o mesmo da interface, com o portão por credencial que já existe.
+
+*Revisto em 2026-09-19 ([log 40](../logs/40-o-ajudante-que-ninguem-subia.md)).* Quem **sobe** o
+ajudante não é mais o login. Na primeira versão ele nascia pela chave `Run` (Windows) e pelo
+autostart do XDG (Linux), que só valem ao entrar na sessão: instalar ou atualizar com o usuário
+dentro deixava copiar e colar parado, sem aviso, até o próximo login — e um ajudante que morresse não
+voltava. Agora:
+
+- **Windows:** o serviço o lança na sessão de console, com o token de quem entrou
+  (`WTSQueryUserToken`), e de novo sempre que nenhum estiver ligado por 12 s (`ir-daemon/zelador`).
+- **Linux:** unidade do `systemd` do usuário (`inputremote-clipboard.service`, `Restart=always`,
+  parte de `graphical-session.target`), que o pacote (re)inicia nas sessões abertas.
+- **Nos dois:** o ajudante se apresenta com `Pedido::AcompanharClipboard`, e o serviço o conta — é a
+  contagem que decide relançar, e que o diagnóstico mostra. Uma trava de arquivo faz um segundo
+  ajudante do mesmo usuário sair.
 
 O clipboard é dado do usuário, na sessão do usuário. Não há motivo para ele passar por um processo
 com mais autoridade que isso.

@@ -132,6 +132,11 @@ pub enum Pedido {
     /// Quem manda é o ajudante de clipboard, que lê na sessão do usuário. O serviço não lê o
     /// clipboard de ninguém; ele só leva o que lhe é entregue.
     OferecerTexto(crate::texto::TextoDoClipboard),
+    /// Como [`Self::Acompanhar`], dito pelo ajudante de clipboard: "sou eu, e estou aqui".
+    ///
+    /// Sem o ajudante a cópia não atravessa, e nada na tela diria por quê. É por este pedido que o
+    /// serviço sabe que há um — para relançá-lo quando não há, e para dizer no diagnóstico.
+    AcompanharClipboard,
 }
 
 impl Pedido {
@@ -139,7 +144,9 @@ impl Pedido {
     #[must_use]
     pub const fn autoridade(&self) -> Autoridade {
         match self {
-            Self::Estado | Self::Acompanhar | Self::Diagnostico => Autoridade::Ler,
+            Self::Estado | Self::Acompanhar | Self::AcompanharClipboard | Self::Diagnostico => {
+                Autoridade::Ler
+            }
             // Procurar não muda configuração, mas emite anúncio na rede e no rádio: é ação,
             // não leitura, e não é coisa que um processo qualquer deva conseguir disparar.
             Self::DefinirPapel(_)
@@ -290,6 +297,7 @@ mod tests {
             },
             Pedido::Encerrar,
             Pedido::Diagnostico,
+            Pedido::AcompanharClipboard,
         ]
     }
 
@@ -304,7 +312,12 @@ mod tests {
 
     #[test]
     fn ler_nunca_exige_elevacao() {
-        for pedido in [Pedido::Estado, Pedido::Acompanhar, Pedido::Diagnostico] {
+        for pedido in [
+            Pedido::Estado,
+            Pedido::Acompanhar,
+            Pedido::AcompanharClipboard,
+            Pedido::Diagnostico,
+        ] {
             assert_eq!(pedido.autoridade(), Autoridade::Ler, "{pedido:?}");
         }
     }

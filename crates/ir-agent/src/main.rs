@@ -24,9 +24,9 @@
 //! [`ir_ipc::cliente`], que usa E/S sobreposta por baixo e entrega aqui um `Read` e um `Write`
 //! bloqueantes como antes (log 21).
 
-// Sem janela de console em release. O serviço lança o agente com `CREATE_NO_WINDOW`, mas o ajudante
-// de clipboard é iniciado pela chave `Run` do Windows, a cada login — e um aplicativo de console
-// abriria uma janela preta na tela do usuário, o mesmo defeito que a interface teve (log 12).
+// Sem janela de console em release. O serviço lança o agente e o ajudante de clipboard com
+// `CREATE_NO_WINDOW`, mas quem abre o ajudante à mão (ou uma versão antiga, pela chave `Run`) veria
+// uma janela preta na tela, o mesmo defeito que a interface teve (log 12).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::io::{Read, Write};

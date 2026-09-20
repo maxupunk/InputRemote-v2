@@ -39,6 +39,24 @@ pub struct Dispositivo {
     /// Pareado e conectado são coisas diferentes: um par pareado que não está conectado continua
     /// pareado, e o sistema liga sozinho quando alguém abre um canal.
     pub conectado: bool,
+    /// A classe do dispositivo (*Class of Device*), como o sistema a guardou; zero se ele não disse.
+    pub classe: u32,
+}
+
+/// A classe maior "computador", nos bits 8 a 12 da classe do dispositivo (Bluetooth Assigned
+/// Numbers, *Baseband*). Notebook, desktop e servidor são todos ela.
+const CLASSE_MAIOR_COMPUTADOR: u32 = 0x01;
+
+impl Dispositivo {
+    /// Se é um computador — o único tipo de dispositivo que pode ter o InputRemote.
+    ///
+    /// A lista de pareados do sistema traz fones, alto-falantes, teclados e relógios junto; na tela
+    /// de "Parear" eles só confundem, e escolher um dá erro. Classe desconhecida conta como "não":
+    /// a rede e o endereço digitado continuam alcançando um computador que não a declara.
+    #[must_use]
+    pub const fn e_computador(&self) -> bool {
+        (self.classe >> 8) & 0x1F == CLASSE_MAIOR_COMPUTADOR
+    }
 }
 
 /// O rádio Bluetooth desta máquina.
@@ -186,6 +204,7 @@ pub(crate) mod mentira {
                     endereco: *endereco,
                     nome: format!("máquina {endereco}"),
                     conectado: false,
+                    classe: 0x0001_010C,
                 })
                 .collect())
         }
@@ -221,6 +240,36 @@ mod tests {
     use super::mentira::{LA, RadioDeMentira};
     use super::*;
     use crate::error::BtError;
+
+    fn da_classe(classe: u32) -> Dispositivo {
+        Dispositivo {
+            endereco: BdAddr([1; 6]),
+            nome: String::new(),
+            conectado: false,
+            classe,
+        }
+    }
+
+    #[test]
+    fn computador_e_a_classe_maior_1_e_nada_mais() {
+        // Notebook (Fedora na bancada), desktop, servidor: classe maior 0x01, qualquer menor.
+        for classe in [0x001c_010c, 0x0000_0104, 0x0000_0108] {
+            assert!(da_classe(classe).e_computador(), "{classe:#08x}");
+        }
+        // Telefone, fone, alto-falante, teclado, mouse, relógio, "sem categoria" e desconhecida.
+        for classe in [
+            0x005a_020c,
+            0x0024_0404,
+            0x0024_0414,
+            0x0000_2540,
+            0x0000_2580,
+            0x0000_0704,
+            0x0000_1f00,
+            0,
+        ] {
+            assert!(!da_classe(classe).e_computador(), "{classe:#08x}");
+        }
+    }
 
     #[tokio::test]
     async fn um_radio_desligado_diz_que_esta_desligado_em_vez_de_falhar_por_outro_motivo() {

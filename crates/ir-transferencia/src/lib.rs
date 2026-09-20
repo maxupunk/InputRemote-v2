@@ -21,6 +21,7 @@
 #![forbid(unsafe_code)]
 
 mod enviando;
+mod localizar;
 mod recebendo;
 mod sessao;
 
@@ -38,6 +39,7 @@ pub use ir_files::Cota;
 
 /// Com a autoridade de quem os arquivos são lidos, reexportada pelo mesmo motivo de [`Cota`].
 pub use ir_files::{Autorizacao, Leitor};
+pub use localizar::{Localizador, sem_localizador};
 
 /// Um pedido de envio: o que mandar, e com a autoridade de quem.
 pub(crate) type PedidoDeEnvio = (Vec<PathBuf>, Leitor);
@@ -52,6 +54,9 @@ use tracing::{debug, info, warn};
 /// O mesmo espaçamento da reconexão de entrada. Discar mais rápido não faria a outra máquina subir
 /// antes, e encheria o registro — foi a lição do relançamento do agente ([log 29](../../../docs/logs/29-o-agente-que-nunca-dizia-por-que.md)).
 const ESPERA_ENTRE_TENTATIVAS: Duration = Duration::from_secs(3);
+
+/// Quanto esperar para perguntar à rede de novo, quando ninguém disse onde o par está.
+const ESPERA_SEM_ENDERECO: Duration = Duration::from_secs(15);
 
 /// Quanto o lado não preferido espera antes de discar também.
 ///
@@ -69,7 +74,8 @@ const CARENCIA_DO_NAO_PREFERIDO: Duration = Duration::from_secs(5);
 pub struct Destino {
     /// A chave fixada do par, quando há um.
     pub chave: Option<PublicKey>,
-    /// Onde alcançá-lo, quando se sabe. Só o de rede é usado: arquivo nunca vai pelo rádio.
+    /// Onde alcançá-lo, quando se sabe. Só o de rede é discado: arquivo nunca vai pelo rádio. Sem
+    /// ele, o [`Localizador`] acha o par na rede local.
     pub alvo: Option<ir_transporte::Endereco>,
 }
 
@@ -126,7 +132,6 @@ impl Pedidos {
 }
 
 /// O que a transferência precisa para existir.
-#[derive(Debug)]
 pub struct Ajuste {
     /// A porta TCP. A mesma número do UDP ([03, §10](../../../docs/03-protocolo.md)).
     pub porta: u16,
@@ -138,12 +143,24 @@ pub struct Ajuste {
     pub identidade: Arc<Identity>,
     /// O par da subida. Depois, quem muda é [`Pedidos::trocar_destino`].
     ///
-    /// Qualquer endereço serve aqui, e só o de rede é usado: arquivo **nunca** viaja pelo rádio
-    /// ([01, §5](../../../docs/01-visao-e-escopo.md)). Um par alcançável só por Bluetooth tem o canal
-    /// de arquivos indisponível — declaradamente, e não por falta de tentar.
+    /// Qualquer endereço serve aqui, e só o de rede é discado: arquivo **nunca** viaja pelo rádio
+    /// ([01, §5](../../../docs/01-visao-e-escopo.md)). Um par pareado pelo Bluetooth é achado na rede
+    /// pelo [`Self::localizar`].
     pub destino: Destino,
+    /// Onde está o par na rede, quando o destino não diz — ou quando o endereço dele não atende.
+    pub localizar: Localizador,
     /// Para contar à interface o que está acontecendo.
     pub avisos: broadcast::Sender<Aviso>,
+}
+
+impl std::fmt::Debug for Ajuste {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Ajuste")
+            .field("porta", &self.porta)
+            .field("recebidos", &self.recebidos)
+            .field("destino", &self.destino)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Sobe a tarefa de transferência e devolve por onde pedir envios.
@@ -187,7 +204,7 @@ async fn servir(
         };
         let alvo = destino.borrow_and_update().alvo;
         let enlace = tokio::select! {
-            enlace = obter(&porta, &ajuste.identidade, par, alvo) => enlace,
+            enlace = obter(&porta, &ajuste, par, alvo) => enlace,
             _ = destino.changed() => continue,
         };
         info!("canal de arquivos estabelecido");
@@ -247,50 +264,59 @@ async fn esperar_par(
 /// de ser ele o único que sabe o endereço.
 async fn obter(
     porta: &Porta,
-    identidade: &Identity,
+    ajuste: &Ajuste,
     par: PublicKey,
     alvo: Option<ir_transporte::Endereco>,
 ) -> EnlaceDeDados {
-    let nossa = identidade.public();
+    let nossa = ajuste.identidade.public();
     let carencia = if ficar_com_o_proprio(nossa, par) {
         Duration::ZERO
     } else {
         CARENCIA_DO_NAO_PREFERIDO
     };
 
+    let configurado = alvo_de_rede(alvo);
+    let mut falhou = None;
     loop {
         tokio::select! {
             atendido = porta.aceitar(par) => match atendido {
                 Ok(enlace) => return enlace,
                 Err(erro) => debug!(%erro, "conexão de arquivos recusada na porta"),
             },
-            enlace = discar_depois(porta, alvo_de_rede(alvo), par, carencia) => {
-                if let Some(enlace) = enlace {
-                    return enlace;
+            discado = discar_depois(porta, &ajuste.localizar, (configurado, falhou), par, carencia) => {
+                match discado {
+                    Ok(enlace) => return enlace,
+                    Err(nao_atendeu) => falhou = nao_atendeu,
                 }
             }
         }
     }
 }
 
-/// Disca depois da carência, e devolve `None` quando não deu — para o laço tentar de novo.
+/// Disca depois da carência. O erro diz qual endereço não atendeu (nenhum, se não havia onde
+/// discar), para o laço tentar de novo — e perguntar à rede em vez de insistir nele.
 ///
-/// Sem `alvo` este futuro **nunca** resolve, o que deixa o `select!` só com o lado que atende. É o
-/// caso da máquina que não sabe o endereço da outra.
+/// `(configurado, falhou)`: o endereço de rede da configuração, e o último que não atendeu.
 async fn discar_depois(
     porta: &Porta,
-    alvo: Option<SocketAddr>,
+    localizar: &Localizador,
+    (configurado, falhou): (Option<SocketAddr>, Option<SocketAddr>),
     par: PublicKey,
     carencia: Duration,
-) -> Option<EnlaceDeDados> {
-    let alvo = alvo?;
+) -> Result<EnlaceDeDados, Option<SocketAddr>> {
     tokio::time::sleep(carencia).await;
+    let Some(alvo) = localizar::onde_discar(localizar, configurado, falhou, par).await else {
+        // Ninguém na rede disse onde o par está: ele está desligado, ou longe. Perguntar de novo
+        // logo só encheria a rede de broadcast.
+        tokio::time::sleep(ESPERA_SEM_ENDERECO).await;
+        return Err(None);
+    };
     match porta.discar(alvo, par).await {
-        Ok(enlace) => Some(enlace),
+        Ok(enlace) => Ok(enlace),
         Err(erro) => {
             debug!(%erro, %alvo, "o par ainda não atende no canal de arquivos");
             tokio::time::sleep(ESPERA_ENTRE_TENTATIVAS).await;
-            None
+            Err(Some(alvo))
         }
     }
 }

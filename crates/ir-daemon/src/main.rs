@@ -14,6 +14,8 @@ mod lancador;
 #[cfg(windows)]
 mod service;
 mod transportes;
+#[cfg(windows)]
+mod zelador;
 
 use std::io::BufRead;
 use std::sync::Arc;
@@ -74,16 +76,15 @@ async fn executar(parada: watch::Receiver<bool>) -> Result<()> {
         identity.fingerprint()
     );
 
-    // Tamanho de tela: da plataforma quando ela sabe, senão da configuração.
-    let screen = ir_input::primary_screen_size().unwrap_or((cfg.screen_width, cfg.screen_height));
-
-    let abertos = transportes::abrir(cfg.port, &identity, machine_id_from(&identity)).await?;
+    let screen = tamanho_da_tela(&cfg);
+    let maquina = machine_id_of(&identity.public());
+    let abertos = transportes::abrir(cfg.port, &identity, maquina).await?;
 
     let (capturer, injector, capture_rx) = build_io(role);
     let identidade = identidade_local(&identity);
 
     let canais = abrir_canais()?;
-    let arquivos = arquivos::abrir(&cfg, &dir, &identity, &canais.avisos);
+    let arquivos = arquivos::abrir(&cfg, &dir, &identity, &canais.avisos, &abertos.descoberta);
 
     let mut daemon = Daemon::new(Parts {
         session: actor::nova_sessao(role, edge, identidade.clone()),
@@ -98,12 +99,13 @@ async fn executar(parada: watch::Receiver<bool>) -> Result<()> {
         data_dir: dir,
         config: cfg,
         avisos: canais.avisos,
-        machine: ir_ipc::Maquina(machine_id_from(&identity).0),
+        machine: ir_ipc::Maquina(maquina.0),
         nome: ir_ipc::Nome::coagido(&hostname()),
         edge,
         agente: canais.agente,
         identidade_local: identidade,
         arquivos,
+        ajudantes: canais.ajudantes,
     });
 
     dar_partida(&mut daemon, screen);
@@ -121,6 +123,11 @@ async fn executar(parada: watch::Receiver<bool>) -> Result<()> {
     Ok(())
 }
 
+/// Tamanho de tela: da plataforma quando ela sabe, senão da configuração.
+fn tamanho_da_tela(cfg: &config::Config) -> (u32, u32) {
+    ir_input::primary_screen_size().unwrap_or((cfg.screen_width, cfg.screen_height))
+}
+
 /// Dá partida no ator: as telas, a primeira tentativa de conexão e o agente.
 fn dar_partida(daemon: &mut Daemon, screen: (u32, u32)) {
     feed_screens(daemon, screen);
@@ -136,6 +143,7 @@ fn dar_partida(daemon: &mut Daemon, screen: (u32, u32)) {
 /// essa garantia estrutural em vez de combinada.
 struct Canais {
     avisos: tokio::sync::broadcast::Sender<ir_ipc::Aviso>,
+    ajudantes: ipc::Ajudantes,
     agente: tokio::sync::broadcast::Sender<ir_ipc::ComandoDoAgente>,
     pedidos: mpsc::UnboundedReceiver<ipc::PedidoRecebido>,
     fatos: mpsc::UnboundedReceiver<ir_ipc::FatoDoAgente>,
@@ -147,7 +155,13 @@ struct Canais {
 /// fatos vivo é o que impede o laço do ator de girar recebendo `None` sem parar.
 fn abrir_canais() -> Result<Canais> {
     let (pedido_tx, pedidos) = mpsc::unbounded_channel();
-    let avisos = ipc::iniciar_controle(pedido_tx).context("subindo o canal de controle")?;
+    let ajudantes = ipc::Ajudantes::default();
+    let avisos = ipc::iniciar_controle(pedido_tx, ajudantes.clone())
+        .context("subindo o canal de controle")?;
+    // O ajudante de clipboard roda como o usuário; no Windows, quem garante que ele exista é o
+    // serviço (`zelador`). No Linux, o `systemd` do usuário.
+    #[cfg(windows)]
+    zelador::zelar_pelo_clipboard(ajudantes.clone());
     info!(endereco = %ipc::endereco_de_controle(), "canal de controle no ar");
 
     let (fato_tx, fatos) = mpsc::unbounded_channel();
@@ -156,6 +170,7 @@ fn abrir_canais() -> Result<Canais> {
 
     Ok(Canais {
         avisos,
+        ajudantes,
         agente,
         pedidos,
         fatos,
@@ -323,7 +338,7 @@ fn segurar_canal(cap_tx: mpsc::UnboundedSender<ir_input::CaptureEvent>) {
 /// e a nova precisa nascer com a mesma.
 fn identidade_local(identity: &ir_crypto::Identity) -> LocalIdentity {
     LocalIdentity {
-        machine: machine_id_from(identity),
+        machine: machine_id_of(&identity.public()),
         name: MachineName::coagido(&hostname()),
         capabilities: Capabilities {
             privileged_input: PrivilegedInputLevel::UnlockedOnly,
@@ -333,8 +348,11 @@ fn identidade_local(identity: &ir_crypto::Identity) -> LocalIdentity {
 }
 
 /// Deriva um id de máquina estável dos primeiros bytes da chave pública.
-fn machine_id_from(identity: &ir_crypto::Identity) -> ir_proto::ids::MachineId {
-    ir_proto::ids::MachineId(identity.public().0[..16].try_into().unwrap_or([0u8; 16]))
+///
+/// Vale para as duas pontas: é assim que o canal de arquivos reconhece o par fixado entre as
+/// máquinas que a descoberta encontra.
+pub(crate) fn machine_id_of(chave: &ir_crypto::PublicKey) -> ir_proto::ids::MachineId {
+    ir_proto::ids::MachineId(chave.0[..16].try_into().unwrap_or([0u8; 16]))
 }
 
 fn feed_screens(daemon: &mut Daemon, screen: (u32, u32)) {

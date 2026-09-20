@@ -14,7 +14,7 @@ use tokio::sync::oneshot;
 use tracing::{debug, info, warn};
 
 use super::escuta::{Chamada, Conexao, Escuta};
-use super::{PedidoRecebido, quadros};
+use super::{Ajudantes, PedidoRecebido, quadros};
 
 /// Quanto tempo se espera o primeiro pedido de uma interface recusada, para responder a ele.
 const ESPERA_DO_RECUSADO: Duration = Duration::from_secs(2);
@@ -24,6 +24,7 @@ pub(crate) async fn servir(
     mut escuta: Escuta,
     pedidos: UnboundedSender<PedidoRecebido>,
     avisos: broadcast::Sender<Aviso>,
+    ajudantes: Ajudantes,
 ) {
     loop {
         match escuta.aceitar().await {
@@ -34,7 +35,7 @@ pub(crate) async fn servir(
                 let leitor = escuta.leitor_de(&conexao);
                 let pedidos = pedidos.clone();
                 let avisos = avisos.subscribe();
-                tokio::spawn(atender(conexao, leitor, pedidos, avisos));
+                tokio::spawn(atender(conexao, leitor, pedidos, avisos, ajudantes.clone()));
             }
             Ok((conexao, Chamada::Negada { uid })) => {
                 warn!(
@@ -59,6 +60,7 @@ async fn atender(
     leitor: ir_transferencia::Leitor,
     pedidos: UnboundedSender<PedidoRecebido>,
     mut avisos: broadcast::Receiver<Aviso>,
+    ajudantes: Ajudantes,
 ) {
     // O primeiro pedido é lido antes de dividir a conexão: no Windows, só depois de ler algo do
     // pipe é que o sistema diz quem está do outro lado (`super::identidade`).
@@ -75,10 +77,16 @@ async fn atender(
     // Só depois de a interface pedir para acompanhar é que os avisos começam a fluir; antes
     // disso ela recebe só as respostas aos próprios pedidos.
     let mut acompanhando = false;
+    // Conta enquanto esta conexão viver, e só uma vez por conexão.
+    let mut presenca = None;
     let mut proximo = Some(primeiro);
     loop {
         if let Some(pedido) = proximo.take() {
-            acompanhando |= matches!(pedido, Pedido::Acompanhar);
+            acompanhando |= matches!(pedido, Pedido::Acompanhar | Pedido::AcompanharClipboard);
+            if matches!(pedido, Pedido::AcompanharClipboard) && presenca.is_none() {
+                info!("ajudante de clipboard ligado");
+                presenca = Some(ajudantes.entrou());
+            }
             if !responder(&pedidos, &mut escrita, pedido, leitor.clone()).await {
                 break;
             }
@@ -98,6 +106,9 @@ async fn atender(
                 }
             }
         }
+    }
+    if presenca.is_some() {
+        info!("ajudante de clipboard desligado");
     }
     debug!("conexão de controle encerrada");
 }
@@ -228,7 +239,12 @@ mod tests {
         let (pedido_tx, pedido_rx) = mpsc::unbounded_channel();
         let (avisos, _) = broadcast::channel(16);
         ator_de_mentira(pedido_rx);
-        tokio::spawn(servir(escuta, pedido_tx, avisos.clone()));
+        tokio::spawn(servir(
+            escuta,
+            pedido_tx,
+            avisos.clone(),
+            Ajudantes::default(),
+        ));
 
         let cliente = conectar_cliente(&endereco).await;
         let (mut leitura, mut escrita) = tokio::io::split(cliente);
@@ -255,5 +271,44 @@ mod tests {
             empurrado,
             ParaInterface::Aviso(Aviso::PareamentoConcluido { sucesso: true })
         );
+    }
+
+    /// O ajudante que se apresenta é contado enquanto a conexão dele vive — e só ele: a janela, que
+    /// também acompanha, não conta. É a contagem que faz o serviço relançar o ajudante que falta.
+    #[tokio::test]
+    async fn o_ajudante_conta_enquanto_esta_ligado_e_a_janela_nao() {
+        let endereco = endereco_de_teste("ajudantes");
+        let escuta =
+            Escuta::abrir(&endereco, Acesso::UsuarioInterativo).expect("abre o ponto de escuta");
+        let (pedido_tx, pedido_rx) = mpsc::unbounded_channel();
+        let (avisos, _) = broadcast::channel(16);
+        ator_de_mentira(pedido_rx);
+        let ajudantes = Ajudantes::default();
+        tokio::spawn(servir(escuta, pedido_tx, avisos, ajudantes.clone()));
+
+        let mut janela = conectar_cliente(&endereco).await;
+        quadros::escrever(&mut janela, &Pedido::Acompanhar)
+            .await
+            .unwrap();
+        let _: Option<ParaInterface> = quadros::ler(&mut janela).await.unwrap();
+        assert_eq!(ajudantes.ligados(), 0, "a janela não é ajudante");
+
+        let mut ajudante = conectar_cliente(&endereco).await;
+        for _ in 0..2 {
+            quadros::escrever(&mut ajudante, &Pedido::AcompanharClipboard)
+                .await
+                .unwrap();
+            let _: Option<ParaInterface> = quadros::ler(&mut ajudante).await.unwrap();
+        }
+        assert_eq!(ajudantes.ligados(), 1, "uma conexão conta uma vez");
+
+        drop(ajudante);
+        for _ in 0..100 {
+            if ajudantes.ligados() == 0 {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        panic!("a conexão fechou e o ajudante continuou contado");
     }
 }

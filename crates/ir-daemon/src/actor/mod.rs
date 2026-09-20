@@ -98,6 +98,8 @@ pub(crate) struct Daemon {
     pub(crate) arquivos: ir_transferencia::Pedidos,
     /// Quem está por perto para parear. A busca roda fora do ator e responde direto à janela.
     pub(crate) descoberta: ir_transporte::Descoberta,
+    /// Quantos ajudantes de clipboard estão ligados.
+    pub(crate) ajudantes: crate::ipc::Ajudantes,
 }
 
 /// A cada quantas batidas de 5 ms se tenta reconectar. 600 × 5 ms = 3 s.

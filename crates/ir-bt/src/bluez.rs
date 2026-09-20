@@ -40,6 +40,8 @@ pub struct InfoDoPar {
     /// Separado de [`Self::pareado_por_bredr`] porque são perguntas diferentes: um fone só de LE
     /// nunca vai servir, e um computador BR/EDR ainda não pareado pode passar a servir.
     pub suporta_bredr: bool,
+    /// A classe do dispositivo, do campo `Class=0x…`; zero se não houver.
+    pub classe: u32,
 }
 
 /// A seção que guarda a chave de vínculo BR/EDR.
@@ -77,10 +79,21 @@ pub fn ler_info(texto: &str) -> InfoDoPar {
         match chave.trim() {
             "Name" => info.nome = nome_util(valor),
             "SupportedTechnologies" => info.suporta_bredr = valor.contains("BR/EDR"),
+            "Class" => info.classe = classe_de(valor),
             _ => {}
         }
     }
     info
+}
+
+/// A classe em hexadecimal (`0x1c010c`); zero se não for um número.
+fn classe_de(valor: &str) -> u32 {
+    let valor = valor.trim();
+    let digitos = valor
+        .strip_prefix("0x")
+        .or_else(|| valor.strip_prefix("0X"))
+        .unwrap_or(valor);
+    u32::from_str_radix(digitos, 16).unwrap_or(0)
 }
 
 /// O nome da seção, se a linha for um cabeçalho `[Assim]`.
@@ -130,6 +143,38 @@ Vendor=6
         assert_eq!(info.nome.as_deref(), Some("SAMSUNG-MAXUEL"));
         assert!(info.pareado_por_bredr, "há [LinkKey]");
         assert!(info.suporta_bredr);
+        assert_eq!(info.classe, 0x001c_010c);
+    }
+
+    #[test]
+    fn classe_ausente_ou_estranha_vira_zero() {
+        assert_eq!(
+            ler_info(
+                "[General]
+Name=x
+"
+            )
+            .classe,
+            0
+        );
+        assert_eq!(
+            ler_info(
+                "[General]
+Class=abobrinha
+"
+            )
+            .classe,
+            0
+        );
+        assert_eq!(
+            ler_info(
+                "[General]
+Class=0X240404
+"
+            )
+            .classe,
+            0x0024_0404
+        );
     }
 
     #[test]

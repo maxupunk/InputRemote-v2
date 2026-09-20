@@ -9,6 +9,7 @@
 //! o socket e o ator, que traduz do estado interno para o [`ir_ipc::Estado`] publicado.
 
 pub(crate) mod agente;
+mod ajudantes;
 pub(crate) mod controle;
 mod escuta;
 pub(crate) mod quadros;
@@ -18,6 +19,8 @@ use ir_ipc::{Aviso, ComandoDoAgente, FatoDoAgente, Resposta};
 use tokio::sync::broadcast;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
+
+pub(crate) use ajudantes::Ajudantes;
 
 /// Um pedido da interface, com o caminho de volta para a resposta do ator.
 pub(crate) struct PedidoRecebido {
@@ -92,13 +95,14 @@ fn padrao() -> String {
 /// Erro do sistema ao abrir o ponto de escuta.
 pub(crate) fn iniciar_controle(
     pedidos: UnboundedSender<PedidoRecebido>,
+    ajudantes: Ajudantes,
 ) -> Result<broadcast::Sender<Aviso>> {
     let (avisos, _) = broadcast::channel(FILA_DE_AVISOS);
     // A janela do usuário precisa alcançar este canal: é por ele que ela pergunta o estado e
     // conduz o pareamento. Sem isto, um serviço como SYSTEM tranca a própria interface do lado
     // de fora, e ela cai para o modo de demonstração.
     let escuta = escuta::Escuta::abrir(&endereco_de_controle(), escuta::Acesso::UsuarioInterativo)?;
-    tokio::spawn(controle::servir(escuta, pedidos, avisos.clone()));
+    tokio::spawn(controle::servir(escuta, pedidos, avisos.clone(), ajudantes));
     Ok(avisos)
 }
 
