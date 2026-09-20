@@ -98,6 +98,10 @@ impl HookCapturer {
 impl Capturer for HookCapturer {
     fn set_suppress(&self, on: bool) {
         SUPPRESS.store(on, Ordering::Relaxed);
+        if !on {
+            // O controle voltou: o que a supressão engoliu não pode ficar preso aqui.
+            crate::windows::sendinput::soltar_modificadores_presos();
+        }
         if on {
             // Prende o cursor no ponto de captura para os deltas começarem pequenos.
             let (x, y) = (

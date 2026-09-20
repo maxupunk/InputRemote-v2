@@ -43,6 +43,7 @@ use ir_ipc::{Aviso, Falha, ParaInterface, Pedido, Resposta, TextoDoClipboard};
 use tracing::{debug, info, warn};
 
 mod instancia;
+mod notificacao;
 
 /// Quanto esperar para tentar o serviço de novo.
 ///
@@ -100,12 +101,19 @@ pub(crate) fn servir() -> Result<()> {
     vigiar_em_thread(eventos.clone());
 
     let mut eco = Eco::nova();
+    let mut notificador = notificacao::Notificador::default();
     let endereco = ir_ipc::cliente::endereco_do_controle();
     loop {
         match conectar(&endereco, &eventos) {
             Ok(mut escrita) => {
                 info!("ajudante de clipboard ligado ao serviço");
-                atender(&recebe, escrita.as_mut(), clip.as_mut(), &mut eco);
+                atender(Partes {
+                    eventos: &recebe,
+                    escrita: escrita.as_mut(),
+                    clip: clip.as_mut(),
+                    eco: &mut eco,
+                    notificador: &mut notificador,
+                });
                 warn!("a conexão com o serviço caiu; tentando de novo");
             }
             Err(erro) => debug!(%erro, "o serviço ainda não atende"),
@@ -150,17 +158,30 @@ fn ler_avisos(mut leitura: Box<dyn Read + Send>, eventos: &Sender<Evento>) {
     let _ = eventos.send(Evento::Caiu);
 }
 
+/// O que o laço de uma conexão precisa. Juntos porque são a mesma coisa: a sessão do usuário.
+struct Partes<'a> {
+    eventos: &'a Receiver<Evento>,
+    escrita: &'a mut dyn Write,
+    clip: &'a mut dyn Clipboard,
+    eco: &'a mut Eco,
+    /// Conta ao usuário o que está acontecendo com a cópia (no Linux, pela notificação do sistema).
+    notificador: &'a mut notificacao::Notificador,
+}
+
 /// O laço principal de uma conexão.
-fn atender(
-    eventos: &Receiver<Evento>,
-    escrita: &mut dyn Write,
-    clip: &mut dyn Clipboard,
-    eco: &mut Eco,
-) {
+fn atender(partes: Partes<'_>) {
+    let Partes {
+        eventos,
+        escrita,
+        clip,
+        eco,
+        notificador,
+    } = partes;
     while let Ok(evento) = eventos.recv() {
         match evento {
             Evento::Mudou | Evento::Aviso(Aviso::LerClipboard) => oferecer(escrita, clip, eco),
             Evento::Aviso(Aviso::Transferencia(transferencia)) => {
+                notificador.contar(&transferencia);
                 reagir(&transferencia, clip, eco);
             }
             Evento::Aviso(Aviso::TextoRecebido(texto)) => {

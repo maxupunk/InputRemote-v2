@@ -1,0 +1,85 @@
+// O retorno de uma cópia: o que está indo, quanto falta, e onde ficou.
+//
+// Copiar e colar entre os dois computadores não mostrava nada. Quando a cópia não atravessava, o
+// outro lado continuava com a anterior no clipboard, e colar trazia a pasta errada — sem nenhum
+// sinal de que aquilo era um resto. As frases vêm prontas do Rust (`src/copia.rs`); aqui só se
+// desenha.
+
+import { Tema } from "tema.slint";
+
+/// Uma cópia, na forma em que a tela a desenha.
+export struct CopiaUi {
+    /// O que está acontecendo, em três ou quatro palavras.
+    titulo: string,
+    /// O nome do que está indo, com o tamanho, o destino ou o motivo de não ter ido.
+    detalhe: string,
+    /// De 0 a 1, para a barra.
+    progresso: float,
+    /// 0 andando, 1 concluída, 2 parada.
+    estado: int,
+}
+
+/// A cor de cada estado. Uma cópia parada é vermelha, e é a única que pede ação.
+export global Copia {
+    public pure function cor(estado: int) -> color {
+        return estado == 2 ? Tema.ruim : (estado == 1 ? Tema.bom : Tema.acao);
+    }
+}
+
+/// A barra de progresso, escondida quando a cópia já terminou.
+component Barra inherits Rectangle {
+    in property <float> progresso;
+    in property <color> cor;
+
+    height: 4px;
+    border-radius: 2px;
+    background: Tema.superficie-suave;
+
+    Rectangle {
+        x: 0;
+        width: parent.width * max(0.0, min(1.0, root.progresso));
+        height: parent.height;
+        border-radius: parent.border-radius;
+        background: root.cor;
+        animate width { duration: 200ms; }
+    }
+}
+
+/// O bloco que conta a cópia. Serve na janela e no aviso flutuante — o mesmo texto nos dois.
+export component CartaoDeCopia inherits VerticalLayout {
+    in property <CopiaUi> copia;
+
+    spacing: Tema.e2;
+
+    HorizontalLayout {
+        spacing: Tema.e2;
+
+        Rectangle {
+            width: 8px;
+            height: 8px;
+            border-radius: 4px;
+            background: Copia.cor(root.copia.estado);
+            y: (parent.height - self.height) / 2;
+        }
+
+        Text {
+            text: root.copia.titulo;
+            font-size: Tema.fonte-corpo;
+            font-weight: 600;
+            color: Copia.cor(root.copia.estado);
+            vertical-alignment: center;
+        }
+    }
+
+    Text {
+        text: root.copia.detalhe;
+        font-size: Tema.fonte-nota;
+        color: Tema.texto-fraco;
+        wrap: word-wrap;
+    }
+
+    if root.copia.estado == 0: Barra {
+        progresso: root.copia.progresso;
+        cor: Copia.cor(root.copia.estado);
+    }
+}

@@ -42,6 +42,7 @@ use ir_proto::screens::ScreenLayout;
 use tracing::{info, warn};
 
 mod clipboard;
+mod registro;
 
 /// Quanto tempo se insiste em achar o serviço antes de desistir.
 ///
@@ -52,7 +53,8 @@ const TENTATIVAS: u32 = 60;
 const ESPERA: Duration = Duration::from_millis(500);
 
 fn main() {
-    iniciar_tracing();
+    // O guarda esvazia a fila do registro ao sair; soltá-lo antes perderia as últimas linhas.
+    let _registro = registro::iniciar();
 
     // O ajudante de clipboard é o mesmo executável num papel diferente: roda **como o usuário**,
     // iniciado pela sessão, e fala pelo canal de controle (ADR-0011). Um binário a menos para
@@ -73,16 +75,6 @@ fn main() {
         Ok(()) => info!("o serviço encerrou a conexão; saindo"),
         Err(erro) => warn!(%erro, "o agente terminou com erro"),
     }
-}
-
-/// Configura o `tracing`, com nível de `RUST_LOG` ou `info` por padrão.
-fn iniciar_tracing() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
 }
 
 /// Conecta ao serviço, liga entrada e serve comandos até a conexão cair.

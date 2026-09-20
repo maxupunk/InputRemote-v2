@@ -47,6 +47,9 @@ pub mod ativacao;
 pub mod bandeja;
 pub mod conector;
 pub mod conexao;
+pub mod copia;
+#[cfg(windows)]
+pub mod flutuante;
 pub mod janela;
 pub mod ponte;
 pub mod real;

@@ -50,6 +50,11 @@ Requires:       hicolor-icon-theme
 Requires:       wl-clipboard
 Requires:       coreutils
 
+# O `notify-send`, que e como o ajudante conta na tela o que esta acontecendo com uma copia: o
+# comeco, o fim, e o motivo quando ela nao atravessa. Sem isso copiar e colar era mudo, e colar do
+# outro lado trazia a copia anterior sem nenhum sinal de que aquilo era um resto.
+Requires:       libnotify
+
 # O grupo `inputremote` e criado na instalacao: e ele que alcanca o canal de controle do servico,
 # e sem ele a janela do usuario nao conversa com o servico (docs/02-arquitetura.md, secao 7).
 Requires(pre):  shadow-utils
@@ -194,6 +199,8 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 
 %changelog
 * Sat Sep 19 2026 InputRemote <inputremote@example.invalid> - 0.1.0-0.1.dev
+- Copiar e colar deixa de ser mudo: o ajudante conta na notificacao do sistema o que esta sendo
+  copiado, quando termina e por que nao atravessou.
 - O ajudante de clipboard vira unidade do systemd do usuario, com Restart=always, e o pacote o
   (re)inicia nas sessoes abertas: instalar ou atualizar nao deixa mais copiar e colar parado.
 

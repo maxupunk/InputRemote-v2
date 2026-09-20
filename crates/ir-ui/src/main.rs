@@ -27,7 +27,6 @@ use ir_ui::simulado::ServicoSimulado;
 ///
 /// Repassa a falha do Slint quando não há backend gráfico disponível.
 fn main() -> Result<(), slint::PlatformError> {
-    identificar_a_janela();
     // Uma interface por sessão. A demonstração fica de fora, para poder rodar ao lado da de
     // verdade; ela nunca fala com o serviço.
     let marca = if pediu_simulado() {
@@ -55,20 +54,6 @@ fn main() -> Result<(), slint::PlatformError> {
     };
     let marca = marca.unwrap_or_else(bandeja::sem_marca);
     ir_ui::janela::abrir(servico, inicio, marca)
-}
-
-/// Diz ao ambiente gráfico quem é esta janela, antes de ela existir.
-///
-/// No Wayland o `app_id` é o que liga a janela ao `inputremote.desktop` — e é dele que vêm o ícone
-/// na barra e o nome do aplicativo. Sem isto a janela nascia sem identidade: aparecia sem ícone, e
-/// o lançador não a reconhecia como o InputRemote já aberto. O nome é o do arquivo `.desktop`, sem
-/// a extensão, que é o que o GNOME procura.
-///
-/// Fora do Wayland não faz nada, e uma recusa não é motivo para a janela não abrir.
-fn identificar_a_janela() {
-    if let Err(erro) = slint::set_xdg_app_id("inputremote") {
-        eprintln!("não consegui declarar o app_id da janela: {erro}");
-    }
 }
 
 /// Se a linha de comando traz este argumento.

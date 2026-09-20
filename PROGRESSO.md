@@ -333,6 +333,13 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       e o handshake reenvia por até 12 s em vez de desistir no primeiro datagrama ([log 39](docs/logs/39-parear-sem-configurar-nada.md))
 - [x] Quem recebe o pedido vai sozinho para os seis dígitos, até saindo da bandeja; o código é
       recontado à janela que abre depois ([log 39](docs/logs/39-parear-sem-configurar-nada.md))
+- [x] Copiar e colar com retorno na tela: cartão na janela, aviso no canto (Windows) e notificação
+      do sistema (Linux), com o que está indo, quanto falta, onde ficou e por que não atravessou
+      ([log 40](docs/logs/40-o-ajudante-que-ninguem-subia.md))
+- [x] O modificador que a supressão engolia deixava de ficar preso ao voltar o controle
+      ([log 40](docs/logs/40-o-ajudante-que-ninguem-subia.md))
+- [x] O agente e o ajudante de clipboard do Windows registram em arquivo: sem console, uma falha
+      deles era invisível ([log 40](docs/logs/40-o-ajudante-que-ninguem-subia.md))
 - [x] "Solta tudo" solta só o que o injetor apertou: soltar o botão direito que ninguém apertou
       abria o menu de contexto do programa em foco no Windows a cada volta do ponteiro
       ([log 40](docs/logs/40-o-ajudante-que-ninguem-subia.md))

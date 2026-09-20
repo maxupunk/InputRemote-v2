@@ -8,6 +8,7 @@
 #![allow(unreachable_pub)]
 
 use ir_proto::input::{Button, HidUsage, PointerPosition, WheelDelta};
+use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBD_EVENT_FLAGS, KEYBDINPUT,
     KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, MOUSE_EVENT_FLAGS,
@@ -18,6 +19,76 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 
 use crate::error::{InputError, Result};
+
+/// Os modificadores, nas duas mãos, pelo código virtual: Ctrl, Shift, Alt e as teclas Windows.
+const MODIFICADORES: &[u16] = &[0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C];
+
+/// O Alt esquerdo e o direito, que precisam do disfarce contra a barra de menus.
+const ALT: &[u16] = &[0xA4, 0xA5];
+
+/// Um código virtual sem função nenhuma (`VK_NONAME`), que serve de disfarce.
+const SEM_FUNCAO: u16 = 0xFC;
+
+/// Solta os modificadores que o **sistema** ainda julga apertados.
+///
+/// Acontece a cada travessia: o usuário aperta Ctrl aqui, atravessa segurando, e solta do outro
+/// lado. O "soltar" é comido pela supressão, e o Windows fica achando que o Ctrl continua
+/// apertado — clicar passa a selecionar vários itens. Antes isto era mascarado sem querer, pelo
+/// "solta tudo" que soltava o teclado inteiro; agora é explícito, e só mexe nos modificadores,
+/// que são os únicos que grudam.
+pub(crate) fn soltar_modificadores_presos() {
+    let presos = presos(|vk| {
+        // SAFETY: a função só lê o estado de uma tecla e não tem pré-condição.
+        let estado = unsafe { GetAsyncKeyState(i32::from(vk)) };
+        // O bit alto diz "apertada agora"; em `i16` ele é o bit de sinal.
+        estado < 0
+    });
+    let mut inputs = Vec::new();
+    for vk in presos {
+        // Soltar o Alt sozinho ativa a barra de menus do programa em foco — o mesmo defeito do
+        // menu de contexto, por outra porta. Uma tecla sem função entre o apertar e o soltar
+        // desfaz isso: para o Windows, o Alt deixou de estar sozinho.
+        if ALT.contains(&vk) {
+            inputs.push(tecla_virtual(SEM_FUNCAO, true));
+            inputs.push(tecla_virtual(SEM_FUNCAO, false));
+        }
+        inputs.push(tecla_virtual(vk, false));
+    }
+    if !inputs.is_empty() {
+        let _ = send(&inputs);
+    }
+}
+
+/// Quais modificadores estão apertados, pela pergunta dada. Separado do sistema para ser testado.
+fn presos(esta_apertada: impl Fn(u16) -> bool) -> Vec<u16> {
+    MODIFICADORES
+        .iter()
+        .copied()
+        .filter(|vk| esta_apertada(*vk))
+        .collect()
+}
+
+/// Um evento de tecla pelo código virtual, e não por scancode: aqui o alvo é o estado que o
+/// **sistema** guarda, não o layout da máquina controlada.
+fn tecla_virtual(vk: u16, pressionada: bool) -> INPUT {
+    let flags = if pressionada {
+        KEYBD_EVENT_FLAGS(0)
+    } else {
+        KEYEVENTF_KEYUP
+    };
+    INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: VIRTUAL_KEY(vk),
+                wScan: 0,
+                dwFlags: flags,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    }
+}
 
 /// Botões laterais, na parte alta de `mouseData`.
 const XBUTTON1: u16 = 0x0001;
@@ -179,5 +250,30 @@ fn mouse_input(flags: MOUSE_EVENT_FLAGS, dx: i32, dy: i32, data: i32) -> INPUT {
                 dwExtraInfo: 0,
             },
         },
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn so_os_modificadores_apertados_entram_na_lista() {
+        // O defeito: o Ctrl apertado aqui e solto do outro lado ficava preso, porque a supressão
+        // comeu o "soltar". Clicar no Explorer passava a selecionar vários itens.
+        let apertados = [0xA2_u16, 0xA4];
+        let lista = presos(|vk| apertados.contains(&vk));
+        assert_eq!(lista, vec![0xA2, 0xA4]);
+        assert!(presos(|_| false).is_empty(), "nada apertado, nada a soltar");
+    }
+
+    #[test]
+    fn o_alt_preso_vai_disfarcado_para_nao_abrir_a_barra_de_menus() {
+        // Três eventos para o Alt: a tecla sem função (apertar e soltar) e então o Alt solto.
+        let so_alt = presos(|vk| vk == 0xA4);
+        assert_eq!(so_alt, vec![0xA4]);
+        assert!(ALT.contains(&0xA4) && ALT.contains(&0xA5));
+        assert!(!ALT.contains(&0xA2), "o Ctrl não precisa de disfarce");
     }
 }

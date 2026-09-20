@@ -2659,6 +2659,7 @@ dependencies = [
  "ir-proto",
  "serde",
  "tracing",
+ "tracing-appender",
  "tracing-subscriber",
 ]
 

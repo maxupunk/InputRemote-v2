@@ -21,6 +21,9 @@ import { SemServico } from "ativacao.slint";
 // O Rust só enxerga o que o arquivo de entrada exporta. Sem esta linha, `Dados` e `Acoes`
 // existem no Slint e não existem na ponte — que é o único jeito de a janela receber dados.
 export { Dados, Acoes, EstadoUi, EtapaDoPareamento } from "dados.slint";
+export { CopiaUi } from "copia.slint";
+// A janelinha do canto, que o Rust cria e posiciona quando uma cópia começa.
+export { Flutuante } from "flutuante.slint";
 
 component Voltar inherits Rectangle {
     callback acionado();

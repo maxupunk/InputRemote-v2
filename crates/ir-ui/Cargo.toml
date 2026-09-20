@@ -22,7 +22,9 @@ slint = "1.14"
 # e o evento nomeado que faz a segunda abertura trazer a janela da primeira em vez de abrir outra.
 [target.'cfg(windows)'.dependencies]
 tray-icon = { version = "0.25", default-features = false }
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_Security"] }
+# `Win32_UI_WindowsAndMessaging` traz `GetSystemMetrics`: é dele que sai o tamanho da tela, para o
+# aviso de cópia nascer no canto de baixo à direita.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_Security", "Win32_UI_WindowsAndMessaging"] }
 
 [build-dependencies]
 slint-build = "1.14"

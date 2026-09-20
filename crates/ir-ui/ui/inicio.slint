@@ -8,6 +8,7 @@ import { Tema } from "tema.slint";
 import { Dados, Acoes, Saude } from "dados.slint";
 import { Cartao, Botao, Selo, Dado, Faixa, Ponto, Secao } from "componentes.slint";
 import { EscolhaDeBorda } from "bordas.slint";
+import { CartaoDeCopia } from "copia.slint";
 
 /// A tela inicial.
 export component Inicio inherits VerticalLayout {
@@ -86,6 +87,14 @@ export component Inicio inherits VerticalLayout {
                 valor: Dados.estado.latencia;
                 cor-do-valor: Dados.estado.latencia-boa ? Tema.bom : Tema.atencao;
             }
+        }
+    }
+
+    // A cópia de arquivos fica logo abaixo do estado: é a única coisa que acontece sozinha
+    // enquanto o usuário olha, e a que ele veio conferir quando algo não colou do outro lado.
+    if Dados.tem-copia: Cartao {
+        CartaoDeCopia {
+            copia: Dados.copia;
         }
     }
 

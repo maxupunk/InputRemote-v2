@@ -21,7 +21,7 @@ use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel, 
 
 use crate::gerado::{Acoes, Dados, EtapaDoPareamento, Janela};
 use crate::servico::{Servico, Situacao};
-use crate::{ativacao, ponte};
+use crate::{ativacao, copia, ponte};
 
 /// De quanto em quanto tempo a interface recolhe avisos e confere a ligação com o serviço.
 ///
@@ -39,6 +39,9 @@ struct Contexto {
     /// A última situação da ligação que a janela mostrou: só se redesenha a faixa quando ela muda,
     /// e é a mudança para conectado que manda buscar o estado de novo.
     situacao: Cell<Situacao>,
+    /// O aviso de cópia no canto da tela, que aparece com a janela fechada.
+    #[cfg(windows)]
+    aviso: RefCell<crate::flutuante::Aviso>,
 }
 
 impl Contexto {
@@ -141,6 +144,7 @@ impl Contexto {
                 self.etapa(EtapaDoPareamento::Concluido);
                 self.sincronizar();
             }
+            Aviso::Transferencia(transferencia) => self.mostrar_copia(&transferencia),
             Aviso::PareamentoFalhou(falha) => self.falha_no_pareamento(falha),
             Aviso::PareamentoConcluido { sucesso: false } => {
                 // Uma recusa que a própria janela pediu já está na tela com o motivo certo, e o
@@ -155,6 +159,24 @@ impl Contexto {
             // um número alto significa perda no meio do caminho, e em lugar nenhum mais.
             _ => {}
         }
+    }
+
+    /// Conta o que está acontecendo com uma cópia de arquivos.
+    ///
+    /// Na janela, num cartão que **fica** depois de terminar: a pergunta "aquilo copiou mesmo?"
+    /// vem depois, quando a pessoa já está no outro computador. E, no Windows, também num aviso no
+    /// canto da tela — porque quem copia está no Explorer, e não aqui.
+    fn mostrar_copia(&self, transferencia: &ir_ipc::transferencia::Transferencia) {
+        let copia = copia::copia_ui(transferencia);
+        self.com_janela(|janela| {
+            let dados = janela.global::<Dados>();
+            dados.set_copia(copia.clone());
+            dados.set_tem_copia(true);
+        });
+        #[cfg(windows)]
+        self.aviso
+            .borrow_mut()
+            .mostrar(copia, transferencia.terminou());
     }
 
     fn etapa(&self, etapa: EtapaDoPareamento) {
@@ -191,6 +213,26 @@ fn seis_vazios() -> ModelRc<SharedString> {
     ModelRc::new(VecModel::from(vec![SharedString::new(); 6]))
 }
 
+/// Diz ao ambiente gráfico quem são as janelas deste programa.
+///
+/// No Wayland o `app_id` é o que liga a janela ao `inputremote.desktop` — e é dele que vêm o ícone
+/// na barra e o nome do aplicativo. Sem ele a janela nasce sem identidade: sem ícone, e o lançador
+/// não a reconhece como o InputRemote já aberto. O nome é o do arquivo `.desktop` sem a extensão,
+/// que é o que o GNOME procura.
+///
+/// **Depois** de a primeira janela existir, e não antes: a chamada precisa da plataforma gráfica já
+/// escolhida, e antes disso ela falha com "no Slint platform was initialized" — que foi como este
+/// defeito apareceu, no registro do próprio programa. O `app_id` é lido quando a janela é mostrada,
+/// então aqui ainda é cedo o bastante.
+fn identificar_as_janelas() {
+    if let Err(erro) = slint::set_xdg_app_id("inputremote") {
+        // No Windows e no macOS não há `app_id`, e a recusa é esperada; no Linux ela custa o ícone.
+        if cfg!(target_os = "linux") {
+            eprintln!("não consegui declarar o app_id da janela: {erro}");
+        }
+    }
+}
+
 /// Abre a janela e roda até ela fechar.
 ///
 /// # Errors
@@ -203,6 +245,7 @@ pub fn abrir(
     marca: crate::bandeja::Marca,
 ) -> Result<(), slint::PlatformError> {
     let janela = Janela::new()?;
+    identificar_as_janelas();
     let situacao = servico.situacao();
     let contexto = Rc::new(Contexto {
         janela: janela.as_weak(),
@@ -210,6 +253,8 @@ pub fn abrir(
         candidatos: RefCell::new(Vec::new()),
         par: RefCell::new(None),
         situacao: Cell::new(situacao),
+        #[cfg(windows)]
+        aviso: RefCell::new(crate::flutuante::Aviso::novo()),
     });
 
     {

@@ -1,0 +1,42 @@
+// O aviso que aparece sozinho, no canto, enquanto a cópia acontece.
+//
+// A janela do InputRemote fica fechada quase o tempo todo: quem copia está no Explorer ou no
+// Nautilus, não aqui. Um retorno que só existisse dentro da janela não seria retorno nenhum — era
+// exatamente o que faltava quando uma cópia não atravessava e o outro lado colava a anterior.
+//
+// Sem moldura, sem barra de tarefas e sempre por cima: é um recado, não uma janela para usar. Ele
+// se fecha sozinho pouco depois de a cópia terminar, e fica enquanto ela anda.
+
+import { Tema } from "tema.slint";
+import { CopiaUi, CartaoDeCopia, Copia } from "copia.slint";
+
+export { CopiaUi }
+
+export component Flutuante inherits Window {
+    in property <CopiaUi> copia;
+
+    title: "InputRemote";
+    icon: @image-url("../../../recursos/icone-256.png");
+    no-frame: true;
+    always-on-top: true;
+    width: 320px;
+    height: 92px;
+    background: transparent;
+    default-font-size: Tema.fonte-corpo;
+
+    Rectangle {
+        background: Tema.superficie;
+        border-radius: Tema.raio;
+        border-width: Tema.traco;
+        border-color: Copia.cor(root.copia.estado);
+
+        VerticalLayout {
+            padding: Tema.e3;
+            spacing: Tema.e2;
+
+            CartaoDeCopia {
+                copia: root.copia;
+            }
+        }
+    }
+}

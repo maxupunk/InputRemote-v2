@@ -8,6 +8,7 @@
 // frase estiver errada, ela está num arquivo só, e tem teste.
 
 import { Tema } from "tema.slint";
+import { CopiaUi } from "copia.slint";
 
 /// O estado observável, na forma em que a tela o desenha.
 export struct EstadoUi {
@@ -136,6 +137,15 @@ export global Dados {
 
     /// O relatório de diagnóstico, quando pedido.
     in property <string> diagnostico;
+
+    /// A última cópia de arquivos: a que está em curso, ou a que acabou de terminar.
+    ///
+    /// Fica na tela depois de terminar, de propósito: a pergunta "aquilo copiou mesmo?" vem
+    /// **depois** da cópia, quando o usuário já está no outro computador prestes a colar.
+    in property <CopiaUi> copia;
+
+    /// Se há cópia a mostrar. Falso até a primeira.
+    in property <bool> tem-copia: false;
 }
 
 export global Acoes {
