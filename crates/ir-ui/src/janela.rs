@@ -59,10 +59,12 @@ impl Contexto {
 
     fn aplicar(&self, estado: &Estado) {
         *self.par.borrow_mut() = estado.par.as_ref().map(|par| par.maquina);
+        let (recebidos, tem_o_que_limpar) = crate::historico::recebidos_ui(estado.recebidos_bytes);
         self.com_janela(|janela| {
-            janela
-                .global::<Dados>()
-                .set_estado(ponte::estado_ui(estado));
+            let dados = janela.global::<Dados>();
+            dados.set_estado(ponte::estado_ui(estado));
+            dados.set_recebidos(recebidos.clone().into());
+            dados.set_recebidos_tem_o_que_limpar(tem_o_que_limpar);
         });
     }
 
@@ -372,6 +374,13 @@ fn ligar_sessao(janela: &Janela, contexto: &Rc<Contexto>) {
         if let Some(maquina) = alvo.par_corrente() {
             alvo.enviar(Pedido::EsquecerPar { maquina });
         }
+    });
+
+    let alvo = Rc::clone(contexto);
+    acoes.on_limpar_recebidos(move || {
+        // O serviço responde "recebi" e apaga fora do compasso dele; o tamanho novo chega pelo
+        // aviso de estado, e é ele que apaga o botão quando não sobra nada.
+        alvo.enviar(Pedido::LimparRecebidos);
     });
 
     let alvo = Rc::clone(contexto);

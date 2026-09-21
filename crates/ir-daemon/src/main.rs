@@ -10,12 +10,8 @@ mod commands;
 mod config;
 mod ipc;
 #[cfg(windows)]
-mod lancador;
-#[cfg(windows)]
 mod service;
 mod transportes;
-#[cfg(windows)]
-mod zelador;
 
 use std::io::BufRead;
 use std::sync::Arc;
@@ -161,7 +157,7 @@ fn abrir_canais() -> Result<Canais> {
     // O ajudante de clipboard roda como o usuário; no Windows, quem garante que ele exista é o
     // serviço (`zelador`). No Linux, o `systemd` do usuário.
     #[cfg(windows)]
-    zelador::zelar_pelo_clipboard(ajudantes.clone());
+    ir_sessao::zelar_pelo_clipboard(ajudantes.clone());
     info!(endereco = %ipc::endereco_de_controle(), "canal de controle no ar");
 
     let (fato_tx, fatos) = mpsc::unbounded_channel();
@@ -210,7 +206,7 @@ fn init_tracing() -> tracing_appender::non_blocking::WorkerGuard {
 fn destino_do_registro() -> (Box<dyn std::io::Write + Send>, bool) {
     #[cfg(windows)]
     {
-        if lancador::como_servico()
+        if ir_sessao::como_servico()
             && let Some(arquivo) = arquivo_de_registro()
         {
             return (Box::new(arquivo), false);

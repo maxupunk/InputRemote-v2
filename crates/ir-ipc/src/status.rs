@@ -218,6 +218,12 @@ pub struct Estado {
     pub bloqueio_permitido: bool,
     /// Por que a última sessão terminou.
     pub ultima_queda: Option<MotivoDaQueda>,
+    /// Quanto a pasta de recebidos ocupa agora, em bytes.
+    ///
+    /// O que chega precisa existir em algum lugar para ser colado, e depois sobra. O serviço tira
+    /// sozinho o que passou da idade ou do teto; este número existe para a pessoa ver o que ainda
+    /// está lá — e poder esvaziar quando quiser, que é a parte que o produto não decide por ela.
+    pub recebidos_bytes: u64,
 }
 
 impl Estado {
@@ -239,6 +245,7 @@ impl Estado {
             agente_pronto: false,
             bloqueio_permitido: false,
             ultima_queda: None,
+            recebidos_bytes: 0,
         }
     }
 

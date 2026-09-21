@@ -27,6 +27,8 @@ pub(crate) struct Deposito {
     pub(crate) pasta: PathBuf,
     /// Quanto esta máquina aceita.
     pub(crate) cota: ir_files::Cota,
+    /// Quem cuida para a pasta não encher o disco.
+    pub(crate) faxineiro: Arc<crate::faxina::Faxineiro>,
 }
 
 /// O sentido de entrada: aplica o que chega e responde.
@@ -79,6 +81,8 @@ pub(crate) async fn receber(
             // Terminou, bem ou mal: o estado vai embora e a montagem com ele, se não publicou.
             if let Some(concluida) = recepcao.take() {
                 publicar(*concluida, &avisos).await;
+                // A entrega nova entrou: é a hora certa de tirar as velhas, e de remedir.
+                deposito.faxineiro.arrumar().await;
             }
         } else if passo.passou() {
             let feitos = (aberta.escritos(), aberta.total());

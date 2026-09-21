@@ -30,7 +30,12 @@ use crate::enviando::enviar;
 use crate::recebendo::receber;
 
 /// Conduz um enlace até ele cair.
-pub(crate) async fn conduzir(enlace: EnlaceDeDados, ajuste: &Ajuste, entrada: &mut crate::Entrada) {
+pub(crate) async fn conduzir(
+    enlace: EnlaceDeDados,
+    ajuste: &Ajuste,
+    entrada: &mut crate::Entrada,
+    faxineiro: &Arc<crate::faxina::Faxineiro>,
+) {
     let remetente = Arc::new(Mutex::new(enlace.remetente));
     // Sem limite, e de propósito. Era uma fila de 32, e com mais de 32 arquivos ela enchia: a leitura
     // parava esperando vaga, o destino parava esperando a leitura para mandar o `Verified` seguinte,
@@ -45,6 +50,7 @@ pub(crate) async fn conduzir(enlace: EnlaceDeDados, ajuste: &Ajuste, entrada: &m
         crate::recebendo::Deposito {
             pasta: ajuste.recebidos.clone(),
             cota: ajuste.cota,
+            faxineiro: Arc::clone(faxineiro),
         },
         ajuste.avisos.clone(),
     ));

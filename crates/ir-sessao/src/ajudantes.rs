@@ -2,7 +2,7 @@
 //!
 //! Sem o ajudante, copiar e colar simplesmente não atravessa, e nada diz por quê — foi assim duas
 //! vezes: uma atualização encerrava o ajudante, e só um novo login o trazia de volta. Contar quem
-//! está ligado é o que deixa o serviço relançá-lo ([`crate::lancador`]) e o diagnóstico dizer a
+//! está ligado é o que deixa o serviço relançá-lo ([`crate::zelar_pelo_clipboard`]) e o diagnóstico dizer a
 //! verdade.
 
 use std::sync::Arc;
@@ -10,16 +10,16 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// A contagem, compartilhada entre as conexões de controle e quem pergunta.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct Ajudantes(Arc<AtomicUsize>);
+pub struct Ajudantes(Arc<AtomicUsize>);
 
 impl Ajudantes {
     /// Quantos estão ligados.
-    pub(crate) fn ligados(&self) -> usize {
+    pub fn ligados(&self) -> usize {
         self.0.load(Ordering::Relaxed)
     }
 
     /// Um ajudante se apresentou. Ele conta até a [`Presenca`] ser solta — quando a conexão fecha.
-    pub(crate) fn entrou(&self) -> Presenca {
+    pub fn entrou(&self) -> Presenca {
         self.0.fetch_add(1, Ordering::Relaxed);
         Presenca(Arc::clone(&self.0))
     }
@@ -27,7 +27,7 @@ impl Ajudantes {
 
 /// Um ajudante ligado. Soltá-la é a conexão dele ter fechado, por qualquer caminho.
 #[derive(Debug)]
-pub(crate) struct Presenca(Arc<AtomicUsize>);
+pub struct Presenca(Arc<AtomicUsize>);
 
 impl Drop for Presenca {
     fn drop(&mut self) {

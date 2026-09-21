@@ -14,6 +14,7 @@ members = [
     "crates/ir-acesso",
     "crates/ir-clip",
     "crates/ir-input",
+    "crates/ir-sessao",
     "crates/ir-daemon",
     "crates/ir-agent",
     "crates/ir-ui",
@@ -43,6 +44,7 @@ ir-acesso = { path = "crates/ir-acesso", version = "0.1.0-dev" }
 ir-transferencia = { path = "crates/ir-transferencia", version = "0.1.0-dev" }
 ir-clip = { path = "crates/ir-clip", version = "0.1.0-dev" }
 ir-input = { path = "crates/ir-input", version = "0.1.0-dev" }
+ir-sessao = { path = "crates/ir-sessao", version = "0.1.0-dev" }
 
 postcard = { version = "1.1", default-features = false, features = ["alloc"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }

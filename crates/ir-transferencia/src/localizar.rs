@@ -26,6 +26,22 @@ pub fn sem_localizador() -> Localizador {
     Arc::new(|_| Box::pin(async { None }))
 }
 
+/// O localizador que pergunta à descoberta da rede local onde o par está.
+///
+/// O id de máquina anunciado sai dos primeiros bytes da chave pública, que é o que os dois lados
+/// têm em comum sem combinar nada. A conversão mora aqui, e não no serviço, porque é ela que liga
+/// "o par fixado" ao "quem respondeu na rede" — e quem precisa dessa ligação é quem disca.
+#[must_use]
+pub fn da_descoberta(descoberta: &ir_transporte::Descoberta) -> Localizador {
+    let descoberta = descoberta.clone();
+    Arc::new(move |chave| Box::pin(descoberta.localizar(maquina_da_chave(&chave))))
+}
+
+/// O id de máquina de um par, derivado da chave pública dele.
+fn maquina_da_chave(chave: &PublicKey) -> ir_proto::ids::MachineId {
+    ir_proto::ids::MachineId(chave.0[..16].try_into().unwrap_or([0u8; 16]))
+}
+
 /// Para onde discar: o endereço de rede configurado, e senão onde a rede diz que o par está.
 ///
 /// `falhou` é o endereço que acabou de não atender: um endereço configurado que envelheceu (o DHCP

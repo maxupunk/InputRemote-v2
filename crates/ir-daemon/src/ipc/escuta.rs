@@ -90,7 +90,7 @@ impl Escuta {
     /// o serviço não lê nada por ninguém; [`leitor_depois_de_ler`] completa a resposta.
     #[allow(clippy::unused_self)] // a assinatura é a mesma do Linux, onde a escuta tem o que dizer
     pub(crate) fn leitor_de(&self, _conexao: &Conexao) -> ir_transferencia::Leitor {
-        ir_transferencia::Leitor::do_chamador(None, 0, crate::lancador::como_servico())
+        ir_transferencia::Leitor::do_chamador(None, 0, ir_sessao::como_servico())
     }
 }
 
@@ -103,7 +103,7 @@ pub(crate) fn leitor_depois_de_ler(
     conexao: &Conexao,
     _provisorio: ir_transferencia::Leitor,
 ) -> ir_transferencia::Leitor {
-    if !crate::lancador::como_servico() {
+    if !ir_sessao::como_servico() {
         return ir_transferencia::Leitor::Proprio;
     }
     match ir_acesso::identidade::TokenDoCliente::do_pipe(conexao) {

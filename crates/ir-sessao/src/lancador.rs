@@ -30,12 +30,12 @@ use anyhow::{Context, Result, bail};
 static COMO_SERVICO: AtomicBool = AtomicBool::new(false);
 
 /// Registra que estamos rodando como serviço.
-pub(crate) fn marcar_como_servico() {
+pub fn marcar_como_servico() {
     COMO_SERVICO.store(true, Ordering::Relaxed);
 }
 
 /// Se estamos rodando como serviço.
-pub(crate) fn como_servico() -> bool {
+pub fn como_servico() -> bool {
     COMO_SERVICO.load(Ordering::Relaxed)
 }
 
@@ -58,7 +58,7 @@ fn caminho_do_agente() -> Result<std::path::PathBuf> {
 /// # Errors
 ///
 /// Sem sessão de console, sem ninguém dentro dela (a tela de login), ou se o sistema recusar.
-pub(crate) fn lancar_ajudante_de_clipboard() -> Result<u32> {
+pub fn lancar_ajudante_de_clipboard() -> Result<u32> {
     let exe = caminho_do_agente()?;
     janela::lancar_como_usuario(&exe, "--clipboard")
 }
@@ -68,7 +68,7 @@ pub(crate) fn lancar_ajudante_de_clipboard() -> Result<u32> {
 /// # Errors
 ///
 /// Erro se o executável do agente não existir, ou se o sistema recusar o lançamento.
-pub(crate) fn lancar_agente() -> Result<u32> {
+pub fn lancar_agente() -> Result<u32> {
     let exe = caminho_do_agente()?;
     if como_servico() {
         return janela::lancar_na_sessao_de_console(&exe);

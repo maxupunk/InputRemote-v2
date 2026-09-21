@@ -152,6 +152,12 @@ export global Dados {
 
     /// Quanto o produto moveu nesta sessão ("1,2 GB"), ou vazio enquanto nada moveu.
     in property <string> trafego;
+
+    /// Quanto a pasta de recebidos ocupa, já em texto ("8,1 GB" ou "nada guardado").
+    in property <string> recebidos: "nada guardado";
+
+    /// Se há o que limpar — o botão fica apagado quando a pasta já está vazia.
+    in property <bool> recebidos-tem-o-que-limpar: false;
 }
 
 export global Acoes {
@@ -185,6 +191,9 @@ export global Acoes {
     callback encerrar();
     /// Montar o diagnóstico e mostrá-lo para o usuário copiar.
     callback mostrar-diagnostico();
+
+    /// Esvaziar a pasta de recebidos, a pedido de quem está olhando o tamanho dela.
+    callback limpar-recebidos();
     /// Descartar o recado.
     callback descartar-recado();
     /// Ligar o serviço e dar acesso a este usuário, com a senha de administrador.

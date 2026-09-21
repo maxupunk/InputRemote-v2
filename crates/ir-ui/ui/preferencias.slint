@@ -136,6 +136,34 @@ export component Preferencias inherits VerticalLayout {
 
     Cartao {
         Grupo {
+            titulo: "ARQUIVOS RECEBIDOS";
+            nota: "O que chega fica guardado para você colar. O InputRemote apaga sozinho o que "
+                + "passou de duas semanas e o excesso além de 2 GB, sempre mantendo as últimas "
+                + "cópias. Limpar agora tira tudo — inclusive o que ainda não foi colado.";
+
+            HorizontalLayout {
+                spacing: Tema.e2;
+
+                Dado {
+                    rotulo: "Ocupado agora";
+                    valor: Dados.recebidos;
+                }
+
+                Rectangle { }
+
+                Botao {
+                    texto: "Limpar agora";
+                    habilitado: Dados.recebidos-tem-o-que-limpar;
+                    acionado => {
+                        Acoes.limpar-recebidos();
+                    }
+                }
+            }
+        }
+    }
+
+    Cartao {
+        Grupo {
             titulo: "QUANDO ALGO DÁ ERRADO";
             nota: "O relatório traz portador, atraso medido, motivo da última queda e nível de "
                 + "capacidade. Não traz nada do que foi digitado.";

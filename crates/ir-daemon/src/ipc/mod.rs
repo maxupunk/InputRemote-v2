@@ -9,7 +9,6 @@
 //! o socket e o ator, que traduz do estado interno para o [`ir_ipc::Estado`] publicado.
 
 pub(crate) mod agente;
-mod ajudantes;
 pub(crate) mod controle;
 mod escuta;
 pub(crate) mod quadros;
@@ -20,7 +19,7 @@ use tokio::sync::broadcast;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 
-pub(crate) use ajudantes::Ajudantes;
+pub(crate) use ir_sessao::Ajudantes;
 
 /// Um pedido da interface, com o caminho de volta para a resposta do ator.
 pub(crate) struct PedidoRecebido {

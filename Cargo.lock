@@ -2711,6 +2711,7 @@ dependencies = [
  "ir-input",
  "ir-ipc",
  "ir-proto",
+ "ir-sessao",
  "ir-session",
  "ir-transferencia",
  "ir-transporte",
@@ -2785,6 +2786,16 @@ dependencies = [
  "postcard",
  "serde",
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "ir-sessao"
+version = "0.1.0-dev"
+dependencies = [
+ "anyhow",
+ "tokio",
+ "tracing",
+ "windows 0.62.2",
 ]
 
 [[package]]

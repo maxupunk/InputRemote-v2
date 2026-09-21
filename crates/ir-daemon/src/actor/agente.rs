@@ -124,7 +124,7 @@ impl Daemon {
         if !self.ticks.is_multiple_of(RELANCAR_AGENTE_TICKS) {
             return;
         }
-        match crate::lancador::lancar_agente() {
+        match ir_sessao::lancar_agente() {
             Ok(pid) => info!(pid, "agente lançado"),
             Err(erro) => warn!(%erro, "não foi possível lançar o agente"),
         }

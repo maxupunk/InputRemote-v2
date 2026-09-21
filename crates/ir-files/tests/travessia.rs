@@ -200,10 +200,15 @@ async fn cancelar_no_meio_nao_deixa_arquivo_temporario_nem_arvore_parcial() {
     );
 }
 
+/// Copiar a mesma pasta duas vezes é o caso comum, e a segunda é **a versão nova daquilo**: ela
+/// mantém o nome e toma o lugar da primeira.
+///
+/// A regra era a oposta até 2026-09-21 — cada entrega ganhava `(2)`, `(3)` — e isso tinha duas
+/// consequências ruins que o usuário relatou: o nome alterado ia junto na hora de colar, e a pasta
+/// de recebidos crescia sem parar. O que protege contra perder o que ainda não foi colado é a
+/// faxina (`ir_transferencia::faxina`), que só apaga o que é velho ou excedente.
 #[tokio::test]
-async fn duas_entregas_com_o_mesmo_nome_nao_se_sobrescrevem() {
-    // Copiar a mesma pasta duas vezes é o caso comum, e perder a primeira cópia porque a segunda
-    // tem o mesmo nome seria destruir dado do usuário.
+async fn a_entrega_nova_mantem_o_nome_e_substitui_a_anterior() {
     let temp = temp("travessia-duas");
     let origem_dir = temp.sub("origem");
     let raiz = origem_dir.join("pasta");
@@ -218,10 +223,10 @@ async fn duas_entregas_com_o_mesmo_nome_nao_se_sobrescrevem() {
         .await
         .publicado();
 
-    assert_ne!(primeira, segunda);
+    assert_eq!(primeira, segunda, "o nome é o mesmo nas duas entregas");
     assert_eq!(
-        tokio::fs::read(primeira.join("x.txt")).await.unwrap(),
-        b"primeira"
+        tokio::fs::read(segunda.join("x.txt")).await.unwrap(),
+        b"segunda!"
     );
     assert_eq!(
         tokio::fs::read(segunda.join("x.txt")).await.unwrap(),

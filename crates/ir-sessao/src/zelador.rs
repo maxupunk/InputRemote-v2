@@ -7,24 +7,31 @@
 
 use std::time::{Duration, Instant};
 
+#[cfg(windows)]
 use tracing::{debug, info};
 
-use crate::ipc::Ajudantes;
+use crate::Ajudantes;
 
 /// A cada quanto se confere.
+#[cfg_attr(not(windows), allow(dead_code))]
 const CONFERIR: Duration = Duration::from_secs(5);
 
 /// Quanto tempo sem ajudante se tolera antes de lançar um: bem mais que a reconexão dele (2 s), para
 /// o ajudante vivo voltar sozinho quando é o serviço que acabou de subir.
+#[cfg_attr(not(windows), allow(dead_code))]
 const TOLERANCIA: Duration = Duration::from_secs(12);
 
 /// A decisão, separada do relógio e do sistema para ser testada.
+// A decisão é a mesma nos dois sistemas, e o teste dela vale nos dois — mas quem a usa é só o
+// lançamento do Windows. No Linux ela compila, fica testada, e ninguém a chama.
 #[derive(Debug, Default)]
+#[cfg_attr(not(windows), allow(dead_code))]
 struct Zelador {
     /// Desde quando não há ajudante ligado.
     ausente_desde: Option<Instant>,
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 impl Zelador {
     /// Se é hora de lançar um ajudante, dado quantos estão ligados agora.
     ///
@@ -45,7 +52,8 @@ impl Zelador {
 
 /// Sobe a tarefa que zela pelo ajudante. Só como serviço; em primeiro plano (teste à mão), não faz
 /// nada — quem testa sobe o ajudante que quiser.
-pub(crate) fn zelar_pelo_clipboard(ajudantes: Ajudantes) {
+#[cfg(windows)]
+pub fn zelar_pelo_clipboard(ajudantes: Ajudantes) {
     if !crate::lancador::como_servico() {
         return;
     }
@@ -77,6 +85,11 @@ pub(crate) fn zelar_pelo_clipboard(ajudantes: Ajudantes) {
         }
     });
 }
+
+/// Fora do Windows quem zela pelo ajudante é o `systemd` do usuário, com `Restart=always` na
+/// unidade que o pacote instala: ele sabe quando existe sessão gráfica, e este crate não.
+#[cfg(not(windows))]
+pub fn zelar_pelo_clipboard(_ajudantes: Ajudantes) {}
 
 #[cfg(test)]
 mod tests {

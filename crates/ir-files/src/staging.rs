@@ -25,12 +25,11 @@ use tracing::debug;
 
 use crate::error::{FileError, Result};
 
-/// Quantos nomes alternativos tentar antes de desistir de publicar.
+/// O sufixo da entrega anterior enquanto ela é trocada pela nova.
 ///
-/// Se `recebidos/pasta` até `recebidos/pasta (99)` estiverem todos ocupados, o problema não é de
-/// nome — é que ninguém está limpando a pasta de recebidos, e inventar um centésimo nome esconderia
-/// isso.
-const TENTATIVAS_DE_NOME: u32 = 99;
+/// Nome improvável de propósito: ele existe por instantes, entre o `rename` que tira a anterior do
+/// caminho e o que põe a nova no lugar.
+const ANTERIOR: &str = "anterior-do-inputremote";
 
 /// Uma árvore a meio caminho, que se apaga sozinha se não for publicada.
 #[derive(Debug)]
@@ -138,21 +137,23 @@ impl Staging {
         Ok(destino)
     }
 
-    /// Publica a montagem inteira com o nome pedido, ou o primeiro nome livre parecido.
+    /// Publica a montagem inteira com o nome pedido — **o nome pedido**, sem sufixo.
     ///
     /// Um `rename` só: até a última linha não havia nada visível no destino, e depois dela está
     /// tudo. Não existe instante em que o usuário veja meia árvore.
     ///
     /// # Errors
     ///
-    /// [`FileError::Io`] se nenhum nome livre for encontrado ou o `rename` falhar.
+    /// [`FileError::Io`] se o `rename` falhar.
     pub async fn publicar(mut self, recebidos: &Path, nome: &str) -> Result<PathBuf> {
-        let alvo = self.escolher_nome(recebidos, nome).await?;
+        let alvo = recebidos.join(nome);
+        let anterior = afastar_anterior(&alvo).await?;
         tokio::fs::rename(&self.raiz, &alvo)
             .await
             .map_err(|erro| FileError::io(&alvo, erro))?;
         // Só depois de o `rename` ter dado certo. Se ele falhar, o `Drop` ainda tem de limpar.
         self.publicado = true;
+        apagar(anterior).await;
         Ok(alvo)
     }
 
@@ -179,35 +180,60 @@ impl Staging {
             .next()
             .filter(|nome| !nome.is_empty())
             .ok_or(FileError::Violacao("entrada sem nome para publicar"))?;
-        let alvo = self.escolher_nome(recebidos, nome).await?;
+        let alvo = recebidos.join(nome);
+        let anterior = afastar_anterior(&alvo).await?;
         tokio::fs::rename(&origem, &alvo)
             .await
             .map_err(|erro| FileError::io(&alvo, erro))?;
         // `publicado` fica falso de propósito: o que saiu foi o conteúdo, e a casca da montagem
         // ainda tem de ser recolhida.
+        apagar(anterior).await;
         Ok(alvo)
     }
+}
 
-    /// O primeiro nome livre: `nome`, depois `nome (2)`, `nome (3)`…
-    async fn escolher_nome(&self, recebidos: &Path, nome: &str) -> Result<PathBuf> {
-        let direto = recebidos.join(nome);
-        if tokio::fs::metadata(&direto).await.is_err() {
-            return Ok(direto);
-        }
-        for n in 2..=TENTATIVAS_DE_NOME {
-            let tentativa = recebidos.join(format!("{nome} ({n})"));
-            if tokio::fs::metadata(&tentativa).await.is_err() {
-                return Ok(tentativa);
-            }
-        }
-        Err(FileError::io(
-            recebidos.join(nome),
-            std::io::Error::new(
-                std::io::ErrorKind::AlreadyExists,
-                "nenhum nome livre na pasta de recebidos",
-            ),
-        ))
+/// Tira do caminho a entrega anterior de mesmo nome, e diz para onde ela foi.
+///
+/// O que chega é **a versão nova daquilo**, e é o nome dela que o usuário vai colar. Acrescentar
+/// "(2)" fazia o arquivo chegar do outro lado com outro nome — a queixa do usuário —, e ainda
+/// deixava as duas cópias ocupando disco.
+///
+/// A anterior é afastada, e não apagada de uma vez: se o `rename` da nova falhar, o usuário fica
+/// com a antiga, que é melhor que ficar sem nenhuma. Quem apaga é [`apagar`], depois do sucesso.
+async fn afastar_anterior(alvo: &Path) -> Result<Option<PathBuf>> {
+    if tokio::fs::metadata(alvo).await.is_err() {
+        return Ok(None);
     }
+    let nome = alvo.file_name().map_or_else(
+        || ANTERIOR.to_owned(),
+        |nome| nome.to_string_lossy().into_owned(),
+    );
+    let afastado = alvo.with_file_name(format!("{nome}.{ANTERIOR}"));
+    // Uma sobra de uma tentativa anterior não pode impedir esta entrega.
+    if tokio::fs::metadata(&afastado).await.is_ok() {
+        apagar(Some(afastado.clone())).await;
+    }
+    if tokio::fs::rename(alvo, &afastado).await.is_err() {
+        // Não deu para afastar (outro processo com o arquivo aberto, no Windows): apagar direto é
+        // a única saída, e é o que o usuário espera de "a versão nova daquilo".
+        apagar(Some(alvo.to_path_buf())).await;
+        return Ok(None);
+    }
+    Ok(Some(afastado))
+}
+
+/// Apaga o que foi afastado, seja arquivo ou árvore. Falhar aqui só deixa lixo, e o serviço tem
+/// quem o recolha depois (`ir_transferencia::faxina`).
+async fn apagar(caminho: Option<PathBuf>) {
+    let Some(caminho) = caminho else { return };
+    if tokio::fs::metadata(&caminho)
+        .await
+        .is_ok_and(|dados| dados.is_dir())
+    {
+        let _ = tokio::fs::remove_dir_all(&caminho).await;
+        return;
+    }
+    let _ = tokio::fs::remove_file(&caminho).await;
 }
 
 impl Drop for Staging {
@@ -271,9 +297,15 @@ mod tests {
         assert_eq!(tokio::fs::read(&dentro).await.unwrap(), b"conteudo");
     }
 
+    /// A regra mudou em 2026-09-21, a pedido de quem usa: o recebido mantém **o nome**, e a
+    /// entrega nova toma o lugar da anterior de mesmo nome.
+    ///
+    /// Antes cada entrega ganhava um sufixo — `entrega`, `entrega (2)`, `entrega (3)` — e o nome
+    /// alterado viajava para o outro lado na hora de colar: o usuário copiava `FIMI0022.LRV` e
+    /// colava `FIMI0022.LRV (2)`. E as versões velhas ficavam todas em disco.
     #[tokio::test]
-    async fn publicar_duas_vezes_nao_sobrescreve_a_primeira() {
-        let temp = pasta_temporaria("staging-dois-nomes");
+    async fn a_entrega_nova_mantem_o_nome_e_toma_o_lugar_da_anterior() {
+        let temp = pasta_temporaria("staging-mesmo-nome");
         let mut nomes = Vec::new();
         for n in 1..=3u32 {
             let staging = Staging::criar(temp.caminho(), TransferId(n)).await.unwrap();
@@ -283,16 +315,23 @@ mod tests {
                 .unwrap();
             nomes.push(staging.publicar(temp.caminho(), "entrega").await.unwrap());
         }
-        // Três entregas com o mesmo nome pedido, três pastas distintas, nenhuma perdida.
-        for (indice, nome) in nomes.iter().enumerate() {
-            let esperado = format!("versao {}", indice + 1);
-            assert_eq!(
-                tokio::fs::read_to_string(nome.join("x.txt")).await.unwrap(),
-                esperado
-            );
+        // O mesmo caminho nas três vezes: sem "(2)", sem "(3)".
+        assert!(nomes.iter().all(|nome| *nome == nomes[0]), "{nomes:?}");
+        assert_eq!(nomes[0].file_name().unwrap(), "entrega");
+        // E o conteúdo é o da última.
+        assert_eq!(
+            tokio::fs::read_to_string(nomes[0].join("x.txt"))
+                .await
+                .unwrap(),
+            "versao 3"
+        );
+        // Nada de sobra ao lado: nem "(2)", nem a pasta afastada.
+        let mut restantes = Vec::new();
+        let mut leitura = tokio::fs::read_dir(temp.caminho()).await.unwrap();
+        while let Ok(Some(item)) = leitura.next_entry().await {
+            restantes.push(item.file_name().to_string_lossy().into_owned());
         }
-        assert_eq!(nomes.len(), 3);
-        assert!(nomes.iter().collect::<std::collections::HashSet<_>>().len() == 3);
+        assert_eq!(restantes, vec!["entrega".to_owned()], "{restantes:?}");
     }
 
     #[tokio::test]

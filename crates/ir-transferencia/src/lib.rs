@@ -21,14 +21,15 @@
 #![forbid(unsafe_code)]
 
 mod despejo;
+mod enlace;
 mod enviando;
+pub mod faxina;
 mod fila;
 mod localizar;
 mod passo;
 mod recebendo;
 mod sessao;
 
-use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -42,13 +43,13 @@ pub use ir_files::Cota;
 
 /// Com a autoridade de quem os arquivos são lidos, reexportada pelo mesmo motivo de [`Cota`].
 pub use ir_files::{Autorizacao, Leitor};
-pub use localizar::{Localizador, sem_localizador};
+pub use localizar::{Localizador, da_descoberta, sem_localizador};
 
 /// Um pedido de envio: o que mandar, e com a autoridade de quem.
 pub(crate) type PedidoDeEnvio = (Vec<PathBuf>, Leitor);
 use ir_ipc::Aviso;
 use ir_ipc::transferencia::{Fase, Motivo, Sentido, Transferencia};
-use ir_transporte::dados::{EnlaceDeDados, Porta, ficar_com_o_proprio};
+use ir_transporte::dados::Porta;
 use tokio::sync::{broadcast, mpsc, watch};
 use tracing::{debug, info, warn};
 
@@ -87,6 +88,8 @@ pub struct Destino {
 pub struct Pedidos {
     /// A fila de um: a mesma cópia não vai duas vezes, e outra cópia substitui a que está indo.
     fila: Arc<fila::Fila>,
+    /// Quem cuida da pasta de recebidos.
+    faxineiro: Arc<faxina::Faxineiro>,
     /// O toque que acorda a tarefa de envio. Fechá-lo é como o serviço diz que está saindo.
     acorda: mpsc::UnboundedSender<()>,
     destino: Arc<watch::Sender<Destino>>,
@@ -104,9 +107,37 @@ impl Pedidos {
         let (destino, _) = watch::channel(Destino::default());
         Self {
             fila: Arc::new(fila::Fila::default()),
+            faxineiro: faxina::Faxineiro::novo(PathBuf::new(), faxina::Limites::default()),
             acorda,
             destino: Arc::new(destino),
         }
+    }
+
+    /// Esvazia a pasta de recebidos e conta o estado novo quando terminar.
+    ///
+    /// Apagar gigabytes toca disco e pode demorar; quem pede é o ator do serviço, que gira a cada
+    /// 5 ms e não pode esperar. Então isto manda fazer e volta na hora: o tamanho de volta chega
+    /// pelo aviso, que é como toda mudança de estado chega à janela.
+    pub fn limpar_recebidos(&self, avisos: &broadcast::Sender<Aviso>, estado: ir_ipc::Estado) {
+        let faxineiro = Arc::clone(&self.faxineiro);
+        let avisos = avisos.clone();
+        tokio::spawn(async move {
+            faxineiro.esvaziar().await;
+            let _ = avisos.send(Aviso::EstadoMudou(ir_ipc::Estado {
+                recebidos_bytes: faxineiro.espaco(),
+                ..estado
+            }));
+        });
+    }
+
+    /// Quem cuida da pasta de recebidos: quanto ela ocupa, e o pedido de esvaziá-la.
+    ///
+    /// A janela mostra o tamanho e oferece o botão; o serviço não decide por conta própria apagar
+    /// o que o usuário ainda não colou — fora dos limites de [`faxina::Limites`], que são a parte
+    /// automática.
+    #[must_use]
+    pub fn recebidos(&self) -> &Arc<faxina::Faxineiro> {
+        &self.faxineiro
     }
 
     /// O par mudou: pareou-se um, esqueceu-se o que havia, ou ele foi achado em outro endereço.
@@ -141,6 +172,7 @@ impl Pedidos {
             return false;
         }
         let recebido = self.fila.pedir(caminhos, leitor);
+
         if recebido == fila::Recebido::Repetido {
             debug!("esta cópia já está indo; não vai de novo");
             return true;
@@ -187,13 +219,15 @@ pub fn iniciar(ajuste: Ajuste) -> Pedidos {
     let (acorda, toques) = mpsc::unbounded_channel();
     let (destino, mudancas) = watch::channel(ajuste.destino);
     let fila = Arc::new(fila::Fila::default());
+    let faxineiro = faxina::Faxineiro::novo(ajuste.recebidos.clone(), faxina::Limites::default());
     let entrada = Entrada {
         fila: Arc::clone(&fila),
         toques,
     };
-    tokio::spawn(servir(ajuste, entrada, mudancas));
+    tokio::spawn(servir(ajuste, entrada, mudancas, Arc::clone(&faxineiro)));
     Pedidos {
         fila,
+        faxineiro,
         acorda,
         destino: Arc::new(destino),
     }
@@ -217,7 +251,15 @@ impl Entrada {
 }
 
 /// O laço de vida do canal de dados: tem enlace, usa; não tem, consegue um; o par mudou, recomeça.
-async fn servir(ajuste: Ajuste, mut entrada: Entrada, mut destino: watch::Receiver<Destino>) {
+async fn servir(
+    ajuste: Ajuste,
+    mut entrada: Entrada,
+    mut destino: watch::Receiver<Destino>,
+    faxineiro: Arc<faxina::Faxineiro>,
+) {
+    // Ao subir, antes de qualquer coisa: o que ficou de sessões anteriores passou da idade ou do
+    // espaço, e não é para o usuário descobrir isso por um disco cheio.
+    faxineiro.arrumar().await;
     // Sem par não se abre a porta: seria convidar conexão que nenhuma identidade autorizaria.
     if esperar_par(&ajuste, &mut entrada, &mut destino)
         .await
@@ -241,12 +283,12 @@ async fn servir(ajuste: Ajuste, mut entrada: Entrada, mut destino: watch::Receiv
         };
         let alvo = destino.borrow_and_update().alvo;
         let enlace = tokio::select! {
-            enlace = obter(&porta, &ajuste, par, alvo) => enlace,
+            enlace = enlace::obter(&porta, &ajuste, par, alvo) => enlace,
             _ = destino.changed() => continue,
         };
         info!("canal de arquivos estabelecido");
         tokio::select! {
-            () = sessao::conduzir(enlace, &ajuste, &mut entrada) => {}
+            () = sessao::conduzir(enlace, &ajuste, &mut entrada, &faxineiro) => {}
             _ = destino.changed() => {
                 info!("o par mudou; o canal de arquivos recomeça com o novo");
                 continue;
@@ -297,78 +339,6 @@ async fn esperar_par(
                 }
             }
         }
-    }
-}
-
-/// Consegue um enlace: atende quem chega, e disca quando é a vez deste lado.
-///
-/// Os dois lados escutam e os dois podem ter o endereço do outro. Quem disca primeiro é decidido
-/// pela regra da chave maior, sem trocar mensagem; o outro só disca depois da carência, para o caso
-/// de ser ele o único que sabe o endereço.
-async fn obter(
-    porta: &Porta,
-    ajuste: &Ajuste,
-    par: PublicKey,
-    alvo: Option<ir_transporte::Endereco>,
-) -> EnlaceDeDados {
-    let nossa = ajuste.identidade.public();
-    let carencia = if ficar_com_o_proprio(nossa, par) {
-        Duration::ZERO
-    } else {
-        CARENCIA_DO_NAO_PREFERIDO
-    };
-
-    let configurado = alvo_de_rede(alvo);
-    let mut falhou = None;
-    loop {
-        tokio::select! {
-            atendido = porta.aceitar(par) => match atendido {
-                Ok(enlace) => return enlace,
-                Err(erro) => debug!(%erro, "conexão de arquivos recusada na porta"),
-            },
-            discado = discar_depois(porta, &ajuste.localizar, (configurado, falhou), par, carencia) => {
-                match discado {
-                    Ok(enlace) => return enlace,
-                    Err(nao_atendeu) => falhou = nao_atendeu,
-                }
-            }
-        }
-    }
-}
-
-/// Disca depois da carência. O erro diz qual endereço não atendeu (nenhum, se não havia onde
-/// discar), para o laço tentar de novo — e perguntar à rede em vez de insistir nele.
-///
-/// `(configurado, falhou)`: o endereço de rede da configuração, e o último que não atendeu.
-async fn discar_depois(
-    porta: &Porta,
-    localizar: &Localizador,
-    (configurado, falhou): (Option<SocketAddr>, Option<SocketAddr>),
-    par: PublicKey,
-    carencia: Duration,
-) -> Result<EnlaceDeDados, Option<SocketAddr>> {
-    tokio::time::sleep(carencia).await;
-    let Some(alvo) = localizar::onde_discar(localizar, configurado, falhou, par).await else {
-        // Ninguém na rede disse onde o par está: ele está desligado, ou longe. Perguntar de novo
-        // logo só encheria a rede de broadcast.
-        tokio::time::sleep(ESPERA_SEM_ENDERECO).await;
-        return Err(None);
-    };
-    match porta.discar(alvo, par).await {
-        Ok(enlace) => Ok(enlace),
-        Err(erro) => {
-            debug!(%erro, %alvo, "o par ainda não atende no canal de arquivos");
-            tokio::time::sleep(ESPERA_ENTRE_TENTATIVAS).await;
-            Err(Some(alvo))
-        }
-    }
-}
-
-/// O endereço de rede do par, quando o que se sabe dele é de rede.
-const fn alvo_de_rede(alvo: Option<ir_transporte::Endereco>) -> Option<SocketAddr> {
-    match alvo {
-        Some(ir_transporte::Endereco::Rede(endereco)) => Some(endereco),
-        _ => None,
     }
 }
 

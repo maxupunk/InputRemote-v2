@@ -72,7 +72,7 @@ fn rodar_servico() -> Result<()> {
     garantir_data_dir();
     // A partir daqui o lançador sabe que está na sessão 0, e que alcançar a sessão do usuário
     // exige o caminho do token em vez de um processo filho comum.
-    crate::lancador::marcar_como_servico();
+    ir_sessao::marcar_como_servico();
 
     let (parar_tx, parar_rx) = mpsc::channel();
     let tratador = move |controle| match controle {

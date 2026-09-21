@@ -1,0 +1,29 @@
+[package]
+name = "ir-sessao"
+description = "Lançar e zelar por processos na sessão interativa do usuário, no Windows."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+# Só o que lançar processo na sessão de outro usuário exige: token, sessão de console, ambiente e
+# criação de processo. Nada de entrada, nada de rede.
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Environment",
+    "Win32_System_RemoteDesktop",
+    "Win32_System_Threading",
+]
+
+[lints]
+workspace = true

@@ -333,6 +333,11 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       e o handshake reenvia por até 12 s em vez de desistir no primeiro datagrama ([log 39](docs/logs/39-parear-sem-configurar-nada.md))
 - [x] Quem recebe o pedido vai sozinho para os seis dígitos, até saindo da bandeja; o código é
       recontado à janela que abre depois ([log 39](docs/logs/39-parear-sem-configurar-nada.md))
+- [x] O recebido mantém o nome que saiu: a entrega nova substitui a anterior de mesmo nome, em vez
+      de virar `(2)`, `(3)` ([log 42](docs/logs/42-recebidos-que-nao-enchem-o-disco.md))
+- [x] A pasta de recebidos se cuida: as três mais novas ficam sempre, o que passa de duas semanas
+      sai, e o excesso além de 2 GB sai da mais velha para a mais nova. Com botão "Limpar agora" em
+      Preferências, para o que o automático não decide ([log 42](docs/logs/42-recebidos-que-nao-enchem-o-disco.md))
 - [x] Uma cópia de cada vez: o mesmo Ctrl+C repetido não copia de novo, e copiar outra coisa cancela
       a anterior sem deixar sobra no destino ([log 41](docs/logs/41-a-copia-que-se-repetia.md))
 - [x] O andamento anda: os dois lados contam a cada 200 ms, e não só no fim de cada arquivo — uma

@@ -42,6 +42,10 @@ impl Daemon {
             }
             // Quem conta o ajudante é a conexão dele (`ipc::controle`); aqui não há o que fazer.
             Pedido::AcompanharClipboard => Resposta::Feito,
+            Pedido::LimparRecebidos => {
+                self.arquivos.limpar_recebidos(&self.avisos, self.estado());
+                Resposta::Feito
+            }
             Pedido::Procurar => {
                 self.procurar();
                 Resposta::Feito
@@ -78,6 +82,14 @@ impl Daemon {
             Pedido::DefinirBorda(borda) => self.trocar_borda(borda.no_protocolo()),
             Pedido::DefinirPapel(papel) => self.trocar_papel(role_de(papel)),
             Pedido::Diagnostico => Resposta::Diagnostico(self.diagnostico()),
+            // Arquivos e clipboard são o outro assunto desta conexão, e ficam juntos.
+            outro => self.tratar_conteudo(outro, leitor),
+        }
+    }
+
+    /// Os pedidos sobre o que atravessa: arquivos e clipboard.
+    fn tratar_conteudo(&mut self, pedido: Pedido, leitor: ir_transferencia::Leitor) -> Resposta {
+        match pedido {
             Pedido::EnviarArquivos { caminhos } => self.enviar_arquivos(caminhos, leitor),
             // O mesmo gatilho da travessia, à mão. Quem lê o clipboard é o ajudante da sessão.
             Pedido::SincronizarClipboard => {
@@ -260,6 +272,7 @@ impl Daemon {
             agente_pronto: self.agente_pronto || self.injector.is_some() || self.capturer.is_some(),
             bloqueio_permitido: false,
             ultima_queda: None,
+            recebidos_bytes: self.arquivos.recebidos().espaco(),
         }
     }
 

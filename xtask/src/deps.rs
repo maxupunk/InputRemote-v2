@@ -45,6 +45,8 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // Quem conectou ao serviço e o que pode: responde à pergunta do motor de arquivos.
     ("ir-acesso", &["ir-files"]),
     ("ir-clip", &["ir-proto"]),
+    // Lançar e zelar por processo na sessão do usuário: não conhece protocolo nem estado.
+    ("ir-sessao", &[]),
     (
         "ir-daemon",
         &[
@@ -58,6 +60,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "ir-transferencia",
             "ir-input",
             "ir-acesso",
+            "ir-sessao",
         ],
     ),
     ("ir-agent", &["ir-proto", "ir-ipc", "ir-input", "ir-clip"]),

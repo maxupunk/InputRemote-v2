@@ -132,6 +132,12 @@ pub enum Pedido {
     /// Quem manda é o ajudante de clipboard, que lê na sessão do usuário. O serviço não lê o
     /// clipboard de ninguém; ele só leva o que lhe é entregue.
     OferecerTexto(crate::texto::TextoDoClipboard),
+    /// Esvazie a pasta de recebidos agora.
+    ///
+    /// O automático cuida do que passou da idade ou do teto ([`ir_transferencia`]); isto é o botão
+    /// da pessoa, para quando ela quer o espaço de volta na hora. Nada do que está em curso é
+    /// afetado: arquivo em transferência ainda não está lá.
+    LimparRecebidos,
     /// Como [`Self::Acompanhar`], dito pelo ajudante de clipboard: "sou eu, e estou aqui".
     ///
     /// Sem o ajudante a cópia não atravessa, e nada na tela diria por quê. É por este pedido que o
@@ -162,6 +168,7 @@ impl Pedido {
             // ([04, §2](../../../docs/04-seguranca.md)).
             | Self::EnviarArquivos { .. }
             | Self::SincronizarClipboard
+            | Self::LimparRecebidos
             | Self::OferecerTexto(_) => Autoridade::Configurar,
             // Tudo que decide **quem pode digitar** nesta máquina exige elevação.
             Self::IniciarPareamento { .. }
@@ -298,6 +305,7 @@ mod tests {
             Pedido::Encerrar,
             Pedido::Diagnostico,
             Pedido::AcompanharClipboard,
+            Pedido::LimparRecebidos,
         ]
     }
 

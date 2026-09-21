@@ -127,6 +127,19 @@ impl Historico {
     }
 }
 
+/// Quanto os recebidos ocupam, na frase que a tela mostra, e se há o que limpar.
+///
+/// "nada guardado" em vez de "0 B": zero byte é um número; o que a pessoa quer saber é se há algo
+/// ali ocupando espaço. Mora aqui, junto do tráfego da sessão, porque é o mesmo assunto — espaço
+/// que o produto ocupa — e porque as duas frases têm de sair iguais.
+#[must_use]
+pub fn recebidos_ui(bytes: u64) -> (String, bool) {
+    if bytes == 0 {
+        return ("nada guardado".to_owned(), false);
+    }
+    (ir_ipc::transferencia::tamanho_legivel(bytes), true)
+}
+
 /// A palavra que diz para que lado a cópia foi.
 const fn sentido(sentido: Sentido) -> &'static str {
     match sentido {

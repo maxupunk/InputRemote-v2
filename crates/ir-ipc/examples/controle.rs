@@ -8,6 +8,7 @@
 //! ```text
 //! controle <endereco> estado
 //! controle <endereco> diagnostico
+//! controle <endereco> limpar          esvazia a pasta de recebidos
 //! controle <endereco> parear AC:50:DE:47:EB:28   # pede, espera o código e confirma
 //! controle <endereco> aguardar                   # só espera o código e confirma
 //! controle <endereco> confirmar                  # confirma agora, se houver código na tela
@@ -45,7 +46,7 @@ fn main() {
     let mut args = std::env::args().skip(1);
     let (Some(endereco), Some(acao)) = (args.next(), args.next()) else {
         return println!(
-            "uso: controle <endereco> estado|diagnostico|aguardar|confirmar|sincronizar|parear <par>|enviar <caminho>"
+            "uso: controle <endereco> estado|diagnostico|aguardar|confirmar|sincronizar|limpar|parear <par>|enviar <caminho>"
         );
     };
 
@@ -86,6 +87,7 @@ fn montar(acao: &str, argumento: Option<String>) -> Result<Roteiro, String> {
         // O gatilho da travessia, à mão: o ajudante da sessão lê o clipboard e oferece ao par.
         "sincronizar" => simples(Pedido::SincronizarClipboard),
         "diagnostico" => simples(Pedido::Diagnostico),
+        "limpar" => simples(Pedido::LimparRecebidos),
         // A mesma busca do botão "Procurar": rede (mDNS) e Bluetooth pareado. A lista chega por aviso.
         "procurar" => simples(Pedido::Procurar),
         // O que o ajudante faz quando há texto no clipboard, sem precisar de clipboard.
@@ -202,6 +204,7 @@ fn mostrar_resposta(resposta: &Resposta) -> bool {
             // e ele, e o servico na sessao 0 nao alcanca a area de trabalho de ninguem.
             println!("  agente:   pronto={}", estado.agente_pronto);
             println!("  nivel:    {:?}", estado.nivel_privilegiado);
+            println!("  recebidos: {} B", estado.recebidos_bytes);
             // Consultar o estado é pergunta, não assinatura: quem quer acompanhar usa
             // `aguardar`. Continuar escutando aqui prendia a bancada num `read_exact` à espera
             // de mensagens que só chegam quando algo muda.
