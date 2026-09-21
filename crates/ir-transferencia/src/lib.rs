@@ -257,9 +257,11 @@ async fn servir(
     mut destino: watch::Receiver<Destino>,
     faxineiro: Arc<faxina::Faxineiro>,
 ) {
-    // Ao subir, antes de qualquer coisa: o que ficou de sessões anteriores passou da idade ou do
-    // espaço, e não é para o usuário descobrir isso por um disco cheio.
-    faxineiro.arrumar().await;
+    // Ao subir, antes de qualquer coisa: a pasta começa vazia. O que ficou de uma sessão anterior
+    // é de uma cópia que já foi colada ou já foi esquecida — o clipboard não sobrevive ao
+    // desligamento, então ninguém vai colar aquilo. Guardar é só ocupar disco. Durante a sessão a
+    // pasta se cuida pela política de `faxina`, que protege o que acabou de chegar.
+    faxineiro.esvaziar().await;
     // Sem par não se abre a porta: seria convidar conexão que nenhuma identidade autorizaria.
     if esperar_par(&ajuste, &mut entrada, &mut destino)
         .await

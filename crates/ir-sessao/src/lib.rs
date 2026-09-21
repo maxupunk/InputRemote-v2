@@ -20,5 +20,7 @@ mod zelador;
 
 pub use ajudantes::{Ajudantes, Presenca};
 #[cfg(windows)]
-pub use lancador::{como_servico, lancar_agente, lancar_ajudante_de_clipboard, marcar_como_servico};
+pub use lancador::{
+    como_servico, lancar_agente, lancar_ajudante_de_clipboard, marcar_como_servico,
+};
 pub use zelador::zelar_pelo_clipboard;

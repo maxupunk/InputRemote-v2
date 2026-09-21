@@ -22,16 +22,21 @@ anterior de mesmo nome. A anterior é afastada antes (`nome.anterior-do-inputrem
 depois de o `rename` da nova dar certo — se algo falhar no meio, o usuário fica com a antiga, que é
 melhor que ficar sem nenhuma.
 
-**A pasta se cuida sozinha** (`ir-transferencia/src/faxina.rs`), com a política de uma pasta de
-downloads e três limites, nesta ordem:
+**A pasta começa vazia.** Ao subir, o serviço esvazia `recebidos`. O clipboard não sobrevive ao
+desligamento: nada do que ficou de uma sessão anterior ainda vai ser colado, então guardar é só
+ocupar disco. É a regra mais simples que existe, e é a que o usuário espera de uma pasta de
+trabalho temporária.
+
+**Durante a sessão, a pasta se cuida sozinha** (`ir-transferencia/src/faxina.rs`), com a política de
+uma pasta de downloads e três limites, nesta ordem:
 
 1. as **três mais novas nunca saem** — a que acabou de chegar é a que a pessoa vai colar;
 2. o que passou de **duas semanas** sai, tenha o tamanho que tiver;
 3. se ainda passar de **2 GB**, sai da mais velha para a mais nova até caber.
 
 A decisão é uma função pura (`escolher`), que não toca o disco: é ela que tem teste, e é por isso
-que a política inteira é testável sem criar 8 GB de arquivos. A faxina roda ao subir o serviço e
-depois de **cada entrega** — o momento em que a pasta acabou de crescer.
+que a política inteira é testável sem criar 8 GB de arquivos. A faxina roda depois de **cada
+entrega** — o momento em que a pasta acabou de crescer.
 
 **E o botão, porque nem tudo é automático.** Preferências mostra quanto está ocupado e oferece
 "Limpar agora", que esvazia tudo — inclusive o que ainda não foi colado, que é justamente o que o

@@ -4,8 +4,11 @@
 //! sobra. Ninguém volta ali para apagar: na bancada a pasta chegou a 8 GB de vídeos e instaladores
 //! que já tinham sido colados havia muito tempo.
 //!
-//! A regra é a de uma pasta de downloads, não a de um arquivo: **o recente fica, o antigo sai**.
-//! Três limites, nesta ordem de prioridade:
+//! São dois momentos. **Ao subir o serviço, a pasta é esvaziada**: o clipboard não sobrevive ao
+//! desligamento, então nada do que ficou ali ainda vai ser colado — guardar seria só ocupar disco.
+//!
+//! **Durante a sessão** a regra é a de uma pasta de downloads, não a de um arquivo: **o recente
+//! fica, o antigo sai**. Três limites, nesta ordem de prioridade:
 //!
 //! 1. as entregas mais novas **nunca** são apagadas — a que acabou de chegar é a que o usuário está
 //!    prestes a colar, e apagá-la seria o pior defeito possível;
@@ -85,21 +88,21 @@ impl Faxineiro {
         &self.pasta
     }
 
-    /// Aplica os limites e mede de novo. É o que roda ao subir e depois de cada entrega.
+    /// Aplica os limites e mede de novo. É o que roda depois de cada entrega.
     pub async fn arrumar(&self) -> Faxinado {
         let feito = arrumar(&self.pasta, self.limites).await;
         self.medir().await;
         feito
     }
 
-    /// Esvazia a pasta, porque o usuário mandou.
+    /// Esvazia a pasta. Roda ao subir o serviço e quando o usuário aperta "Limpar agora".
     pub async fn esvaziar(&self) -> Faxinado {
         let feito = esvaziar(&self.pasta).await;
         self.medir().await;
         info!(
             entregas = feito.entregas,
             bytes = feito.bytes,
-            "recebidos esvaziados a pedido"
+            "recebidos esvaziados"
         );
         feito
     }
