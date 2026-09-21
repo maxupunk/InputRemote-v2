@@ -17,6 +17,20 @@ export struct CopiaUi {
     progresso: float,
     /// 0 andando, 1 concluída, 2 parada.
     estado: int,
+    /// A taxa medida, "30,0 MB/s", ou vazio enquanto não há duas medidas.
+    velocidade: string,
+}
+
+/// Uma cópia que já terminou, para a lista das últimas.
+export struct ItemDeCopia {
+    /// O que foi copiado.
+    nome: string,
+    /// O que aconteceu com ela, na mesma frase do cartão.
+    situacao: string,
+    /// 1 concluída, 2 parada — o mesmo vocabulário de `CopiaUi`.
+    estado: int,
+    /// "enviado" ou "recebido".
+    sentido: string,
 }
 
 /// A cor de cada estado. Uma cópia parada é vermelha, e é a única que pede ação.
@@ -71,15 +85,68 @@ export component CartaoDeCopia inherits VerticalLayout {
         }
     }
 
-    Text {
-        text: root.copia.detalhe;
-        font-size: Tema.fonte-nota;
-        color: Tema.texto-fraco;
-        wrap: word-wrap;
+    HorizontalLayout {
+        spacing: Tema.e2;
+
+        Text {
+            text: root.copia.detalhe;
+            font-size: Tema.fonte-nota;
+            color: Tema.texto-fraco;
+            wrap: word-wrap;
+        }
+
+        // A velocidade fica à direita, e some quando não há o que medir: número que pisca entre
+        // "30 MB/s" e vazio a cada aviso seria pior que número nenhum.
+        if root.copia.velocidade != "": Text {
+            text: root.copia.velocidade;
+            font-size: Tema.fonte-nota;
+            font-weight: 600;
+            color: Tema.texto-fraco;
+            horizontal-alignment: right;
+        }
     }
 
     if root.copia.estado == 0: Barra {
         progresso: root.copia.progresso;
         cor: Copia.cor(root.copia.estado);
+    }
+}
+
+/// A lista das últimas cópias: nome e o que aconteceu, nada mais.
+///
+/// Existe para a pergunta que vem **depois** da cópia — "aquilo foi mesmo?" —, feita quando a
+/// pessoa já está no outro computador. Não é um registro técnico: quem quiser isso abre o arquivo
+/// de registro do serviço.
+export component ListaDeCopias inherits VerticalLayout {
+    in property <[ItemDeCopia]> itens;
+
+    spacing: Tema.e2;
+
+    for item in root.itens: HorizontalLayout {
+        spacing: Tema.e2;
+
+        Rectangle {
+            width: 6px;
+            height: 6px;
+            border-radius: 3px;
+            background: Copia.cor(item.estado);
+            y: (parent.height - self.height) / 2;
+        }
+
+        Text {
+            text: item.nome;
+            font-size: Tema.fonte-nota;
+            color: Tema.texto;
+            overflow: elide;
+        }
+
+        Rectangle { }
+
+        Text {
+            text: item.sentido;
+            font-size: Tema.fonte-nota;
+            color: Tema.texto-fraco;
+            horizontal-alignment: right;
+        }
     }
 }

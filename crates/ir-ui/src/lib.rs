@@ -50,6 +50,7 @@ pub mod conexao;
 pub mod copia;
 #[cfg(windows)]
 pub mod flutuante;
+pub mod historico;
 pub mod janela;
 pub mod ponte;
 pub mod real;

@@ -64,3 +64,5 @@ quê. Um registro que se reescreve não é registro.
 | 37 | 2026-09-18 | [A bandeja, o ícone em branco e a rolagem de lado](docs/logs/37-a-bandeja-e-a-rolagem-de-lado.md) |
 | 38 | 2026-09-18 | [A senha pedida pela janela, e não um comando de terminal](docs/logs/38-a-senha-pedida-pela-janela.md) |
 | 39 | 2026-09-19 | [Parear sem configurar nada: a descoberta que não existia, e o mDNS que o Windows não deixava usar](docs/logs/39-parear-sem-configurar-nada.md) |
+| 40 | 2026-09-19 | [O ajudante que ninguém subia, os arquivos que não achavam o par, e as teclas que sumiam](docs/logs/40-o-ajudante-que-ninguem-subia.md) |
+| 41 | 2026-09-20 | [A cópia que se repetia, o 0% que não andava, e a janela que não contava nada](docs/logs/41-a-copia-que-se-repetia.md) |

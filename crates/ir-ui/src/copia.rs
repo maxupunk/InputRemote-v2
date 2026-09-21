@@ -15,19 +15,20 @@ pub const CONCLUIDA: i32 = 1;
 /// Não aconteceu, ou parou no meio.
 pub const PARADA: i32 = 2;
 
-/// A cópia, pronta para a tela.
+/// A cópia, pronta para a tela. `velocidade` vem medida de fora ([`crate::historico`]).
 #[must_use]
-pub fn copia_ui(copia: &Transferencia) -> CopiaUi {
+pub fn copia_ui(copia: &Transferencia, velocidade: String) -> CopiaUi {
     CopiaUi {
         titulo: copia.titulo().into(),
         detalhe: copia.detalhe().into(),
         progresso: copia.progresso(),
         estado: estado(copia),
+        velocidade: velocidade.into(),
     }
 }
 
 /// O estado no vocabulário da tela.
-fn estado(copia: &Transferencia) -> i32 {
+pub(crate) fn estado(copia: &Transferencia) -> i32 {
     if copia.falhou() {
         PARADA
     } else if copia.terminou() {
@@ -69,9 +70,10 @@ mod tests {
 
     #[test]
     fn a_tela_recebe_o_texto_pronto() {
-        let ui = copia_ui(&copia(Fase::Andando));
+        let ui = copia_ui(&copia(Fase::Andando), "10,0 MB/s".to_owned());
         assert_eq!(ui.titulo, "Copiando para o outro computador");
-        assert_eq!(ui.detalhe, "pasta-B · 50% de 1,0 KB");
+        assert_eq!(ui.detalhe, "pasta-B · 512 B de 1,0 KB · 50%");
+        assert_eq!(ui.velocidade, "10,0 MB/s");
         assert!((ui.progresso - 0.5).abs() < f32::EPSILON);
     }
 }

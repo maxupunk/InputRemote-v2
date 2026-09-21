@@ -20,12 +20,13 @@ use std::time::Duration;
 
 use ir_files::{Envio, manifesto};
 use ir_ipc::transferencia::{Fase, Motivo, Sentido};
-use ir_proto::message::{BulkMessage, CancelReason, RejectReason, TransferId};
+use ir_proto::message::{BulkMessage, RejectReason, TransferId};
 use ir_transporte::dados::Remetente;
 use tokio::sync::{Mutex, mpsc};
 use tracing::{debug, info, warn};
 
 use crate::Ajuste;
+use crate::fila::Trabalho;
 use crate::sessao::{anunciar, traduzir_recusa};
 
 /// Quanto esperar por uma resposta do destino antes de considerar o canal perdido.
@@ -42,32 +43,22 @@ type Respostas = mpsc::UnboundedReceiver<BulkMessage>;
 pub(crate) async fn enviar(
     remetente: Arc<Mutex<Remetente>>,
     mut respostas: Respostas,
-    pedidos: &mut mpsc::UnboundedReceiver<crate::PedidoDeEnvio>,
+    entrada: &mut crate::Entrada,
     ajuste: &Ajuste,
 ) {
     let mut proxima = TransferId(1);
     loop {
-        // Ocioso, espera-se **duas** coisas. Um pedido novo, é claro; mas também o fim da fila de
-        // respostas, que fecha no instante em que a metade que lê o socket sai — e ela só sai
-        // quando o enlace morreu. Esperando só o pedido, um enlace morto em repouso passava
-        // despercebido: o serviço do outro lado reiniciava e este lado continuava achando que
-        // estava ligado, sem nunca discar de novo. Visto na bancada.
-        let pedido = tokio::select! {
-            pedido = pedidos.recv() => pedido,
-            resposta = respostas.recv() => match resposta {
-                None => return, // o leitor saiu: o enlace caiu
-                Some(velha) => {
-                    debug!(?velha, "resposta sem transferência em curso descartada");
-                    continue;
-                }
-            },
-        };
-        let Some((caminhos, leitor)) = pedido else {
+        let Some(trabalho) = proximo(entrada, &mut respostas).await else {
             return;
         };
         let id = proxima;
         proxima = TransferId(proxima.0.wrapping_add(1));
-        if !uma_transferencia(&remetente, &mut respostas, (caminhos, leitor), id, ajuste).await {
+        let pedido = (trabalho.caminhos, trabalho.leitor);
+        let inteiro =
+            uma_transferencia((&remetente, entrada), &mut respostas, pedido, id, ajuste).await;
+        // A cópia saiu da vez, tenha terminado, sido cancelada ou caído com o enlace.
+        entrada.fila.terminou();
+        if !inteiro {
             // Interrompido no meio: dizer, para quem ofereceu poder oferecer de novo. Sem isto o
             // ajudante de clipboard daria a cópia por entregue e não a repetiria.
             let fase = Fase::Parada(Motivo::CanalCaiu);
@@ -77,9 +68,31 @@ pub(crate) async fn enviar(
     }
 }
 
+/// A próxima cópia a fazer. `None` quando o serviço está saindo ou o enlace caiu.
+///
+/// Ocioso, espera-se **duas** coisas. Um pedido novo, é claro; mas também o fim da fila de
+/// respostas, que fecha no instante em que a metade que lê o socket sai — e ela só sai quando o
+/// enlace morreu. Esperando só o pedido, um enlace morto em repouso passava despercebido: o serviço
+/// do outro lado reiniciava e este lado continuava achando que estava ligado, sem nunca discar de
+/// novo. Visto na bancada.
+async fn proximo(entrada: &mut crate::Entrada, respostas: &mut Respostas) -> Option<Trabalho> {
+    loop {
+        if let Some(trabalho) = entrada.fila.tomar() {
+            return Some(trabalho);
+        }
+        tokio::select! {
+            toque = entrada.esperar() => toque?,
+            resposta = respostas.recv() => match resposta {
+                None => return None, // o leitor saiu: o enlace caiu
+                Some(velha) => debug!(?velha, "resposta sem transferência em curso descartada"),
+            },
+        }
+    }
+}
+
 /// Conduz um envio inteiro. Devolve `false` quando o enlace caiu.
 async fn uma_transferencia(
-    remetente: &Arc<Mutex<Remetente>>,
+    (remetente, entrada): (&Arc<Mutex<Remetente>>, &crate::Entrada),
     respostas: &mut Respostas,
     (caminhos, leitor): crate::PedidoDeEnvio,
     id: TransferId,
@@ -125,8 +138,10 @@ async fn uma_transferencia(
         }
         Aceite::Caiu => return false,
     }
-    if !despejar(remetente, &mut envio, &nome, total, ajuste).await {
-        return false;
+    match crate::despejo::despejar((remetente, entrada), &mut envio, (&nome, total), ajuste).await {
+        crate::despejo::Despejo::Pronto => {}
+        crate::despejo::Despejo::Cancelado => return true,
+        crate::despejo::Despejo::Caiu => return false,
     }
     concluir(respostas, &envio, (&nome, total, arquivos), ajuste).await
 }
@@ -160,61 +175,6 @@ async fn concluir(
             true
         }
         None => false,
-    }
-}
-
-/// Manda os blocos até acabar. Devolve `false` quando o enlace caiu.
-async fn despejar(
-    remetente: &Arc<Mutex<Remetente>>,
-    envio: &mut Envio,
-    nome: &str,
-    total: u64,
-    ajuste: &Ajuste,
-) -> bool {
-    loop {
-        let proxima = match envio.proxima().await {
-            Ok(Some(mensagem)) => mensagem,
-            Ok(None) => return true,
-            Err(erro) => {
-                warn!(%erro, "leitura falhou no meio do envio");
-                // O identificador **desta** transferência. Era `TransferId(0)`, e quem recebe
-                // ignora mensagem de outra transferência — então o cancelamento nunca chegava, e a
-                // recepção do outro lado ficava aberta até o enlace cair.
-                let cancelar = BulkMessage::Cancel {
-                    id: envio.id(),
-                    reason: CancelReason::WriteFailed,
-                };
-                let _ = remetente.lock().await.enviar_agora(cancelar).await;
-                let feitos = (envio.enviados(), total);
-                anunciar(
-                    &ajuste.avisos,
-                    Sentido::Enviando,
-                    nome,
-                    feitos,
-                    parada(&erro),
-                );
-                return true;
-            }
-        };
-        let fim_de_arquivo = matches!(proxima, BulkMessage::FileEnd { .. });
-        let mandou = if fim_de_arquivo {
-            remetente.lock().await.enviar_agora(proxima).await
-        } else {
-            remetente.lock().await.enviar(proxima).await
-        };
-        if mandou.is_err() {
-            return false;
-        }
-        if fim_de_arquivo {
-            let feitos = (envio.enviados(), total);
-            anunciar(
-                &ajuste.avisos,
-                Sentido::Enviando,
-                nome,
-                feitos,
-                Fase::Andando,
-            );
-        }
     }
 }
 
@@ -266,7 +226,7 @@ async fn esperar_conferencia(
 }
 
 /// Uma falha local, no vocabulário da interface.
-fn parada(erro: &ir_files::FileError) -> Fase {
+pub(crate) fn parada(erro: &ir_files::FileError) -> Fase {
     Fase::Parada(Motivo::Outro(erro.to_string()))
 }
 

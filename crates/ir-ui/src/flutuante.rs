@@ -13,6 +13,7 @@
 
 #![allow(unsafe_code)]
 
+use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -34,6 +35,12 @@ pub(crate) struct Aviso {
     janela: Option<Flutuante>,
     /// O relógio que o esconde depois do fim. Guardado porque um `Timer` solto é cancelado.
     prazo: Rc<Timer>,
+    /// Se ele está na tela agora.
+    ///
+    /// O andamento chega cinco vezes por segundo: reabrir e reposicionar a janela a cada aviso a
+    /// faria piscar e devolveria o foco sem parar. Já aberta, só o texto muda. Compartilhado com o
+    /// relógio, que é quem a tira da tela.
+    na_tela: Rc<Cell<bool>>,
 }
 
 impl Aviso {
@@ -42,6 +49,7 @@ impl Aviso {
         Self {
             janela: None,
             prazo: Rc::new(Timer::default()),
+            na_tela: Rc::new(Cell::new(false)),
         }
     }
 
@@ -60,22 +68,27 @@ impl Aviso {
             },
         };
         janela.set_copia(copia);
-        // Quem está em foco continua em foco: uma janela nova o toma, e tomar o foco de quem
-        // está digitando por causa de um recado seria pior que não dar o recado.
-        let anterior = em_foco();
-        if janela.show().is_err() {
-            return;
+        if !self.na_tela.get() {
+            // Quem está em foco continua em foco: uma janela nova o toma, e tomar o foco de quem
+            // está digitando por causa de um recado seria pior que não dar o recado.
+            let anterior = em_foco();
+            if janela.show().is_err() {
+                return;
+            }
+            posicionar(janela);
+            devolver_foco(anterior);
+            self.na_tela.set(true);
         }
-        posicionar(janela);
-        devolver_foco(anterior);
 
         self.prazo.stop();
         if !terminou {
             return;
         }
         let fraca = janela.as_weak();
+        let na_tela = Rc::clone(&self.na_tela);
         self.prazo
             .start(TimerMode::SingleShot, PERMANENCIA, move || {
+                na_tela.set(false);
                 if let Some(janela) = fraca.upgrade() {
                     let _ = janela.hide();
                 }

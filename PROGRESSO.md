@@ -333,6 +333,12 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       e o handshake reenvia por até 12 s em vez de desistir no primeiro datagrama ([log 39](docs/logs/39-parear-sem-configurar-nada.md))
 - [x] Quem recebe o pedido vai sozinho para os seis dígitos, até saindo da bandeja; o código é
       recontado à janela que abre depois ([log 39](docs/logs/39-parear-sem-configurar-nada.md))
+- [x] Uma cópia de cada vez: o mesmo Ctrl+C repetido não copia de novo, e copiar outra coisa cancela
+      a anterior sem deixar sobra no destino ([log 41](docs/logs/41-a-copia-que-se-repetia.md))
+- [x] O andamento anda: os dois lados contam a cada 200 ms, e não só no fim de cada arquivo — uma
+      pasta com um arquivo de 2 GB ficava em 0% até concluir ([log 41](docs/logs/41-a-copia-que-se-repetia.md))
+- [x] A janela mostra a velocidade da cópia, a lista das últimas e o tráfego da sessão
+      ([log 41](docs/logs/41-a-copia-que-se-repetia.md))
 - [x] Copiar e colar com retorno na tela: cartão na janela, aviso no canto (Windows) e notificação
       do sistema (Linux), com o que está indo, quanto falta, onde ficou e por que não atravessou
       ([log 40](docs/logs/40-o-ajudante-que-ninguem-subia.md))

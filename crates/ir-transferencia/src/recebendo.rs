@@ -38,6 +38,10 @@ pub(crate) async fn receber(
     avisos: tokio::sync::broadcast::Sender<Aviso>,
 ) {
     let mut recepcao: Option<Box<Recepcao>> = None;
+    // O nome do que está chegando, para o andamento poder dizer de quê ele é.
+    let mut nome = String::new();
+    // Quem recebe só contava no começo e no fim: a tela mostrava "0% de 2,1 GB" até acabar.
+    let mut passo = crate::passo::Passo::novo();
     loop {
         let mensagem = match destinatario.receber().await {
             Ok(mensagem) => mensagem,
@@ -59,7 +63,12 @@ pub(crate) async fn receber(
             total_bytes,
         } = mensagem
         {
-            recepcao = abrir(&remetente, &avisos, &deposito, (id, items, total_bytes)).await;
+            let aberta = abrir(&remetente, &avisos, &deposito, (id, items, total_bytes)).await;
+            nome = aberta
+                .as_ref()
+                .map_or_else(String::new, |(_, nome)| nome.clone());
+            recepcao = aberta.map(|(recepcao, _)| recepcao);
+            passo = crate::passo::Passo::novo();
             continue;
         }
         let Some(aberta) = recepcao.as_mut() else {
@@ -71,6 +80,9 @@ pub(crate) async fn receber(
             if let Some(concluida) = recepcao.take() {
                 publicar(*concluida, &avisos).await;
             }
+        } else if passo.passou() {
+            let feitos = (aberta.escritos(), aberta.total());
+            anunciar(&avisos, Sentido::Recebendo, &nome, feitos, Fase::Andando);
         }
     }
 }
@@ -89,7 +101,7 @@ async fn abrir(
     avisos: &tokio::sync::broadcast::Sender<Aviso>,
     deposito: &Deposito,
     manifesto: (TransferId, Vec<ir_proto::message::ManifestItem>, u64),
-) -> Option<Box<Recepcao>> {
+) -> Option<(Box<Recepcao>, String)> {
     let total = manifesto.2;
     let nome = ir_files::publicacao::como_publicar(&manifesto.1);
     let nome = match nome {
@@ -100,7 +112,7 @@ async fn abrir(
             info!(total, "recebendo arquivos");
             responder(remetente, resposta).await;
             anunciar(avisos, Sentido::Recebendo, &nome, (0, total), Fase::Andando);
-            Some(recepcao)
+            Some((recepcao, nome))
         }
         Ok(Abertura::Recusada { resposta, motivo }) => {
             warn!(?motivo, "transferência recusada");

@@ -8,7 +8,7 @@
 // frase estiver errada, ela está num arquivo só, e tem teste.
 
 import { Tema } from "tema.slint";
-import { CopiaUi } from "copia.slint";
+import { CopiaUi, ItemDeCopia } from "copia.slint";
 
 /// O estado observável, na forma em que a tela o desenha.
 export struct EstadoUi {
@@ -146,6 +146,12 @@ export global Dados {
 
     /// Se há cópia a mostrar. Falso até a primeira.
     in property <bool> tem-copia: false;
+
+    /// As últimas cópias que terminaram, da mais nova para a mais antiga.
+    in property <[ItemDeCopia]> copias-recentes;
+
+    /// Quanto o produto moveu nesta sessão ("1,2 GB"), ou vazio enquanto nada moveu.
+    in property <string> trafego;
 }
 
 export global Acoes {

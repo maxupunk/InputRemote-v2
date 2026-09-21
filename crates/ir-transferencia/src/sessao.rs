@@ -30,11 +30,7 @@ use crate::enviando::enviar;
 use crate::recebendo::receber;
 
 /// Conduz um enlace até ele cair.
-pub(crate) async fn conduzir(
-    enlace: EnlaceDeDados,
-    ajuste: &Ajuste,
-    pedidos: &mut mpsc::UnboundedReceiver<crate::PedidoDeEnvio>,
-) {
+pub(crate) async fn conduzir(enlace: EnlaceDeDados, ajuste: &Ajuste, entrada: &mut crate::Entrada) {
     let remetente = Arc::new(Mutex::new(enlace.remetente));
     // Sem limite, e de propósito. Era uma fila de 32, e com mais de 32 arquivos ela enchia: a leitura
     // parava esperando vaga, o destino parava esperando a leitura para mandar o `Verified` seguinte,
@@ -55,7 +51,7 @@ pub(crate) async fn conduzir(
 
     // O envio roda aqui, no próprio laço, para poder consumir `pedidos` por referência: a fila de
     // pedidos sobrevive à queda do enlace, e passá-la para uma tarefa a mataria junto.
-    enviar(remetente, recebe_respostas, pedidos, ajuste).await;
+    enviar(remetente, recebe_respostas, entrada, ajuste).await;
     lendo.abort();
 }
 

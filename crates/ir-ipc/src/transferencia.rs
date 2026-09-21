@@ -168,7 +168,11 @@ impl Transferencia {
                 format!("{nome} · em {}", pasta_de(destino))
             }
             (Fase::Anunciada, _) => format!("{nome} · {tamanho}"),
-            _ => format!("{nome} · {} de {tamanho}", porcentagem(self.progresso())),
+            _ => format!(
+                "{nome} · {} de {tamanho} · {}",
+                tamanho_legivel(self.bytes_feitos),
+                porcentagem(self.progresso())
+            ),
         }
     }
 
@@ -196,7 +200,11 @@ fn porcentagem(progresso: f32) -> String {
 }
 
 /// O tamanho em unidade que se lê de relance: "1,2 GB", e não "1288490188 B".
-fn tamanho_legivel(bytes: u64) -> String {
+///
+/// Público porque a janela também o usa, para o tráfego da sessão: dois números do mesmo assunto
+/// escritos de jeitos diferentes na mesma tela seriam dois assuntos.
+#[must_use]
+pub fn tamanho_legivel(bytes: u64) -> String {
     const PASSO: f64 = 1024.0;
     const UNIDADES: [&str; 4] = ["B", "KB", "MB", "GB"];
     #[allow(clippy::cast_precision_loss)]
@@ -242,7 +250,7 @@ mod tests {
     fn o_andamento_diz_o_que_e_quanto() {
         let copia = copia(Fase::Andando, Sentido::Enviando, 512, 1024);
         assert_eq!(copia.titulo(), "Copiando para o outro computador");
-        assert_eq!(copia.detalhe(), "pasta-B · 50% de 1,0 KB");
+        assert_eq!(copia.detalhe(), "pasta-B · 512 B de 1,0 KB · 50%");
         assert!(!copia.terminou() && !copia.falhou());
     }
 
@@ -298,7 +306,7 @@ mod tests {
     #[test]
     fn uma_arvore_so_de_pastas_esta_pronta_e_nao_em_zero_por_cento() {
         let copia = copia(Fase::Andando, Sentido::Enviando, 0, 0);
-        assert!(copia.detalhe().contains("100%"), "{}", copia.detalhe());
+        assert!(copia.detalhe().ends_with("100%"), "{}", copia.detalhe());
     }
 
     fn andando(feitos: u64, total: u64) -> Transferencia {

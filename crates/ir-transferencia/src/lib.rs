@@ -20,8 +20,11 @@
 
 #![forbid(unsafe_code)]
 
+mod despejo;
 mod enviando;
+mod fila;
 mod localizar;
+mod passo;
 mod recebendo;
 mod sessao;
 
@@ -82,7 +85,10 @@ pub struct Destino {
 /// Por onde o ator pede um envio.
 #[derive(Debug, Clone)]
 pub struct Pedidos {
-    fila: mpsc::UnboundedSender<PedidoDeEnvio>,
+    /// A fila de um: a mesma cópia não vai duas vezes, e outra cópia substitui a que está indo.
+    fila: Arc<fila::Fila>,
+    /// O toque que acorda a tarefa de envio. Fechá-lo é como o serviço diz que está saindo.
+    acorda: mpsc::UnboundedSender<()>,
     destino: Arc<watch::Sender<Destino>>,
 }
 
@@ -94,10 +100,11 @@ impl Pedidos {
     /// a verdade naquele cenário.
     #[must_use]
     pub fn desligada() -> Self {
-        let (fila, _) = mpsc::unbounded_channel();
+        let (acorda, _) = mpsc::unbounded_channel();
         let (destino, _) = watch::channel(Destino::default());
         Self {
-            fila,
+            fila: Arc::new(fila::Fila::default()),
+            acorda,
             destino: Arc::new(destino),
         }
     }
@@ -121,13 +128,24 @@ impl Pedidos {
     ///
     /// Caminho vazio é descartado, e um pedido que fica sem nenhum é recusado aqui mesmo: é o único
     /// erro que se vê sem tocar o disco.
+    /// Pedir de novo a **mesma** cópia que já está indo é aceito e não vira outra: é o Ctrl+C
+    /// repetido de quem não viu retorno na tela. Pedir outra cancela a que está indo
+    /// ([`fila::Fila`]).
     #[must_use]
     pub fn enviar(&self, caminhos: Vec<PathBuf>, leitor: Leitor) -> bool {
         let caminhos: Vec<PathBuf> = caminhos
             .into_iter()
             .filter(|caminho| !caminho.as_os_str().is_empty())
             .collect();
-        !caminhos.is_empty() && self.fila.send((caminhos, leitor)).is_ok()
+        if caminhos.is_empty() {
+            return false;
+        }
+        let recebido = self.fila.pedir(caminhos, leitor);
+        if recebido == fila::Recebido::Repetido {
+            debug!("esta cópia já está indo; não vai de novo");
+            return true;
+        }
+        self.acorda.send(()).is_ok()
     }
 }
 
@@ -166,23 +184,42 @@ impl std::fmt::Debug for Ajuste {
 /// Sobe a tarefa de transferência e devolve por onde pedir envios.
 #[must_use]
 pub fn iniciar(ajuste: Ajuste) -> Pedidos {
-    let (fila, pedidos) = mpsc::unbounded_channel();
+    let (acorda, toques) = mpsc::unbounded_channel();
     let (destino, mudancas) = watch::channel(ajuste.destino);
-    tokio::spawn(servir(ajuste, pedidos, mudancas));
+    let fila = Arc::new(fila::Fila::default());
+    let entrada = Entrada {
+        fila: Arc::clone(&fila),
+        toques,
+    };
+    tokio::spawn(servir(ajuste, entrada, mudancas));
     Pedidos {
         fila,
+        acorda,
         destino: Arc::new(destino),
     }
 }
 
+/// Por onde os pedidos chegam à tarefa de envio.
+///
+/// A fila guarda **o que** copiar; o canal só acorda quem espera — e, ao fechar, diz que o serviço
+/// está saindo. Juntos porque um sem o outro não serve: a fila sozinha não avisa, e o canal sozinho
+/// não guarda.
+pub(crate) struct Entrada {
+    pub(crate) fila: Arc<fila::Fila>,
+    toques: mpsc::UnboundedReceiver<()>,
+}
+
+impl Entrada {
+    /// Espera um toque. `None` quando o serviço está saindo.
+    pub(crate) async fn esperar(&mut self) -> Option<()> {
+        self.toques.recv().await
+    }
+}
+
 /// O laço de vida do canal de dados: tem enlace, usa; não tem, consegue um; o par mudou, recomeça.
-async fn servir(
-    ajuste: Ajuste,
-    mut pedidos: mpsc::UnboundedReceiver<PedidoDeEnvio>,
-    mut destino: watch::Receiver<Destino>,
-) {
+async fn servir(ajuste: Ajuste, mut entrada: Entrada, mut destino: watch::Receiver<Destino>) {
     // Sem par não se abre a porta: seria convidar conexão que nenhuma identidade autorizaria.
-    if esperar_par(&ajuste, &mut pedidos, &mut destino)
+    if esperar_par(&ajuste, &mut entrada, &mut destino)
         .await
         .is_none()
     {
@@ -192,14 +229,14 @@ async fn servir(
         Ok(porta) => porta,
         Err(erro) => {
             warn!(%erro, "não consegui abrir o TCP de arquivos");
-            recusar_tudo(&ajuste, &mut pedidos, Motivo::Outro(erro.to_string())).await;
+            recusar_tudo(&ajuste, &mut entrada, Motivo::Outro(erro.to_string())).await;
             return;
         }
     };
     info!(porta = ajuste.porta, "canal de arquivos no ar");
 
     loop {
-        let Some(par) = esperar_par(&ajuste, &mut pedidos, &mut destino).await else {
+        let Some(par) = esperar_par(&ajuste, &mut entrada, &mut destino).await else {
             return;
         };
         let alvo = destino.borrow_and_update().alvo;
@@ -209,7 +246,7 @@ async fn servir(
         };
         info!("canal de arquivos estabelecido");
         tokio::select! {
-            () = sessao::conduzir(enlace, &ajuste, &mut pedidos) => {}
+            () = sessao::conduzir(enlace, &ajuste, &mut entrada) => {}
             _ = destino.changed() => {
                 info!("o par mudou; o canal de arquivos recomeça com o novo");
                 continue;
@@ -232,7 +269,7 @@ async fn servir(
 /// achando que a cópia foi feita.
 async fn esperar_par(
     ajuste: &Ajuste,
-    pedidos: &mut mpsc::UnboundedReceiver<PedidoDeEnvio>,
+    entrada: &mut Entrada,
     destino: &mut watch::Receiver<Destino>,
 ) -> Option<PublicKey> {
     let mut avisou = false;
@@ -249,9 +286,15 @@ async fn esperar_par(
         tokio::select! {
             biased;
             mudou = destino.changed() => mudou.ok()?,
-            pedido = pedidos.recv() => {
-                let (caminhos, _) = pedido?;
-                recusar(ajuste, &caminhos, Motivo::Outro("não há par pareado".to_owned()));
+            toque = entrada.esperar() => {
+                toque?;
+                if let Some(trabalho) = entrada.fila.descartar() {
+                    recusar(
+                        ajuste,
+                        &trabalho.caminhos,
+                        Motivo::Outro("não há par pareado".to_owned()),
+                    );
+                }
             }
         }
     }
@@ -333,13 +376,11 @@ const fn alvo_de_rede(alvo: Option<ir_transporte::Endereco>) -> Option<SocketAdd
 ///
 /// Dizer não é melhor que ficar calado: um pedido que some deixa o usuário achando que a cópia foi
 /// feita.
-async fn recusar_tudo(
-    ajuste: &Ajuste,
-    pedidos: &mut mpsc::UnboundedReceiver<PedidoDeEnvio>,
-    motivo: Motivo,
-) {
-    while let Some((caminhos, _)) = pedidos.recv().await {
-        recusar(ajuste, &caminhos, motivo.clone());
+async fn recusar_tudo(ajuste: &Ajuste, entrada: &mut Entrada, motivo: Motivo) {
+    while entrada.esperar().await.is_some() {
+        if let Some(trabalho) = entrada.fila.descartar() {
+            recusar(ajuste, &trabalho.caminhos, motivo.clone());
+        }
     }
 }
 

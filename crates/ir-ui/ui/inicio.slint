@@ -8,12 +8,15 @@ import { Tema } from "tema.slint";
 import { Dados, Acoes, Saude } from "dados.slint";
 import { Cartao, Botao, Selo, Dado, Faixa, Ponto, Secao } from "componentes.slint";
 import { EscolhaDeBorda } from "bordas.slint";
-import { CartaoDeCopia } from "copia.slint";
+import { CartaoDeCopia, ListaDeCopias } from "copia.slint";
 
 /// A tela inicial.
 export component Inicio inherits VerticalLayout {
     callback ir-para-pareamento();
     callback ir-para-preferencias();
+
+    /// Se a lista das últimas cópias está aberta. Fechada por padrão.
+    in-out property <bool> mostrar-recentes: false;
 
     spacing: Tema.e4;
 
@@ -95,6 +98,39 @@ export component Inicio inherits VerticalLayout {
     if Dados.tem-copia: Cartao {
         CartaoDeCopia {
             copia: Dados.copia;
+        }
+
+        // As últimas cópias ficam atrás de um clique: quem abriu a janela quer saber da atual, e
+        // uma lista sempre aberta empurraria o resto da tela para baixo.
+        if Dados.copias-recentes.length > 0: HorizontalLayout {
+            spacing: Tema.e2;
+
+            Text {
+                text: mostrar-recentes ? "▾ Cópias recentes" : "▸ Cópias recentes";
+                font-size: Tema.fonte-nota;
+                color: Tema.acao;
+                vertical-alignment: center;
+
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        mostrar-recentes = !mostrar-recentes;
+                    }
+                }
+            }
+
+            Rectangle { }
+
+            if Dados.trafego != "": Text {
+                text: "nesta sessão: " + Dados.trafego;
+                font-size: Tema.fonte-nota;
+                color: Tema.texto-fraco;
+                vertical-alignment: center;
+            }
+        }
+
+        if mostrar-recentes: ListaDeCopias {
+            itens: Dados.copias-recentes;
         }
     }
 
