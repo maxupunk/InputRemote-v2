@@ -13,8 +13,8 @@ use ir_proto::frame::{Ack, Frame, Sequence};
 
 use crate::time::{Millis, Timestamp};
 
-use super::receiver::{Delivery, Receiver};
-use super::sender::{SendOutcome, Sender, TimeoutOutcome};
+use crate::receiver::{Delivery, Receiver};
+use crate::sender::{SendOutcome, Sender, TimeoutOutcome};
 
 /// O emissor e o receptor de um canal.
 #[derive(Debug, Clone, Default)]

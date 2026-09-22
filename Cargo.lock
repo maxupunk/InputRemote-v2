@@ -2688,6 +2688,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "ir-confiabilidade"
+version = "0.1.0-dev"
+dependencies = [
+ "ir-proto",
+]
+
+[[package]]
+name = "ir-configuracao"
+version = "0.1.0-dev"
+dependencies = [
+ "anyhow",
+ "ir-crypto",
+ "ir-proto",
+ "ir-session",
+ "serde",
+ "toml 0.9.12+spec-1.1.0",
+]
+
+[[package]]
 name = "ir-crypto"
 version = "0.1.0-dev"
 dependencies = [
@@ -2707,6 +2726,7 @@ version = "0.1.0-dev"
 dependencies = [
  "anyhow",
  "ir-acesso",
+ "ir-configuracao",
  "ir-crypto",
  "ir-input",
  "ir-ipc",
@@ -2803,6 +2823,7 @@ name = "ir-session"
 version = "0.1.0-dev"
 dependencies = [
  "blake3",
+ "ir-confiabilidade",
  "ir-geometry",
  "ir-proto",
  "thiserror 2.0.20",
@@ -2831,6 +2852,7 @@ dependencies = [
  "ir-net",
  "ir-proto",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

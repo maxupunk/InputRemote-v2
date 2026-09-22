@@ -35,6 +35,7 @@ pub mod identity;
 pub mod replay;
 pub mod sas;
 pub mod transport;
+pub mod turno;
 
 pub use error::{CryptoError, Result};
 pub use handshake::Handshake;

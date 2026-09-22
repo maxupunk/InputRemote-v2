@@ -22,8 +22,9 @@ use std::sync::Once;
 // vêm do WinSock.
 use windows::Win32::Devices::Bluetooth::{
     AF_BTH, BLUETOOTH_DEVICE_INFO, BLUETOOTH_DEVICE_SEARCH_PARAMS, BLUETOOTH_FIND_RADIO_PARAMS,
-    BTHPROTO_RFCOMM, BluetoothFindDeviceClose, BluetoothFindFirstDevice, BluetoothFindFirstRadio,
-    BluetoothFindNextDevice, BluetoothFindRadioClose, SOCKADDR_BTH,
+    BLUETOOTH_RADIO_INFO, BTHPROTO_RFCOMM, BluetoothFindDeviceClose, BluetoothFindFirstDevice,
+    BluetoothFindFirstRadio, BluetoothFindNextDevice, BluetoothFindRadioClose,
+    BluetoothGetRadioInfo, SOCKADDR_BTH,
 };
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::Networking::WinSock::{
@@ -237,6 +238,35 @@ pub(super) fn ha_radio() -> bool {
         }
         Err(_) => false,
     }
+}
+
+/// O endereço do rádio desta máquina, se houver rádio e ele disser.
+///
+/// É o que a sessão conta ao par para ele poder discar o Bluetooth quando os dois se conheceram
+/// pela rede (ADR-0012). Com mais de um rádio, vale o primeiro — o mesmo que a escuta usa.
+pub(super) fn endereco_do_radio() -> Option<BdAddr> {
+    iniciar();
+    let parametros = BLUETOOTH_FIND_RADIO_PARAMS {
+        dwSize: tamanho_de::<BLUETOOTH_FIND_RADIO_PARAMS>(),
+    };
+    let mut radio = HANDLE::default();
+    // SAFETY: `dwSize` declara o tamanho da estrutura, como a API exige; `radio` é exclusivo.
+    let busca = unsafe { BluetoothFindFirstRadio(&raw const parametros, &raw mut radio) }.ok()?;
+    let mut info = BLUETOOTH_RADIO_INFO {
+        dwSize: tamanho_de::<BLUETOOTH_RADIO_INFO>(),
+        ..Default::default()
+    };
+    // SAFETY: `radio` veio da busca acima e continua aberto; `info` declara o próprio tamanho em
+    // `dwSize` e é exclusivo desta chamada.
+    let codigo = unsafe { BluetoothGetRadioInfo(radio, &raw mut info) };
+    // SAFETY: as duas alças vieram da busca acima e são fechadas uma vez só, aqui.
+    unsafe {
+        let _ = CloseHandle(radio);
+        let _ = BluetoothFindRadioClose(busca);
+    }
+    // SAFETY: os dois campos da união ocupam o mesmo espaço e `ullLong` cobre todos os bytes dela.
+    let endereco = unsafe { info.address.Anonymous.ullLong };
+    (codigo == 0 && endereco != 0).then(|| BdAddr::de_u64(endereco))
 }
 
 /// Os computadores pareados neste sistema.

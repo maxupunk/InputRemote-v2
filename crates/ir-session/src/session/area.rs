@@ -22,7 +22,6 @@
 
 use std::collections::VecDeque;
 
-use ir_proto::carrier::Delivery;
 use ir_proto::channel::ChannelId;
 use ir_proto::limits::{MAX_CLIPBOARD_TEXT_OFF_TCP, MAX_RFCOMM_PLAINTEXT};
 use ir_proto::message::{ClipId, ClipKind, ClipboardMessage, DeclineReason, Message};
@@ -228,15 +227,11 @@ impl Session {
 
     /// Manda os próximos pedaços, se houver vez.
     pub(super) fn pump_clipboard(&mut self, now: Timestamp, out: &mut CommandBatch) {
-        let Some(carrier) = self.carrier else { return };
-        if !self.phase.is_established() {
+        if self.route.is_none() || !self.phase.is_established() {
             return;
         }
-        let por_batida = match carrier.delivery() {
-            Delivery::Datagram => POR_BATIDA_DATAGRAMA,
-            Delivery::ReliableStream => 1,
-        };
-        for _ in 0..por_batida {
+        // Toda rota é tratada como datagrama (`route`): o ritmo é o da janela, em qualquer portador.
+        for _ in 0..POR_BATIDA_DATAGRAMA {
             // Sobre stream não há janela, e a resposta é sempre sim.
             let proxima = self.seqs.peek(ChannelId::ClipboardText);
             if !self

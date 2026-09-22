@@ -81,17 +81,20 @@ Se a interface travar, for morta ou nunca for aberta, a sessão continua idênti
 ```text
 crates/
 ├── ir-proto/      mensagens, codec, versionamento .............. PURO, sem E/S
+├── ir-confiabilidade/ entrega confiável sobre caminho que perde ... PURO, sem E/S
 ├── ir-session/    máquina de estados do produto ................ PURO, sem E/S
 ├── ir-geometry/   telas, bordas, mapeamento de coordenadas ..... PURO, sem E/S
 ├── ir-crypto/     Noise, código visual, identidades ........... sem E/S de rede
 ├── ir-ipc/        protocolo e transporte daemon↔agente↔ui
 ├── ir-net/        UDP de entrada, TCP de dados, descoberta mDNS
 ├── ir-bt/         RFCOMM: trait + backend Windows + backend BlueZ
-├── ir-transporte/ a fronteira dos portadores: rede e rádio por uma porta só
+├── ir-transporte/ a fronteira dos portadores: rede e rádio por uma porta só, a subida
+│                 deles e o alcance do par em cada um
 ├── ir-input/      traits de captura/injeção + backends por SO
 ├── ir-clip/       modelos de clipboard + backends por SO
 ├── ir-files/      manifesto, blocos, BLAKE3, cotas, staging ......... sem rede
 ├── ir-transferencia/ a transferência conduzida: o motor ligado à porta
+├── ir-configuracao/ configuração e identidade persistentes da máquina
 ├── ir-daemon/     binário do serviço
 ├── ir-agent/      binário do agente
 └── ir-ui/         interface (Slint): biblioteca testável + binário fino
@@ -101,7 +104,8 @@ A regra de dependência é uma seta só, e o CI a verifica:
 
 ```text
 ir-daemon ──► ir-session ──► ir-proto ──► (nada)
-    │              └──────► ir-geometry ──► ir-proto
+    │              ├──────► ir-geometry ──► ir-proto
+    │              └──────► ir-confiabilidade ──► ir-proto
     ├──► ir-transporte ──► ir-net ──► ir-crypto ──► ir-proto
     │                 └──► ir-bt  ──► ir-crypto
     ├──► ir-transferencia ──► ir-files ──► ir-proto
@@ -115,7 +119,7 @@ ir-ui     ──► ir-ipc          (e mais nada — a interface não conhece o 
 
 Proibições verificadas automaticamente:
 
-- `ir-proto`, `ir-session` e `ir-geometry` **NÃO DEVEM** depender de `tokio`, de sockets,
+- `ir-proto`, `ir-confiabilidade`, `ir-session` e `ir-geometry` **NÃO DEVEM** depender de `tokio`, de sockets,
   de relógio de parede, de sistema de arquivos ou de qualquer API de sistema operacional;
 - `ir-ui` **NÃO DEVE** depender de `ir-session`, `ir-net`, `ir-bt` ou `ir-input`;
 - nenhum crate de plataforma (`ir-input`, `ir-bt`, `ir-clip`) depende de outro;

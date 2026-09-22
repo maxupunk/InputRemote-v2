@@ -435,6 +435,17 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [~] `[H]` Quatro combinações por Bluetooth — duas feitas: Linux liga e Windows atende
       (log 26); Windows liga e Linux atende, pelo produto inteiro (log 27)
 - [ ] `[H]` Degradação para UDP com motivo visível
+- [x] Rota dupla: no automático, cada quadro vai pelo Bluetooth e pela rede, e vale o que chegar
+      primeiro; um portador entra e sai sem refazer a sessão nem soltar teclas; protocolo v2
+      ([ADR-0012](docs/adr/0012-rota-dupla.md), [log 43](docs/logs/43-a-rota-dupla.md))
+- [x] Filtro de sequência do canal do ponteiro (§4.2), que faltava — amostra duplicada movia o
+      cursor o dobro ([log 43](docs/logs/43-a-rota-dupla.md))
+- [x] Fila do rádio: quadro velho demais descartado antes de cifrar; ponte do Windows com teto de
+      quadros em voo ([log 43](docs/logs/43-a-rota-dupla.md))
+- [x] `[H]` Rota dupla entre as duas máquinas, com o serviço v2 instalado dos dois lados: rota
+      `bluetooth+udp` formada sozinha, rádio desligado e religado sem a sessão cair, 13 s sem rede
+      cobertos pelo Bluetooth, placar ~50/50 ([log 43](docs/logs/43-a-rota-dupla.md))
+- [ ] `[H]` Tecla segura à mão enquanto o rádio cai — provada no núcleo; falta uma pessoa no teclado
 
 ## Etapa 8 — Clipboard e arquivos
 - [x] Transporte do canal 5: `ir-net::bulk` — `u32` + corpo, `IK` sem pareamento, contador

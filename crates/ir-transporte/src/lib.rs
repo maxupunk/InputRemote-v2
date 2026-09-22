@@ -32,21 +32,26 @@
     )
 )]
 
+pub mod alcance;
 pub mod dados;
 pub mod descoberta;
 mod radio;
 mod rede;
+mod subida;
 
+pub use self::alcance::Alcance;
 pub use self::dados::{Destinatario, EnlaceDeDados, Porta, Remetente};
 pub use self::descoberta::{Descoberta, Encontrado};
 pub use self::radio::{Pareados, Radio};
 pub use self::rede::Rede;
+pub use self::subida::{Abertos, abrir, nome_da_maquina};
 
 use std::net::SocketAddr;
 
 use ir_bt::BdAddr;
 use ir_crypto::PublicKey;
 use ir_proto::carrier::Carrier;
+use ir_proto::ids::RadioAddress;
 
 /// Onde um par pode ser alcançado.
 ///
@@ -68,6 +73,12 @@ impl Endereco {
             Self::Rede(_) => Carrier::Udp,
             Self::Radio(_) => Carrier::Rfcomm,
         }
+    }
+
+    /// O endereço de rádio que o par contou em `Control::Reach`, pronto para discar.
+    #[must_use]
+    pub const fn do_radio(radio: RadioAddress) -> Self {
+        Self::Radio(BdAddr(radio.0))
     }
 
     /// Lê um endereço escrito como texto.
@@ -224,6 +235,16 @@ mod tests {
             assert_eq!(endereco.to_string(), texto);
             assert_eq!(Endereco::ler(&endereco.to_string()), Some(endereco));
         }
+    }
+
+    #[test]
+    fn o_radio_contado_pelo_par_vira_endereco_de_radio() {
+        let radio = RadioAddress([0xAC, 0x50, 0xDE, 0x47, 0xEB, 0x28]);
+        assert_eq!(
+            Endereco::do_radio(radio),
+            Endereco::ler(RADIO).expect("rádio")
+        );
+        assert_eq!(Endereco::do_radio(radio).to_string(), radio.to_string());
     }
 
     #[test]

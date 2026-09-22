@@ -1,8 +1,9 @@
 //! Os portadores de entrada e a descoberta, abertos na subida do serviço.
 //!
 //! Saiu do `main` quando a descoberta entrou: abrir o rádio e anunciar-se na rede são a mesma
-//! pergunta — por onde esta máquina alcança e é alcançada —, e o `main` estava a cinco linhas do
-//! teto de arquivo.
+//! pergunta — por onde esta máquina alcança e é alcançada. Depois saiu do serviço para cá, quando
+//! a rota dupla levou o `ir-daemon` além do teto de crate: a subida dos portadores é assunto da
+//! fronteira dos portadores, e só usava tipos deste crate.
 
 use std::sync::Arc;
 
@@ -11,18 +12,29 @@ use ir_proto::ids::MachineId;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tracing::{info, warn};
 
-use ir_transporte::{Descoberta, Fato, Pareados, Radio, Rede, Transporte};
+use crate::{Descoberta, Fato, Pareados, Radio, Rede, Transporte};
 
 /// O que a subida entrega ao ator.
-pub(crate) struct Abertos {
+pub struct Abertos {
     /// O transporte de rede. Sempre existe.
-    pub(crate) rede: Arc<dyn Transporte>,
+    pub rede: Arc<dyn Transporte>,
     /// O rádio, quando há.
-    pub(crate) radio: Option<Arc<dyn Transporte>>,
+    pub radio: Option<Arc<dyn Transporte>>,
+    /// O endereço do rádio desta máquina, quando há rádio e ele diz.
+    pub radio_proprio: Option<ir_proto::ids::RadioAddress>,
     /// Os fatos dos dois transportes, num canal só.
-    pub(crate) fatos: UnboundedReceiver<Fato>,
+    pub fatos: UnboundedReceiver<Fato>,
     /// A descoberta, já anunciando esta máquina na rede.
-    pub(crate) descoberta: Descoberta,
+    pub descoberta: Descoberta,
+}
+
+impl core::fmt::Debug for Abertos {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Abertos")
+            .field("radio", &self.radio.is_some())
+            .field("radio_proprio", &self.radio_proprio)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Sobe os dois transportes de entrada e a descoberta.
@@ -35,7 +47,7 @@ pub(crate) struct Abertos {
 ///
 /// Só a rede: sem socket UDP não há serviço. Rádio e descoberta que não sobem viram uma linha no
 /// registro, e o serviço segue.
-pub(crate) async fn abrir(
+pub async fn abrir(
     porta: u16,
     identidade: &Arc<ir_crypto::Identity>,
     maquina: MachineId,
@@ -43,7 +55,7 @@ pub(crate) async fn abrir(
     let (emissor, fatos) = mpsc::unbounded_channel();
     let rede: Arc<dyn Transporte> =
         Arc::new(Rede::abrir(porta, Arc::clone(identidade), emissor.clone()).await?);
-    let (radio, pareados) = abrir_radio(Arc::clone(identidade), emissor);
+    let (radio, pareados, radio_proprio) = abrir_radio(Arc::clone(identidade), emissor);
     let descoberta = Descoberta::nova(maquina, pareados);
     match descoberta.anunciar(&nome_da_maquina(), porta).await {
         Ok(()) => info!(
@@ -57,6 +69,7 @@ pub(crate) async fn abrir(
     Ok(Abertos {
         rede,
         radio,
+        radio_proprio,
         fatos,
         descoberta,
     })
@@ -71,19 +84,34 @@ pub(crate) async fn abrir(
 fn abrir_radio(
     identidade: Arc<ir_crypto::Identity>,
     fatos: UnboundedSender<Fato>,
-) -> (Option<Arc<dyn Transporte>>, Option<Pareados>) {
+) -> (
+    Option<Arc<dyn Transporte>>,
+    Option<Pareados>,
+    Option<ir_proto::ids::RadioAddress>,
+) {
     match Radio::abrir(identidade, fatos) {
         Ok(radio) => {
-            info!("rádio Bluetooth aberto; é o portador preferido para teclado e mouse");
+            let proprio = radio.endereco_proprio();
+            if let Some(endereco) = proprio {
+                info!(%endereco, "rádio Bluetooth aberto; junto com a rede, forma a rota dupla");
+            } else {
+                info!(
+                    "rádio Bluetooth aberto, sem endereço conhecido; o par só o alcança se já                      souber para onde discar"
+                );
+            }
             let pareados = radio.pareados();
-            (Some(Arc::new(radio) as Arc<dyn Transporte>), Some(pareados))
+            (
+                Some(Arc::new(radio) as Arc<dyn Transporte>),
+                Some(pareados),
+                proprio,
+            )
         }
         Err(erro) => {
             info!(%erro, "Bluetooth indisponível; a sessão vai usar a rede local");
             if let Some(o_que_fazer) = erro.o_que_fazer() {
                 info!("{o_que_fazer}");
             }
-            (None, None)
+            (None, None, None)
         }
     }
 }
@@ -92,7 +120,7 @@ fn abrir_radio(
 ///
 /// No Linux vem do núcleo, e não de `HOSTNAME`: essa variável é do shell, e um serviço do systemd
 /// não a tem — o par aparecia do outro lado como "computador", e a descoberta anunciaria o mesmo.
-pub(crate) fn nome_da_maquina() -> String {
+pub fn nome_da_maquina() -> String {
     let do_sistema = if cfg!(windows) {
         std::env::var("COMPUTERNAME").ok()
     } else {

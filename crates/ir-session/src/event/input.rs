@@ -87,6 +87,13 @@ pub enum Input {
     /// Vai pelo canal 4, em qualquer portador. Sem sessão estabelecida, é descartado — oferecer
     /// depois, fora do momento da travessia, poria no clipboard do par algo que ele não pediu.
     ClipboardText(super::ClipText),
+
+    /// O endereço do rádio Bluetooth desta máquina ficou conhecido.
+    ///
+    /// A sessão o conta ao par em [`Control::Reach`](ir_proto::message::Control::Reach) — ao
+    /// estabelecer e, se já estiver de pé, na hora. É o que deixa o par discar o Bluetooth quando
+    /// os dois se conheceram pela rede, e a rota dupla nascer de qualquer pareamento.
+    LocalRadio(ir_proto::ids::RadioAddress),
 }
 
 /// Por que um portador caiu, do ponto de vista local.

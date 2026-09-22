@@ -75,6 +75,15 @@ pub trait Radio: Send + Sync + 'static {
     /// política em si é do `ir-session`, não daqui.
     fn disponivel(&self) -> impl Future<Output = bool> + Send;
 
+    /// O endereço do rádio desta máquina, se ele disser.
+    ///
+    /// Síncrono de propósito: nos dois sistemas é uma consulta local e imediata, e quem pergunta
+    /// é a subida do serviço. Serve para a sessão contar ao par por onde discar o Bluetooth quando
+    /// os dois se conheceram pela rede ([ADR-0012](../../../docs/adr/0012-rota-dupla.md)).
+    /// `None` não é falha: o par ainda pode discar para cá se já souber o endereço, e a rede
+    /// continua funcionando sozinha.
+    fn endereco_local(&self) -> Option<BdAddr>;
+
     /// Os computadores já pareados neste sistema.
     ///
     /// # Errors
@@ -193,6 +202,10 @@ pub(crate) mod mentira {
             self.disponivel
         }
 
+        fn endereco_local(&self) -> Option<BdAddr> {
+            self.disponivel.then_some(self.endereco)
+        }
+
         async fn pareados(&self) -> Result<Vec<Dispositivo>> {
             if !self.disponivel {
                 return Err(BtError::SemRadio("rádio de mentira desligado".to_owned()));
@@ -283,6 +296,13 @@ mod tests {
         assert!(matches!(erro, BtError::SemRadio(_)), "{erro}");
         let instrucao = erro.o_que_fazer().expect("há o que fazer");
         assert!(instrucao.contains("Ligue o Bluetooth"), "{instrucao}");
+    }
+
+    #[test]
+    fn o_radio_sabe_o_proprio_endereco_e_o_desligado_nao_inventa_um() {
+        let (aqui, _la) = RadioDeMentira::par();
+        assert_eq!(aqui.endereco_local(), Some(super::mentira::AQUI));
+        assert_eq!(RadioDeMentira::desligado().endereco_local(), None);
     }
 
     #[tokio::test]

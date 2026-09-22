@@ -29,12 +29,14 @@
 //! que a máquina de estados precisa. Misturá-los obrigaria a interface a interpretar texto, ou
 //! deixaria o usuário sem explicação — e o registro sem a causa.
 
+mod confirmacao;
 mod vocabulario;
 
 #[cfg(test)]
 mod testes;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use ir_crypto::{Identity, PublicKey};
 use tokio::sync::mpsc;
@@ -47,6 +49,14 @@ use crate::handshake::{self, ConnectMode};
 use crate::link::EnlaceSeguro;
 use crate::radio::Radio;
 use crate::wire::Kind;
+
+/// A partir de quanto tempo na fila um quadro não vale mais o rádio.
+///
+/// Um quarto do prazo de queda da sessão (1 s), que é também o teto do intervalo de retransmissão
+/// ([03, §4.1](../../../../docs/03-protocolo.md)): um quadro confiável que esperou isso já tem uma
+/// retransmissão a caminho, e uma amostra de ponteiro dessa idade já foi superada por outra. Na
+/// rota dupla, a cópia pela rede chegou faz tempo. Mandar mesmo assim só atrasaria o que é novo.
+pub const VELHO_DEMAIS: Duration = Duration::from_millis(250);
 
 /// Estado interno do endpoint.
 #[derive(Debug)]
@@ -87,6 +97,11 @@ pub struct Endpoint<R: Radio> {
     identity: Arc<Identity>,
     events: mpsc::UnboundedSender<BtEvent>,
     estado: Estado<R::Canal>,
+    /// Quantas reconexões foram pedidas desde o último enlace, para a vez de discar
+    /// ([`ir_crypto::turno`]).
+    rodadas: u32,
+    /// Quantos quadros velhos demais foram descartados desde o último registro.
+    descartados: u64,
 }
 
 impl<R: Radio> core::fmt::Debug for Endpoint<R> {
@@ -106,6 +121,8 @@ impl<R: Radio> Endpoint<R> {
             identity,
             events: evt_tx,
             estado: Estado::Ocioso,
+            rodadas: 0,
+            descartados: 0,
         };
         tokio::spawn(endpoint.rodar(cmd_rx));
         EndpointHandle {
@@ -179,15 +196,36 @@ impl<R: Radio> Endpoint<R> {
     async fn executar(&mut self, comando: BtCommand) {
         match comando {
             BtCommand::Connect { peer, mode } => self.conectar(peer, mode).await,
-            BtCommand::SendFrame(bytes) => self.enviar_quadro(&bytes).await,
+            BtCommand::SendFrame { bytes, queued_at } => {
+                if queued_at.elapsed() > VELHO_DEMAIS {
+                    self.descartar_velho();
+                } else {
+                    self.enviar_quadro(&bytes).await;
+                }
+            }
             BtCommand::ConfirmPairing(ok) => self.confirmar(ok).await,
             BtCommand::Disconnect => self.derrubar("pedido local"),
             BtCommand::Shutdown => {}
         }
     }
 
-    /// Conecta como iniciador.
+    /// Conecta como iniciador — na reconexão, só se for a vez deste lado.
+    ///
+    /// Com a rota dupla os dois lados ficam sabendo o endereço de rádio do outro no mesmo instante
+    /// e discam juntos. Discando os dois, cada um espera a resposta de quem também está só
+    /// discando, e o aperto de mão vence o prazo dos dois lados. A regra de quem disca é a mesma da
+    /// rede ([`ir_crypto::turno`]).
     async fn conectar(&mut self, peer: BdAddr, mode: ConnectMode) {
+        if let ConnectMode::Reconnect(chave_do_par) = mode {
+            self.rodadas = self.rodadas.wrapping_add(1);
+            if !ir_crypto::turno::discar_nesta_rodada(
+                self.identity.public(),
+                chave_do_par,
+                self.rodadas,
+            ) {
+                return;
+            }
+        }
         let canal = match self.radio.conectar(peer).await {
             Ok(canal) => canal,
             Err(erro) => return self.relatar(&erro),
@@ -224,6 +262,7 @@ impl<R: Radio> Endpoint<R> {
     ) {
         let enlace = EnlaceSeguro::novo(quadros, pronto.transport);
         let peer_static = pronto.peer_static;
+        self.rodadas = 0;
         if let Some(code) = pronto.code {
             // Pareamento: mostra o código e espera as duas confirmações antes de deixar qualquer
             // quadro de sessão passar.
@@ -284,60 +323,6 @@ impl<R: Radio> Endpoint<R> {
         // duas confirmações.
     }
 
-    /// O usuário respondeu à comparação de códigos.
-    async fn confirmar(&mut self, ok: bool) {
-        let enviado = {
-            let Estado::AguardandoConfirmacao {
-                enlace, local_ok, ..
-            } = &mut self.estado
-            else {
-                return;
-            };
-            if ok {
-                *local_ok = true;
-            }
-            let especie = if ok {
-                Kind::PairConfirm
-            } else {
-                Kind::PairReject
-            };
-            enlace.enviar(especie, &[]).await
-        };
-        if let Err(erro) = enviado {
-            self.relatar(&erro);
-        }
-        if ok {
-            self.promover_se_pronto();
-        } else {
-            self.derrubar("códigos diferentes");
-        }
-    }
-
-    /// Estabelece o enlace quando os dois lados confirmaram.
-    fn promover_se_pronto(&mut self) {
-        if !matches!(
-            &self.estado,
-            Estado::AguardandoConfirmacao {
-                local_ok: true,
-                peer_ok: true,
-                ..
-            }
-        ) {
-            return;
-        }
-        let anterior = core::mem::replace(&mut self.estado, Estado::Ocioso);
-        if let Estado::AguardandoConfirmacao {
-            enlace,
-            peer_static,
-            peer,
-            ..
-        } = anterior
-        {
-            self.contar(BtEvent::Established { peer_static, peer });
-            self.estado = Estado::Estabelecido { enlace };
-        }
-    }
-
     async fn enviar_quadro(&mut self, bytes: &[u8]) {
         let enviado = {
             let Estado::Estabelecido { enlace } = &mut self.estado else {
@@ -348,6 +333,20 @@ impl<R: Radio> Endpoint<R> {
         if let Err(erro) = enviado {
             self.relatar(&erro);
             self.derrubar("falha ao enviar");
+        }
+    }
+
+    /// Um quadro esperou demais na fila: não vale mais o rádio.
+    ///
+    /// Conta, e registra na primeira de uma rajada e depois a cada cem — sob interferência são
+    /// dezenas por segundo, e uma linha por quadro afogaria o registro.
+    fn descartar_velho(&mut self) {
+        self.descartados = self.descartados.saturating_add(1);
+        if self.descartados % 100 == 1 {
+            tracing::debug!(
+                descartados = self.descartados,
+                "quadros velhos demais descartados antes do rádio"
+            );
         }
     }
 

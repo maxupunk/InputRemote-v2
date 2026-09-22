@@ -10,6 +10,7 @@
 //! degradação diferentes ([00, §6](../../../../docs/00-licoes-do-v1.md)).
 
 use ir_crypto::PublicKey;
+use tokio::time::Instant;
 
 use crate::addr::BdAddr;
 use crate::handshake::ConnectMode;
@@ -26,13 +27,35 @@ pub enum BtCommand {
         mode: ConnectMode,
     },
     /// Mande este quadro (bytes já codificados de `ir_proto::Frame`) ao par.
-    SendFrame(Vec<u8>),
+    ///
+    /// Carrega o instante em que entrou na fila porque o rádio pode travar: sob interferência o
+    /// RFCOMM para de escoar, a fila cresce, e quando ele volta despejaria segundos de quadros
+    /// velhos na frente dos novos. O endpoint descarta o que passou de
+    /// [`VELHO_DEMAIS`](super::VELHO_DEMAIS) **antes** de cifrar — depois não dá, porque o contador
+    /// do enlace é implícito ([`link`](crate::link)). Use [`BtCommand::quadro`].
+    SendFrame {
+        /// Os bytes do quadro.
+        bytes: Vec<u8>,
+        /// Quando o quadro entrou na fila.
+        queued_at: Instant,
+    },
     /// O usuário respondeu à comparação de códigos.
     ConfirmPairing(bool),
     /// Encerre o enlace atual.
     Disconnect,
     /// Encerre a tarefa.
     Shutdown,
+}
+
+impl BtCommand {
+    /// Um quadro para mandar, carimbado com o instante de agora.
+    #[must_use]
+    pub fn quadro(bytes: Vec<u8>) -> Self {
+        Self::SendFrame {
+            bytes,
+            queued_at: Instant::now(),
+        }
+    }
 }
 
 /// O que o endpoint conta ao serviço.

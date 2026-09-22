@@ -19,10 +19,17 @@
 //! que mais devagar.
 //!
 //! É a mesma ordem de chaves da regra de colisão do canal de arquivos
-//! ([`crate::bulk::keep_outbound_on_collision`]): os dois lados chegam à mesma conclusão sem trocar
+//! (`ir_net::bulk::keep_outbound_on_collision`): os dois lados chegam à mesma conclusão sem trocar
 //! mensagem nenhuma.
+//!
+//! # Por que mora aqui
+//!
+//! Nasceu no `ir-net`, e saiu dele quando o Bluetooth passou a precisar da mesma regra: com a rota
+//! dupla, os dois lados ficam sabendo o endereço de rádio do outro no mesmo instante, e discam o
+//! RFCOMM juntos. Uma regra por portador divergiria; a regra é sobre as chaves, e as chaves são
+//! deste crate ([ADR-0012](../../../docs/adr/0012-rota-dupla.md)).
 
-use ir_crypto::PublicKey;
+use crate::identity::PublicKey;
 
 /// A cada quantas rodadas o lado de chave menor disca.
 pub const RODADAS_DO_MENOR: u32 = 3;

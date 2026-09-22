@@ -47,8 +47,13 @@ pub struct Pair {
     now: Timestamp,
     /// Tudo que os dois lados pediram, em ordem, desde o último `take`.
     log: Vec<(Side, Command)>,
-    /// Portadores que o roteador deixa passar. Tirar um daqui simula perda total.
+    /// Se o roteador entrega alguma coisa. Desligar simula perda total do meio.
     delivering: bool,
+    /// Portadores que o roteador **não** entrega: um meio que morreu calado, sem aviso de queda.
+    ///
+    /// É o caso que a rota dupla existe para cobrir — o rádio sob interferência continua "de pé"
+    /// para o sistema, e o que se manda por ele simplesmente não chega.
+    silent: Vec<Carrier>,
     /// Entrega cada quadro duas vezes, para exercer a detecção de repetição.
     duplicating: bool,
     /// Descarta um quadro a cada `n`. Zero desliga.
@@ -132,6 +137,7 @@ impl Pair {
             now: Timestamp::from_millis(10_000),
             log: Vec::new(),
             delivering: true,
+            silent: Vec::new(),
             duplicating: false,
             drop_every: 0,
             seen: 0,
@@ -169,6 +175,24 @@ impl Pair {
     /// Liga ou desliga a entrega de quadros. Desligar simula perda total do meio.
     pub fn set_delivery(&mut self, delivering: bool) {
         self.delivering = delivering;
+    }
+
+    /// Cala ou devolve um portador só, sem avisar ninguém.
+    pub fn set_carrier_delivery(&mut self, carrier: Carrier, delivering: bool) {
+        self.silent.retain(|silent| *silent != carrier);
+        if !delivering {
+            self.silent.push(carrier);
+        }
+    }
+
+    /// Fixa (ou solta) um portador num lado, como a interface faz.
+    pub fn pin(&mut self, side: Side, carrier: Option<Carrier>) {
+        let mut batch = CommandBatch::new();
+        match side {
+            Side::Server => self.server.pin_carrier(carrier, &mut batch),
+            Side::Client => self.client.pin_carrier(carrier, &mut batch),
+        }
+        self.dispatch(side, &batch, 0);
     }
 
     /// Faz o roteador entregar cada quadro duas vezes.
@@ -220,6 +244,7 @@ impl Pair {
             self.log.push((side, command.clone()));
             if let Command::Send { carrier, frame } = command
                 && self.delivering
+                && !self.silent.contains(carrier)
             {
                 to_deliver.push((*carrier, frame.clone()));
             }
@@ -246,6 +271,14 @@ impl Pair {
                 self.dispatch(side.other(), &batch, depth + 1);
             }
         }
+    }
+
+    /// Quantos quadros um lado mandou por este portador, desde a última limpeza.
+    pub fn sent_on(&self, side: Side, carrier: Carrier) -> usize {
+        self.count(
+            side,
+            |command| matches!(command, Command::Send { carrier: c, .. } if *c == carrier),
+        )
     }
 
     /// Tudo que foi pedido desde a última chamada, e esvazia o registro.

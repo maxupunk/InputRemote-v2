@@ -75,6 +75,10 @@ impl Radio for RadioLinux {
         ha_adaptador(Path::new(ADAPTADORES))
     }
 
+    fn endereco_local(&self) -> Option<BdAddr> {
+        endereco_do_adaptador(Path::new(ARMAZENAMENTO))
+    }
+
     async fn pareados(&self) -> Result<Vec<Dispositivo>> {
         // Passeio por diretório é E/S bloqueante; fora da thread do runtime.
         tokio::task::spawn_blocking(|| ler_pareados(Path::new(ARMAZENAMENTO)))
@@ -157,6 +161,21 @@ fn recolher_do_adaptador(adaptador: &Path, encontrados: &mut Vec<Dispositivo>) {
             classe: info.classe,
         });
     }
+}
+
+/// O endereço do adaptador desta máquina, pelo nome do diretório dele no armazenamento do BlueZ.
+///
+/// O BlueZ guarda os pares em `/var/lib/bluetooth/<endereço do adaptador>/`. Ler dali dispensa o
+/// D-Bus, que o [ADR-0009](../../../../docs/adr/0009-canal-rfcomm-fixo-sem-sdp.md) deixou de fora.
+/// Com mais de um adaptador, vale o de menor endereço, para a resposta não depender da ordem em
+/// que o sistema lista o diretório.
+fn endereco_do_adaptador(raiz: &Path) -> Option<BdAddr> {
+    std::fs::read_dir(raiz)
+        .ok()?
+        .flatten()
+        .filter(|entrada| entrada.path().is_dir())
+        .filter_map(|entrada| endereco_do_caminho(&entrada.path()))
+        .min_by_key(|endereco| endereco.bytes())
 }
 
 /// O endereço que dá nome ao diretório, se ele for mesmo um endereço.
@@ -242,6 +261,27 @@ mod tests {
         let erro =
             ler_pareados(Path::new("/var/lib/bluetooth-que-nao-existe")).expect_err("não existe");
         assert!(matches!(erro, BtError::SemRadio(_)), "{erro}");
+    }
+
+    #[test]
+    fn o_endereco_do_adaptador_e_o_nome_do_diretorio_dele() {
+        let raiz = armazenamento("adaptador");
+        assert_eq!(
+            endereco_do_adaptador(&raiz),
+            None,
+            "sem armazenamento, sem endereço"
+        );
+        std::fs::create_dir_all(raiz.join("AC:50:DE:47:EB:28")).expect("cria o adaptador");
+        std::fs::create_dir_all(raiz.join("cache")).expect("cria um diretório qualquer");
+        std::fs::write(raiz.join("00:00:00:00:00:01"), "").expect("um arquivo não é adaptador");
+
+        assert_eq!(
+            endereco_do_adaptador(&raiz)
+                .map(|e| e.to_string())
+                .as_deref(),
+            Some("AC:50:DE:47:EB:28")
+        );
+        let _ = std::fs::remove_dir_all(&raiz);
     }
 
     #[test]

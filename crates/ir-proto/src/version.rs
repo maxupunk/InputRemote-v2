@@ -13,12 +13,23 @@ use crate::error::{ProtoError, Result};
 /// **Incrementar sempre que qualquer tipo de `ir-proto` mudar** — inclusive uma
 /// reordenação de campos, que o `postcard` não detecta. Os vetores gravados em
 /// `tests/vectors.rs` falham se isto for esquecido.
-pub const CURRENT: ProtocolVersion = ProtocolVersion(1);
+///
+/// Versão 2: a sessão passou a tratar **todo** portador de entrada como datagrama — confirmação,
+/// retransmissão e descarte de repetição valem também sobre RFCOMM —, que é o que permite a rota
+/// dupla trocar de portador sem refazer a sessão ([ADR-0012](../../../docs/adr/0012-rota-dupla.md)).
+/// Ganhou também [`Control::Reach`](crate::message::Control::Reach).
+pub const CURRENT: ProtocolVersion = ProtocolVersion(2);
 
 /// Versão mais antiga que esta build ainda aceita conversar.
 ///
 /// Elevar isto abandona pares antigos de propósito, e é uma decisão de lançamento.
-pub const MIN_SUPPORTED: ProtocolVersion = ProtocolVersion(1);
+///
+/// Subiu junto com [`CURRENT`], e não por descuido: uma ponta da versão 1 sobre RFCOMM não
+/// confirma nada, e a janela de retransmissão desta encheria até derrubar a sessão a cada
+/// segundo — em silêncio, parecendo defeito de rádio. Recusar na negociação diz o motivo. Não há
+/// versão 1 lançada com quem manter compatibilidade (`tests/vectors/main.rs`, exceção de
+/// pré-lançamento).
+pub const MIN_SUPPORTED: ProtocolVersion = ProtocolVersion(2);
 
 /// Versão do protocolo, monotônica.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

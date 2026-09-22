@@ -85,6 +85,11 @@ Regras que sustentam a garantia:
 - a confirmação visual dos dois lados **NÃO DEVE** ser pulável, nem por configuração;
 - o handshake expira em 2 minutos sem confirmação;
 - nenhum dado da sessão trafega antes das duas confirmações;
+- com um código na tela, só o enlace **do pareamento** — o mesmo portador e a mesma chave — o
+  conclui. Qualquer outro enlace nesse intervalo, por outro portador ou com outra chave, é
+  recusado sem gravar nada, e a queda dele não desfaz o pareamento em curso
+  ([ADR-0012](adr/0012-rota-dupla.md): com a rota dupla, o outro lado disca o segundo portador
+  por conta própria);
 - 5 tentativas de pareamento por par, com espera crescente entre elas;
 - a comparação do código recebido é feita em tempo constante.
 

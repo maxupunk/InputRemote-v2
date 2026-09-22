@@ -38,11 +38,6 @@ impl Daemon {
         }
     }
 
-    /// O portador que a sessão está usando, ou o da rede enquanto não há sessão.
-    pub(super) fn portador_em_uso(&self) -> Carrier {
-        self.session.carrier().unwrap_or(Carrier::Udp)
-    }
-
     /// Um fato vindo de um dos transportes.
     pub(super) fn on_fato_do_transporte(&mut self, fato: Fato) {
         let portador = fato.portador();
@@ -64,6 +59,15 @@ impl Daemon {
             Fato::Erro { mensagem, .. } => {
                 warn!(%portador, mensagem, "erro de transporte");
                 self.discagem_com_erro(portador);
+                // Sem enlace de pé por ele, o erro é de uma discagem que não deu em nada: a próxima
+                // rodada pode tentar de novo. Pela rede, o endereço aprendido pode ter envelhecido.
+                if !self.alcance.de_pe(portador) {
+                    if portador == Carrier::Udp {
+                        self.alcance.rede_falhou();
+                    } else {
+                        self.alcance.caiu(portador);
+                    }
+                }
             }
         }
     }
@@ -71,9 +75,12 @@ impl Daemon {
     /// O enlace caiu. A sessão precisa saber **qual** portador caiu, não que "o portador" caiu.
     fn on_link_down(&mut self, motivo: &str, portador: Carrier) {
         info!(%portador, motivo, "enlace caiu");
-        self.linked = false;
-        // Um código na tela sem enlace por baixo não tem mais o que confirmar.
-        self.abandonar_pareamento_pendente();
+        self.alcance.caiu(portador);
+        // Um código na tela sem enlace por baixo não tem mais o que confirmar — mas só o enlace
+        // do pareamento o sustenta; a queda de outro portador não o desfaz.
+        if self.peer.map(Endereco::portador) == Some(portador) {
+            self.abandonar_pareamento_pendente();
+        }
         self.drive(Input::CarrierDown {
             carrier: portador,
             reason: LinkDown::TransportFailed,
@@ -83,7 +90,18 @@ impl Daemon {
 
     /// O enlace seguro ficou pronto.
     fn on_established(&mut self, chave_do_par: PublicKey, de: Endereco, portador: Carrier) {
-        if self.pending_peer.take().is_some() {
+        if let Some(pendente) = self.pending_peer {
+            // Com um código na tela, só o enlace do pareamento o conclui: o mesmo portador e a mesma
+            // chave. Outro enlace nesse intervalo — o outro portador da rota dupla discando por
+            // conta própria, ou outro computador — levaria a chave sem a confirmação do usuário.
+            if pendente != chave_do_par || self.peer.map(Endereco::portador) != Some(portador) {
+                warn!(%de, %portador, "enlace alheio ao pareamento em curso — recusando");
+                if let Some(transporte) = self.transporte(portador) {
+                    transporte.desconectar();
+                }
+                return;
+            }
+            self.pending_peer = None;
             self.pareamento = None;
             self.save_peer(chave_do_par, de);
             let _ = self
@@ -105,7 +123,8 @@ impl Daemon {
             }
             return;
         }
-        self.linked = true;
+        self.alcance.subiu(portador);
+        self.alcance.anotar(de);
         self.peer = Some(de);
         // A próxima posição absoluta semeia o ponteiro: o cursor real está onde está, e o modelo
         // da sessão precisa começar no mesmo ponto, senão a primeira travessia dispara errado.
@@ -122,6 +141,8 @@ impl Daemon {
             // Texto, e é o que permite guardar tanto `ip:porta` quanto endereço de rádio sem
             // mudar o formato do arquivo de configuração.
             addr: Some(de.to_string()),
+            // Par novo, identidade nova: o rádio dele chega de novo pelo `Control::Reach`.
+            radio: None,
         };
         self.config.peers = vec![pinned];
         if let Err(error) = self.config.save(&self.data_dir) {
@@ -150,42 +171,28 @@ impl Daemon {
         if self.pareando() {
             return; // no meio de um pareamento, até ele terminar; discar agora o desmontaria
         }
-        if self.linked {
+        if self.linked() && self.session.phase() == Phase::Offline {
             // O enlace seguro está de pé, mas a sessão caiu (silêncio do par). Reinicia a sessão
-            // sobre o mesmo enlace: um `Hello` novo, que o par absorve se já estiver de pé.
-            if self.session.phase() == Phase::Offline {
-                self.drive(Input::CarrierUp(self.portador_em_uso()));
-            }
-        } else if self.peer.is_some() && self.config.first_peer_key().is_some() {
-            // Sem enlace, com endereço e com par gravado: somos o iniciador, e tentamos de novo.
-            // Sem par gravado não se disca sozinho — parear é pedido do usuário (log 25).
-            self.connect_if_possible();
+            // sobre os mesmos enlaces: um `Hello` novo, que o par absorve se já estiver de pé.
+            self.retomar_sessao();
         }
+        // Todo portador sem enlace e com endereço conhecido é discado — também com a sessão de pé
+        // por outro: é assim que a rota dupla se forma e se refaz (ADR-0012). Sem par gravado não
+        // se disca sozinho — parear é pedido do usuário (log 25).
+        self.discar_o_que_falta();
     }
 
-    /// Reconecta ao par gravado, como iniciador, se houver par e endereço.
+    /// Reconecta ao par gravado, como iniciador, por todo portador de que se sabe o endereço.
     ///
     /// Nunca começa um pareamento. Discar para parear sem o usuário pedir punha um código novo na
     /// tela do outro computador a cada tentativa, e o que ele estava comparando deixava de valer
     /// (log 25). Parear começa pela janela ([`Pedido::IniciarPareamento`](ir_ipc::Pedido)).
-    pub(crate) fn connect_if_possible(&self) {
-        let Some(chave) = self.config.first_peer_key() else {
+    pub(crate) fn connect_if_possible(&mut self) {
+        if self.config.first_peer_key().is_none() {
             info!("nenhum par gravado; o pareamento começa pela janela");
             return;
-        };
-        let Some(alvo) = self.peer else {
-            info!("sem endereço de par; aguardando conexão de entrada");
-            return;
-        };
-        // O endereço diz por qual portador se fala com ele: `ip:porta` é rede, endereço de rádio
-        // é Bluetooth. Não há adivinhação, e não há um portador presumido.
-        let portador = alvo.portador();
-        let Some(transporte) = self.transporte(portador) else {
-            info!(%portador, "o par foi visto por um portador que não está aberto aqui");
-            return;
-        };
-        info!(%alvo, %portador, "conectando ao par");
-        transporte.conectar(alvo, Some(chave));
+        }
+        self.discar_o_que_falta();
     }
 }
 
@@ -220,6 +227,7 @@ mod tests {
         bancada.daemon.config.peers = vec![PinnedPeer {
             pubkey: encode_key(&chave()),
             addr: None,
+            radio: None,
         }];
     }
 
@@ -243,7 +251,7 @@ mod tests {
         estabeleceu(&mut bancada, chave());
 
         assert!(
-            !bancada.daemon.linked,
+            !bancada.daemon.linked(),
             "sem par gravado, ninguém entra sem passar pelo pareamento"
         );
         assert!(
@@ -259,7 +267,7 @@ mod tests {
 
         estabeleceu(&mut bancada, outra_chave());
 
-        assert!(!bancada.daemon.linked, "não é quem está fixado");
+        assert!(!bancada.daemon.linked(), "não é quem está fixado");
     }
 
     #[test]
@@ -271,19 +279,28 @@ mod tests {
 
         estabeleceu(&mut bancada, chave());
 
-        assert!(bancada.daemon.linked, "a chave confere com a fixada");
+        assert!(bancada.daemon.linked(), "a chave confere com a fixada");
     }
 
     #[test]
     fn com_pareamento_em_curso_o_servico_aceita_e_grava_o_par() {
         // O outro caminho legítimo: o pareamento que o usuário acabou de confirmar.
+        // O código chega como na produção, pelo transporte: é ele que diz por onde se pareia, e só
+        // o enlace desse portador conclui o pareamento.
         let mut bancada = Bancada::nova(Role::Server);
-        bancada.daemon.on_pairing_code([1, 2, 3, 4, 5, 6], chave());
+        bancada
+            .daemon
+            .on_fato_do_transporte(Fato::CodigoDePareamento {
+                portador: Carrier::Udp,
+                digitos: [1, 2, 3, 4, 5, 6],
+                chave_do_par: chave(),
+                de: de_onde(),
+            });
         bancada.daemon.confirmar(true);
 
         estabeleceu(&mut bancada, chave());
 
-        assert!(bancada.daemon.linked);
+        assert!(bancada.daemon.linked());
         assert!(
             !bancada.daemon.config.peers.is_empty(),
             "o par precisa ficar gravado"

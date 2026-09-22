@@ -53,15 +53,20 @@
 pub mod config;
 pub mod event;
 pub mod phase;
-pub mod reliability;
 pub mod sequences;
 pub mod session;
-pub mod time;
+
+/// A confiabilidade dos canais, que mora no `ir-confiabilidade` desde a rota dupla.
+pub use ir_confiabilidade as reliability;
+/// O tempo injetado, que mora no `ir-confiabilidade` junto com quem mais o usa.
+pub use ir_confiabilidade::time;
 
 pub use config::{Role, SessionConfig, Timings};
 pub use event::{
     CarrierChoice, ClipText, Command, CommandBatch, Injection, Input, LinkDown, Notice, TimerId,
 };
 pub use phase::Phase;
-pub use session::{CarrierSet, ConfigError, LocalIdentity, PeerInfo, Session};
+pub use session::{
+    CarrierSet, CarrierWins, ConfigError, LocalIdentity, PeerInfo, Route, RouteReport, Session,
+};
 pub use time::{Millis, Timestamp};

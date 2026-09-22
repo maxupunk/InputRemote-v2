@@ -9,7 +9,7 @@
 
 use ir_proto::channel::ChannelId;
 use ir_proto::frame::{Ack, Epoch, Frame, Sequence};
-use ir_proto::ids::{MachineId, MonitorId};
+use ir_proto::ids::{MachineId, MonitorId, RadioAddress};
 use ir_proto::input::{
     Button, HidUsage, InputState, Modifiers, PointerDelta, PointerPosition, WheelDelta,
 };
@@ -112,7 +112,7 @@ fn control_vectors() -> Vec<Vector> {
         v(
             "hello",
             control(Control::Hello(greeting()), 1),
-            "0000010102030405060708090a0b0c0d0e0f100762616e63616461010101010200010000",
+            "0000020102030405060708090a0b0c0d0e0f100762616e63616461010101010200010000",
         ),
         v(
             "screens",
@@ -131,6 +131,17 @@ fn control_vectors() -> Vec<Vector> {
                 3,
             ),
             "000301030000",
+        ),
+        v(
+            "reach",
+            // Versão 2: o endereço do rádio, seis bytes crus e sem prefixo de tamanho (ADR-0012).
+            control(
+                Control::Reach {
+                    radio: RadioAddress([0xAC, 0x50, 0xDE, 0x47, 0xEB, 0x28]),
+                },
+                18,
+            ),
+            "000cac50de47eb28120000",
         ),
     ]
 }

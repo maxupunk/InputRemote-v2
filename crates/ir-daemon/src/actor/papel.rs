@@ -199,11 +199,14 @@ impl Daemon {
         // e o modelo da sessão nova precisam começar no mesmo ponto.
         self.seed_pointer = true;
         self.last_phase = Phase::Offline;
-        if self.linked {
-            // Pelo portador que está de pé, e não por um presumido: trocar de papel sobre um
-            // enlace de Bluetooth não pode reiniciar a sessão dizendo que ela é de rede.
-            self.drive(Input::CarrierUp(self.portador_em_uso()));
-        }
+        // A sessão nova nasce sem a fixação de portador e sem o rádio daqui.
+        let fixado = self.portador_fixado.map(ir_ipc::Portador::no_protocolo);
+        self.session.pin_carrier(fixado, &mut self.out);
+        self.apply_commands();
+        self.anunciar_radio_proprio();
+        // Pelos portadores que estão de pé, e não por um presumido: trocar de papel sobre um
+        // enlace de Bluetooth não pode reiniciar a sessão dizendo que ela é de rede.
+        self.retomar_sessao();
         let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
     }
 

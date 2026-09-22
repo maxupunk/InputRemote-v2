@@ -151,7 +151,7 @@ async fn refletir(alca: &mut EndpointHandle) {
             ),
             BtEvent::Frame(bytes) => {
                 devolvidos += 1;
-                let _ = alca.commands.send(BtCommand::SendFrame(bytes));
+                let _ = alca.commands.send(BtCommand::quadro(bytes));
             }
             BtEvent::LinkDown(motivo) => {
                 return println!(
@@ -271,7 +271,7 @@ fn anotar_volta(bytes: &[u8], saida: &[Option<Instant>], idas: &mut Vec<Duration
 /// Manda uma sonda numerada. O número volta igual, o que amarra a volta à ida.
 fn sondar(alca: &EndpointHandle, numero: u64) -> bool {
     alca.commands
-        .send(BtCommand::SendFrame(numero.to_le_bytes().to_vec()))
+        .send(BtCommand::quadro(numero.to_le_bytes().to_vec()))
         .is_ok()
 }
 

@@ -11,10 +11,10 @@ use ir_proto::frame::Sequence;
 use ir_proto::input::InputState;
 use ir_proto::screens::Edge;
 
-use super::{PeerInfo, Session};
+use super::{CarrierWins, PeerInfo, Route, RouteReport, Session};
 use crate::config::Role;
 use crate::phase::Phase;
-use crate::time::Millis;
+use crate::time::{Millis, Timestamp};
 
 impl Session {
     /// Em que ponto a sessão está.
@@ -23,10 +23,48 @@ impl Session {
         self.phase
     }
 
-    /// O portador de entrada em uso.
+    /// O portador de entrada que representa a rota em uso — o Bluetooth, na rota dupla.
     #[must_use]
     pub const fn carrier(&self) -> Option<Carrier> {
-        self.carrier
+        match self.route {
+            Some(route) => Some(route.primary()),
+            None => None,
+        }
+    }
+
+    /// Por quais portadores a sessão fala agora.
+    #[must_use]
+    pub const fn route(&self) -> Option<Route> {
+        self.route
+    }
+
+    /// Por qual portador cada quadro novo chegou primeiro, desde que o serviço subiu.
+    #[must_use]
+    pub const fn carrier_wins(&self) -> CarrierWins {
+        self.wins
+    }
+
+    /// O retrato da rota agora, para o registro e o diagnóstico.
+    #[must_use]
+    pub fn route_report(&self, now: Timestamp) -> RouteReport {
+        RouteReport {
+            route: self.route,
+            wins: self.wins,
+            silence_rfcomm: self.carrier_silence(Carrier::Rfcomm, now),
+            silence_udp: self.carrier_silence(Carrier::Udp, now),
+        }
+    }
+
+    /// Há quanto tempo não chega nada por este portador da rota — `None` se ele não está nela.
+    ///
+    /// É o que deixa a interface dizer qual dos dois portadores da rota dupla parou de responder
+    /// antes de o transporte perceber a queda.
+    #[must_use]
+    pub fn carrier_silence(&self, carrier: Carrier, now: Timestamp) -> Option<Millis> {
+        let route = self.route?;
+        route
+            .uses(carrier)
+            .then(|| now.since(self.clock.carrier_rx(carrier)))
     }
 
     /// O par, depois do handshake.

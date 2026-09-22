@@ -245,9 +245,10 @@ fn a_stall_shorter_than_the_promised_second_does_not_drop_the_session() {
 }
 
 #[test]
-fn a_stream_carrier_does_not_use_the_retransmission_window() {
-    // Sobre RFCOMM o portador já garante ordem e entrega. Duplicar aqui é o meio mentindo, e
-    // a sessão não precisa de janela — mas também não pode quebrar.
+fn a_stream_carrier_also_uses_the_window_and_confirmations_drain_it() {
+    // Desde a versão 2 a sessão trata o RFCOMM como datagrama (ADR-0012): ele também confirma, e
+    // é isso que deixa o Bluetooth entrar e sair da rota sem refazer a sessão. Num meio que não
+    // perde, a janela só esvazia — digitar sem parar não pode derrubar nada.
     let mut pair = Pair::matched();
     pair.connect(Carrier::Rfcomm);
     pair.feed(
@@ -272,12 +273,14 @@ fn a_stream_carrier_does_not_use_the_retransmission_window() {
                 pressed: false,
             },
         );
+        // Uma tecla a cada 10 ms, que é digitar rápido; a confirmação pura sai a cada 20 ms.
+        pair.advance(10);
     }
 
     assert_eq!(
         pair.server.phase(),
         Phase::Engaged,
-        "stream não tem janela para encher"
+        "a janela esvazia a cada confirmação"
     );
     assert!(pair.client.input_state().is_released());
 }

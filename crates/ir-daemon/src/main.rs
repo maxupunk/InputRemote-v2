@@ -11,7 +11,6 @@ mod config;
 mod ipc;
 #[cfg(windows)]
 mod service;
-mod transportes;
 
 use std::io::BufRead;
 use std::sync::Arc;
@@ -62,30 +61,24 @@ async fn executar(parada: watch::Receiver<bool>) -> Result<()> {
     // O guarda esvazia a fila do registro ao sair; soltá-lo antes perderia as últimas linhas.
     let _registro = init_tracing();
 
-    let dir = config::data_dir();
-    let mut cfg = config::load_config(&dir).context("carregando configuração")?;
-    let identity = Arc::new(config::load_identity(&dir).context("carregando identidade")?);
-    let role = actor::papel_na_subida(&mut cfg, &dir)?;
-    let edge = cfg.edge()?;
-    info!(
-        "InputRemote — papel {role}, impressão digital {}",
-        identity.fingerprint()
-    );
-
+    let (dir, cfg, identity, role, edge) = carregar()?;
     let screen = tamanho_da_tela(&cfg);
     let maquina = machine_id_of(&identity.public());
-    let abertos = transportes::abrir(cfg.port, &identity, maquina).await?;
+    let abertos = ir_transporte::abrir(cfg.port, &identity, maquina).await?;
 
     let (capturer, injector, capture_rx) = build_io(role);
     let identidade = identidade_local(&identity);
 
     let canais = abrir_canais()?;
+    let (achados, achados_rx) = tokio::sync::mpsc::unbounded_channel();
     let arquivos = arquivos::abrir(&cfg, &dir, &identity, &canais.avisos, &abertos.descoberta);
 
     let mut daemon = Daemon::new(Parts {
         session: actor::nova_sessao(role, edge, identidade.clone()),
         rede: abertos.rede,
         radio: abertos.radio,
+        radio_proprio: abertos.radio_proprio,
+        achados,
         descoberta: abertos.descoberta,
         injector,
         capturer,
@@ -114,9 +107,30 @@ async fn executar(parada: watch::Receiver<bool>) -> Result<()> {
             pedidos: canais.pedidos,
             fatos: canais.fatos,
             parada,
+            achados: achados_rx,
         })
         .await;
     Ok(())
+}
+
+/// O que a máquina guarda: diretório de estado, configuração, identidade, papel e borda.
+fn carregar() -> Result<(
+    std::path::PathBuf,
+    config::Config,
+    Arc<ir_crypto::Identity>,
+    Role,
+    ir_proto::screens::Edge,
+)> {
+    let dir = config::data_dir();
+    let mut cfg = config::load_config(&dir).context("carregando configuração")?;
+    let identity = Arc::new(config::load_identity(&dir).context("carregando identidade")?);
+    let role = actor::papel_na_subida(&mut cfg, &dir)?;
+    let edge = cfg.edge()?;
+    info!(
+        "InputRemote — papel {role}, impressão digital {}",
+        identity.fingerprint()
+    );
+    Ok((dir, cfg, identity, role, edge))
 }
 
 /// Tamanho de tela: da plataforma quando ela sabe, senão da configuração.
@@ -127,6 +141,7 @@ fn tamanho_da_tela(cfg: &config::Config) -> (u32, u32) {
 /// Dá partida no ator: as telas, a primeira tentativa de conexão e o agente.
 fn dar_partida(daemon: &mut Daemon, screen: (u32, u32)) {
     feed_screens(daemon, screen);
+    daemon.anunciar_radio_proprio();
     daemon.connect_if_possible();
     // O agente nasce junto com o serviço; o laço periódico só cuida de ressubi-lo se ele cair.
     daemon.garantir_agente();
@@ -358,5 +373,5 @@ fn feed_screens(daemon: &mut Daemon, screen: (u32, u32)) {
 }
 
 fn hostname() -> String {
-    transportes::nome_da_maquina()
+    ir_transporte::nome_da_maquina()
 }

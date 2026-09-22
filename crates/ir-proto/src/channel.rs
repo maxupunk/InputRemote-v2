@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::carrier::{Carrier, Delivery};
+use crate::carrier::Carrier;
 use crate::error::{ChannelName, ProtoError, Result};
 
 /// Canal lógico de um quadro.
@@ -127,16 +127,6 @@ impl ChannelId {
         }
     }
 
-    /// Se este canal precisa que a aplicação forneça confiabilidade sobre este portador.
-    ///
-    /// Sobre stream, o meio já entrega ordenado — a sequência serve só para diagnóstico.
-    /// Sobre datagrama, o mecanismo de `docs/03-protocolo.md` §4.1 é obrigatório.
-    #[must_use]
-    pub const fn needs_app_reliability(self, carrier: Carrier) -> bool {
-        matches!(self.reliability(), Reliability::Reliable)
-            && matches!(carrier.delivery(), Delivery::Datagram)
-    }
-
     /// Nome estático, para erros e logs.
     #[must_use]
     pub const fn name(self) -> ChannelName {
@@ -230,12 +220,5 @@ mod tests {
                 .any(|carrier| channel.allows(carrier));
             assert!(usable, "{channel} não pode viajar por nenhum portador");
         }
-    }
-
-    #[test]
-    fn app_reliability_is_needed_only_for_reliable_channels_over_udp() {
-        assert!(ChannelId::ReliableInput.needs_app_reliability(Carrier::Udp));
-        assert!(!ChannelId::ReliableInput.needs_app_reliability(Carrier::Rfcomm));
-        assert!(!ChannelId::Pointer.needs_app_reliability(Carrier::Udp));
     }
 }

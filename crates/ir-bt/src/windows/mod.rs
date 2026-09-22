@@ -85,6 +85,10 @@ impl Radio for RadioWindows {
             .unwrap_or(false)
     }
 
+    fn endereco_local(&self) -> Option<BdAddr> {
+        winsock::endereco_do_radio()
+    }
+
     async fn pareados(&self) -> Result<Vec<Dispositivo>> {
         // A enumeração não falha: sem rádio ou sem par, a resposta é uma lista vazia. O que pode
         // dar errado aqui é a própria tarefa não terminar.
@@ -150,5 +154,18 @@ fn traduzir(erro: &std::io::Error, alvo: BdAddr) -> BtError {
         Some(INVALIDO) => BtError::NaoPareado(alvo.to_string()),
         Some(REDE_CAIU) => BtError::SemRadio("o rádio Bluetooth caiu".to_owned()),
         _ => BtError::Io(std::io::Error::new(erro.kind(), erro.to_string())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// Só roda com rádio de verdade (`cargo test -p ir-bt -- --ignored`). Não abre o canal 23, então
+    /// convive com o serviço instalado rodando.
+    #[test]
+    #[ignore = "precisa de um rádio Bluetooth de verdade"]
+    fn o_radio_desta_maquina_diz_o_proprio_endereco() {
+        let endereco = super::winsock::endereco_do_radio().expect("o rádio diz o endereço");
+        println!("rádio desta máquina: {endereco}");
+        assert_ne!(endereco.para_u64(), 0);
     }
 }

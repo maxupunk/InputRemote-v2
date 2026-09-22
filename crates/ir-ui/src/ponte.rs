@@ -37,7 +37,7 @@ pub fn estado_ui(estado: &Estado) -> EstadoUi {
         par_nome: nome_do_par(estado),
         este_nome: estado.este_nome.como_texto().into(),
         esta_impressao: estado.esta_maquina.impressao().into(),
-        portador: estado.portador.map_or("", Portador::nome).into(),
+        portador: estado.nome_da_rota().into(),
         motivo_do_portador: estado
             .motivo_do_portador
             .map_or_else(SharedString::default, |motivo| motivo.frase().into()),

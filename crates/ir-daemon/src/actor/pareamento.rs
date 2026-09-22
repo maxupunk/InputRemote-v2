@@ -147,10 +147,7 @@ impl Daemon {
                 .stop(agora, LinkDown::UserStopped, &mut self.out);
             self.apply_commands();
         }
-        self.linked = false;
-        if let Some(transporte) = self.transporte_do_par() {
-            transporte.desconectar();
-        }
+        self.desconectar_todos();
         self.last_phase = self.session.phase();
         let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
         resposta
@@ -222,6 +219,7 @@ mod tests {
     fn com_endereco() -> Bancada {
         let mut bancada = Bancada::nova(Role::Server);
         bancada.daemon.peer = Some(endereco());
+        bancada.daemon.alcance.anotar(endereco());
         bancada
     }
 
@@ -229,6 +227,7 @@ mod tests {
         bancada.daemon.config.peers = vec![PinnedPeer {
             pubkey: encode_key(&chave()),
             addr: None,
+            radio: None,
         }];
     }
 
@@ -265,7 +264,9 @@ mod tests {
         // O ponto da fiação de portador: um par visto pelo rádio precisa ser procurado pelo
         // rádio. Antes, tudo ia para o socket de rede, qualquer que fosse o portador.
         let mut bancada = Bancada::nova(Role::Server);
-        bancada.daemon.peer = Endereco::ler("AC:50:DE:47:EB:28");
+        let radio = Endereco::ler("AC:50:DE:47:EB:28").expect("endereço de rádio");
+        bancada.daemon.peer = Some(radio);
+        bancada.daemon.alcance.anotar(radio);
         gravar_par(&mut bancada);
 
         bancada.daemon.reconnect_if_needed();
@@ -373,7 +374,7 @@ mod tests {
         // O defeito do Windows: depois de esquecer, a janela seguia em "Conectando…".
         let mut bancada = com_endereco();
         gravar_par(&mut bancada);
-        bancada.daemon.linked = true;
+        bancada.daemon.alcance.subiu(Carrier::Udp);
         bancada.daemon.drive(Input::CarrierUp(Carrier::Udp));
         assert_ne!(bancada.daemon.session.phase(), Phase::Offline);
         let _ = bancada.rede.feitos();

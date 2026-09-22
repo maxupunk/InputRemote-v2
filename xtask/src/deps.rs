@@ -19,7 +19,12 @@ use crate::scan::{Violation, manifests};
 const ALLOWED: &[(&str, &[&str])] = &[
     ("ir-proto", &[]),
     ("ir-geometry", &["ir-proto"]),
-    ("ir-session", &["ir-proto", "ir-geometry"]),
+    // A confiabilidade dos canais: pura, e só sobre o protocolo.
+    ("ir-confiabilidade", &["ir-proto"]),
+    (
+        "ir-session",
+        &["ir-proto", "ir-geometry", "ir-confiabilidade"],
+    ),
     ("ir-crypto", &["ir-proto"]),
     ("ir-ipc", &["ir-proto"]),
     ("ir-net", &["ir-proto", "ir-crypto"]),
@@ -47,6 +52,8 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ("ir-clip", &["ir-proto"]),
     // Lançar e zelar por processo na sessão do usuário: não conhece protocolo nem estado.
     ("ir-sessao", &[]),
+    // O que a máquina guarda em disco: configuração e identidade.
+    ("ir-configuracao", &["ir-proto", "ir-crypto", "ir-session"]),
     (
         "ir-daemon",
         &[
@@ -61,6 +68,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "ir-input",
             "ir-acesso",
             "ir-sessao",
+            "ir-configuracao",
         ],
     ),
     ("ir-agent", &["ir-proto", "ir-ipc", "ir-input", "ir-clip"]),
@@ -75,7 +83,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
 /// A lista de proibidos não é de nomes de crate, é de capacidades: relógio, socket, arquivo,
 /// runtime assíncrono. Se um deles entrar, o núcleo deixa de ser testável em microssegundos e
 /// o argumento do ADR-0004 se desfaz.
-const PURE: &[&str] = &["ir-proto", "ir-geometry", "ir-session"];
+const PURE: &[&str] = &["ir-proto", "ir-geometry", "ir-confiabilidade", "ir-session"];
 
 /// Dependências que denunciam E/S ou relógio.
 const IMPURE: &[&str] = &[

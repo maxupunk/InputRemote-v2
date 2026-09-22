@@ -28,8 +28,23 @@ Regras rígidas:
 
 - entrada **NUNCA** viaja no TCP;
 - arquivos e imagens **NUNCA** viajam no RFCOMM nem no UDP;
-- os portadores de entrada (RFCOMM e UDP) são mutuamente exclusivos numa sessão: não há
-  duplicação de eventos nem "o que chegar primeiro vence".
+- no automático, com os dois de pé, a sessão fala pelos dois portadores de entrada ao mesmo tempo
+  — a **rota dupla** (§2.1). Fixado um portador, só ele.
+
+### 2.1. Rota dupla
+
+Com o meio no automático e RFCOMM **e** UDP de pé, cada quadro sai pelos dois, e do outro lado vale
+o que chegar primeiro: a cópia que chega depois é descartada pela detecção de repetição (§4.1) ou,
+no ponteiro, pelo filtro de sequência (§4.2). As duas cópias são bytes cifrados diferentes — cada
+portador tem o seu aperto de mão —, e o que as identifica é `(época, canal, sequência)`, da sessão.
+Por isso o descarte é da sessão, e não do portador
+([ADR-0012](adr/0012-rota-dupla.md)).
+
+Um portador entrar ou sair da rota não refaz a sessão nem solta teclas. Só a queda do último
+encerra a sessão, e o prazo de queda conta a rota inteira.
+
+O endereço de rádio do par, que a rede não tem como descobrir, vem em `Reach` (§6), que cada ponta
+manda ao estabelecer a sessão.
 
 Tamanhos máximos de quadro:
 
@@ -99,12 +114,12 @@ O primeiro byte do texto claro identifica o canal.
 | 4 | Clipboard de texto | bidirecional | confiável, fragmentado | RFCOMM, UDP, TCP |
 | 5 | Dados | bidirecional | confiável, ordenado | somente TCP |
 
-Sobre RFCOMM e TCP, o portador já é confiável e ordenado: os canais 0, 1, 3, 4 e 5 não
-acrescentam nada além do número de sequência para diagnóstico.
+Desde a versão 2, a sessão trata **toda** rota de entrada como datagrama — UDP, RFCOMM sozinho,
+ou os dois juntos na rota dupla, que duplica todo quadro. É o que deixa a rota mudar sem refazer a
+sessão: a garantia não muda quando um portador entra ou sai. Sobre RFCOMM sozinho as janelas só
+esvaziam a cada confirmação. Só o canal 5, que vive no TCP próprio, não passa por aqui.
 
-Sobre UDP, o portador não garante nada, então:
-
-### 4.1. Confiabilidade dos canais 0, 1, 3 e 4 sobre UDP
+### 4.1. Confiabilidade dos canais 0, 1, 3 e 4
 
 Um mecanismo pequeno e explícito, não uma reimplementação de TCP:
 
@@ -131,8 +146,12 @@ houver algo pendente.
 ### 4.2. Canal 2, ponteiro
 
 Sem confirmação e sem retransmissão. Carrega `seq: u32`; o receptor descarta qualquer
-mensagem com sequência anterior à última aceita. Perder amostras de movimento é
+mensagem com sequência igual ou anterior à última aceita. Perder amostras de movimento é
 invisível; atrasá-las não é.
+
+O movimento é **relativo**: aplicar a mesma amostra duas vezes move o cursor o dobro. O filtro
+não é opcional — na rota dupla toda amostra chega duas vezes, e até a versão 2 ele estava na
+especificação e faltava no código.
 
 ### 4.3. Encarnações de sessão
 
@@ -198,6 +217,7 @@ Nomes definitivos vivem em `ir-proto`. Este é o contrato.
 | `Ping` / `Pong` | carimbo monotônico, para latência e detecção de queda |
 | `Bye` | motivo legível de encerramento |
 | `Error` | código, contexto, se é fatal |
+| `Reach` | o endereço do rádio Bluetooth de quem envia, para o par poder discar o outro portador da rota dupla (§2.1). Desde a versão 2 |
 
 ### Canal 1 — Entrada confiável
 

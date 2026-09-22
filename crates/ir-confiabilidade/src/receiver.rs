@@ -21,7 +21,7 @@ use ir_proto::frame::{Ack, Frame, Sequence};
 /// Igual à janela do emissor: ele nunca manda mais que isso sem confirmação, então uma fila
 /// maior guardaria o que nunca vai chegar. Estourar o limite significa que o enlace perdeu
 /// mais do que consegue reparar, e a resposta é derrubá-lo.
-pub(crate) const REORDER_LIMIT: usize = super::sender::WINDOW;
+pub(crate) const REORDER_LIMIT: usize = crate::sender::WINDOW;
 
 /// O que fazer com um quadro recebido.
 #[derive(Debug, Clone, PartialEq, Eq)]

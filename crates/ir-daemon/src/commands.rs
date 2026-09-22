@@ -41,6 +41,14 @@ impl Daemon {
                 if let Notice::ControlMoved { remote: true } = notice {
                     let _ = self.avisos.send(ir_ipc::Aviso::LerClipboard);
                 }
+                // O rádio do par forma a rota dupla quando os dois se conheceram pela rede.
+                if let Notice::PeerRadio(radio) = notice {
+                    self.on_radio_do_par(radio);
+                }
+                // A rota mudou sem a fase mudar, e o aviso de fase não acordaria a janela.
+                if let Notice::RouteChanged { .. } = notice {
+                    let _ = self.avisos.send(ir_ipc::Aviso::EstadoMudou(self.estado()));
+                }
             }
             // Chegou texto do par: vai para o ajudante da sessão, que o põe no clipboard. Os dois
             // tipos têm o mesmo limite, o do canal 4.
@@ -174,6 +182,7 @@ fn log_notice(notice: &Notice) {
         }
         Notice::ControlMoved { remote } => info!(remote, "controle mudou de lado"),
         Notice::CarrierChanged { carrier, why } => info!(%carrier, ?why, "portador escolhido"),
+        Notice::RouteChanged { route, why } => info!(%route, ?why, "rota da sessão mudou"),
         Notice::Reconciled { released, pressed } => {
             debug!(released, pressed, "estado reconciliado");
         }

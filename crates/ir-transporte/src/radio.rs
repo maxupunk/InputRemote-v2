@@ -16,6 +16,7 @@ use std::sync::Arc;
 use ir_bt::{BtCommand, BtEvent, ConnectMode, Endpoint};
 use ir_crypto::{Identity, PublicKey};
 use ir_proto::carrier::Carrier;
+use ir_proto::ids::RadioAddress;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::{Endereco, Fato, Transporte};
@@ -43,6 +44,14 @@ impl Radio {
             comandos: alca.commands,
             sistema: radio,
         })
+    }
+
+    /// O endereço do rádio desta máquina, no vocabulário do protocolo — é o que a sessão conta ao
+    /// par em `Control::Reach`.
+    #[must_use]
+    pub fn endereco_proprio(&self) -> Option<RadioAddress> {
+        ir_bt::Radio::endereco_local(self.sistema.as_ref())
+            .map(|endereco| RadioAddress(endereco.bytes()))
     }
 
     /// Uma alça para listar os dispositivos pareados no sistema, que pode ir para outra tarefa.
@@ -83,7 +92,7 @@ impl Transporte for Radio {
     }
 
     fn enviar(&self, bytes: Vec<u8>) {
-        let _ = self.comandos.send(BtCommand::SendFrame(bytes));
+        let _ = self.comandos.send(BtCommand::quadro(bytes));
     }
 
     fn confirmar_pareamento(&self, conferiu: bool) {

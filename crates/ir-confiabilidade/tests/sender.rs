@@ -8,11 +8,11 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
+use ir_confiabilidade::time::{Millis, Timestamp};
+use ir_confiabilidade::{ACK_REACH, Receiver, SendOutcome, Sender, TimeoutOutcome, WINDOW};
 use ir_proto::frame::{Ack, Frame, Sequence};
 use ir_proto::input::{HidUsage, Modifiers};
 use ir_proto::message::{InputMessage, Message};
-use ir_session::reliability::{ACK_REACH, Receiver, SendOutcome, Sender, TimeoutOutcome, WINDOW};
-use ir_session::{Millis, Timestamp};
 
 const FLOOR: Millis = Millis(20);
 const CEILING: Millis = Millis(1000);

@@ -124,6 +124,14 @@ pub struct Clock {
     pub last_pointer: Timestamp,
     /// Quando saiu a última confirmação pura.
     pub last_bare_ack: Timestamp,
+    /// Quando chegou o último quadro pelo Bluetooth.
+    ///
+    /// Os dois carimbos por portador não decidem prazo nenhum — quem decide é [`Self::last_rx`],
+    /// que conta a rota inteira. Eles existem para a interface poder dizer qual dos dois
+    /// portadores da rota dupla parou de responder.
+    pub last_rx_rfcomm: Timestamp,
+    /// Quando chegou o último quadro pela rede.
+    pub last_rx_udp: Timestamp,
 }
 
 impl Clock {
@@ -139,6 +147,26 @@ impl Clock {
             last_snapshot: now,
             last_pointer: now,
             last_bare_ack: now,
+            last_rx_rfcomm: now,
+            last_rx_udp: now,
+        }
+    }
+
+    /// Anota que chegou um quadro por este portador.
+    pub const fn mark_carrier_rx(&mut self, carrier: Carrier, at: Timestamp) {
+        match carrier {
+            Carrier::Rfcomm => self.last_rx_rfcomm = at,
+            Carrier::Udp => self.last_rx_udp = at,
+            Carrier::Tcp => {}
+        }
+    }
+
+    /// Quando chegou o último quadro por este portador.
+    #[must_use]
+    pub const fn carrier_rx(&self, carrier: Carrier) -> Timestamp {
+        match carrier {
+            Carrier::Rfcomm => self.last_rx_rfcomm,
+            Carrier::Udp | Carrier::Tcp => self.last_rx_udp,
         }
     }
 }

@@ -22,6 +22,7 @@ use crate::config::Config;
 use ir_transporte::{Endereco, Transporte};
 
 mod agente;
+mod alcance;
 #[cfg(test)]
 mod bancada;
 mod discagem;
@@ -67,8 +68,12 @@ pub(crate) struct Daemon {
     /// movimento. Ligado ao estabelecer e ao retomar o controle, para o cursor real e o modelo da
     /// sessão começarem no mesmo ponto.
     pub(crate) seed_pointer: bool,
-    /// Se o enlace seguro (criptografia) está de pé. Distinto de a sessão estar estabelecida.
-    pub(crate) linked: bool,
+    /// Onde o par está em cada portador, e por quais há enlace seguro de pé ([`alcance`]).
+    pub(crate) alcance: ir_transporte::Alcance,
+    /// O endereço do rádio desta máquina, para a sessão contar ao par.
+    pub(crate) radio_proprio: Option<ir_proto::ids::RadioAddress>,
+    /// Por onde a busca do par na rede devolve o que achou.
+    pub(crate) achados: tokio::sync::mpsc::UnboundedSender<std::net::SocketAddr>,
     /// Contador de batidas, para espaçar as tentativas de reconexão.
     ticks: u32,
     /// Por onde o serviço empurra avisos para as interfaces conectadas.
@@ -105,6 +110,9 @@ pub(crate) struct Daemon {
 /// A cada quantas batidas de 5 ms se tenta reconectar. 600 × 5 ms = 3 s.
 const RECONNECT_TICKS: u32 = 600;
 
+/// A cada quantas batidas se registra o placar da rota dupla. 12 000 × 5 ms = 1 min.
+const PLACAR_TICKS: u32 = 12_000;
+
 impl Daemon {
     /// O instante corrente, do relógio monotônico. Nunca lido dentro da sessão.
     fn now(&self) -> Timestamp {
@@ -125,10 +133,9 @@ impl Daemon {
     /// sessão, e responder à comparação de códigos pelo transporte errado deixaria o outro
     /// computador esperando para sempre.
     pub(crate) fn transporte_do_par(&self) -> Option<&dyn Transporte> {
-        let portador = self
-            .peer
-            .map_or_else(|| self.portador_em_uso(), Endereco::portador);
-        self.transporte(portador)
+        // Sem endereço do par, o portador da sessão; sem sessão, a rede.
+        let portador = self.peer.map(Endereco::portador).or(self.session.carrier());
+        self.transporte(portador.unwrap_or(ir_proto::carrier::Carrier::Udp))
     }
 
     /// A batida periódica: reconecta quando é hora, depois avança a sessão.
@@ -145,6 +152,17 @@ impl Daemon {
         }
         self.drive(Input::Tick);
         self.notar_estado();
+        if self.ticks.is_multiple_of(PLACAR_TICKS) {
+            self.registrar_placar();
+        }
+    }
+
+    /// Registra, enquanto a rota for dupla, qual portador chega primeiro — o dado que diz se ela
+    /// paga o que custa.
+    fn registrar_placar(&self) {
+        if self.session.route().is_some_and(ir_session::Route::is_dual) {
+            info!(rota = %self.session.route_report(self.now()), "rota dupla");
+        }
     }
 
     /// Avisa as interfaces se a fase da sessão mudou desde o último aviso.
@@ -165,6 +183,7 @@ impl Daemon {
             mut pedidos,
             mut fatos,
             mut parada,
+            mut achados,
         } = entradas;
         // Bate a sessão a cada 5 ms: é o que faz os prazos (heartbeat, snapshot, retransmissão,
         // queda por tempo) vencerem, sem gerenciar temporizadores um a um.
@@ -194,6 +213,11 @@ impl Daemon {
                 fato = fatos.recv() => {
                     if let Some(fato) = fato {
                         self.on_fato(fato);
+                    }
+                }
+                achado = achados.recv() => {
+                    if let Some(endereco) = achado {
+                        self.on_par_achado(endereco);
                     }
                 }
                 // Parar, ou quem podia pedir parada foi embora: nos dois casos, sair limpo.

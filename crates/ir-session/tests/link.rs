@@ -9,8 +9,8 @@ mod common;
 use common::{Pair, Side, is};
 use ir_proto::carrier::Carrier;
 use ir_proto::input::{HidUsage, PointerDelta};
-use ir_session::event::{LinkDown, Notice};
-use ir_session::{Input, Phase};
+use ir_session::event::{CarrierChoice, LinkDown, Notice};
+use ir_session::{Input, Phase, Route};
 
 /// Leva o ponteiro do servidor até a borda direita e atravessa.
 fn cross_to_client(pair: &mut Pair) {
@@ -154,33 +154,72 @@ fn the_session_comes_back_after_a_drop_without_any_new_pairing() {
 }
 
 #[test]
-fn bluetooth_takes_over_from_the_network_when_it_appears() {
+fn bluetooth_joins_the_network_route_without_a_new_handshake() {
+    // Antes da rota dupla, o Bluetooth aparecendo derrubava a sessão da rede e refazia o aperto de
+    // mão por ele. Agora ele entra na rota da sessão que já está de pé (ADR-0012).
     let mut pair = connected();
-    assert_eq!(pair.server.carrier(), Some(Carrier::Udp));
-    pair.clear_log();
-
     pair.connect(Carrier::Rfcomm);
 
-    assert_eq!(
-        pair.server.carrier(),
-        Some(Carrier::Rfcomm),
-        "Bluetooth é o preferido"
+    for side in [Side::Server, Side::Client] {
+        let session = if side == Side::Server {
+            &pair.server
+        } else {
+            &pair.client
+        };
+        assert_eq!(session.route(), Some(Route::Dual), "{side:?}");
+        assert_eq!(session.phase(), Phase::Ready, "{side:?}: nada recomeçou");
+    }
+    assert!(
+        !pair
+            .notices(Side::Server)
+            .iter()
+            .any(|n| matches!(n, Notice::CarrierChanged { .. })),
+        "não houve aperto de mão novo"
     );
     let explained = pair.notices(Side::Server).iter().any(|n| {
         matches!(
             n,
-            Notice::CarrierChanged {
-                carrier: Carrier::Rfcomm,
-                ..
+            Notice::RouteChanged {
+                route: Route::Dual,
+                why: CarrierChoice::Redundant,
             }
         )
     });
-    assert!(explained, "a troca precisa ser visível, com o motivo");
+    assert!(explained, "a mudança precisa ser visível, com o motivo");
 }
 
 #[test]
-fn switching_carriers_while_remote_releases_everything_first() {
+fn bluetooth_joining_while_remote_keeps_the_keys_held() {
+    // Juntar um portador não é trocar de meio: nada em trânsito se perde, então não há o que
+    // soltar. Soltar aqui cortaria a tecla que o usuário está segurando.
     let mut pair = connected();
+    cross_to_client(&mut pair);
+    pair.feed(
+        Side::Server,
+        Input::LocalKey {
+            usage: HidUsage(0x04),
+            pressed: true,
+        },
+    );
+    pair.clear_log();
+
+    pair.connect(Carrier::Rfcomm);
+
+    assert!(!pair.any(Side::Server, is::release_all));
+    assert!(!pair.any(Side::Client, is::release_all));
+    assert_eq!(pair.server.phase(), Phase::Engaged);
+    assert!(
+        !pair.client.input_state().is_released(),
+        "a tecla continua segura"
+    );
+}
+
+#[test]
+fn switching_to_a_pinned_carrier_while_remote_releases_everything_first() {
+    // Fixado, não há rota dupla: aparecer o portador fixado ainda é troca de meio, com aperto de
+    // mão novo — e aí o risco de tecla presa volta, e a regra de soltar antes também.
+    let mut pair = connected();
+    pair.pin(Side::Server, Some(Carrier::Rfcomm));
     cross_to_client(&mut pair);
     pair.feed(
         Side::Server,
@@ -199,6 +238,7 @@ fn switching_carriers_while_remote_releases_everything_first() {
     );
     assert!(pair.server.input_state().is_released());
     assert!(pair.any(Side::Server, is::unsuppress));
+    assert_eq!(pair.server.carrier(), Some(Carrier::Rfcomm));
 }
 
 #[test]

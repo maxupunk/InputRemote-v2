@@ -62,9 +62,7 @@ impl Daemon {
                 }
             }
             Pedido::Encerrar => {
-                if let Some(transporte) = self.transporte_do_par() {
-                    transporte.desconectar();
-                }
+                self.desconectar_todos();
                 Resposta::Feito
             }
             Pedido::EsquecerPar { .. } => self.esquecer_par(),
@@ -74,7 +72,9 @@ impl Daemon {
                 // inventar um motivo.
                 self.portador_fixado = portador;
                 self.session
-                    .pin_carrier(portador.map(Portador::no_protocolo));
+                    .pin_carrier(portador.map(Portador::no_protocolo), &mut self.out);
+                self.apply_commands();
+                let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
                 Resposta::Feito
             }
             // As duas trocas valem na hora (`super::papel`): a de papel refaz a sessão, e a de borda
@@ -214,24 +214,24 @@ impl Daemon {
 
     /// O relatório de diagnóstico, já pronto para copiar.
     fn diagnostico(&self) -> String {
+        let radio = match (self.radio.is_some(), self.radio_proprio) {
+            (true, Some(radio)) => format!("aberto ({radio})"),
+            (true, None) => "aberto".to_owned(),
+            (false, _) => "indisponível".to_owned(),
+        };
         format!(
-            "papel: {:?}\nfase: {}\nenlace seguro: {}\npares gravados: {}\nendereço do par: {}\n\
-             rádio Bluetooth: {}\nportador em uso: {}\najudantes de clipboard ligados: {}",
+            "papel: {:?}
+fase: {}
+pares gravados: {}
+par: {}
+rádio Bluetooth: {radio}
+             rota: {}
+ajudantes de clipboard ligados: {}",
             self.session.role(),
             self.session.phase(),
-            self.linked,
             self.config.peers.len(),
-            self.peer
-                .map_or_else(|| "nenhum".to_owned(), |par| par.to_string()),
-            if self.radio.is_some() {
-                "aberto"
-            } else {
-                "indisponível"
-            },
-            // O nome técnico, que é o que serve num diagnóstico.
-            self.session
-                .carrier()
-                .map_or("nenhum", |portador| Portador::from(portador).nome_tecnico()),
+            self.alcance,
+            self.session.route_report(self.now()),
             self.ajudantes.ligados(),
         )
     }
@@ -246,6 +246,8 @@ impl Daemon {
         let portador = self.session.carrier()?;
         Some(if self.portador_fixado.is_some() {
             MotivoDoPortador::FixadoPeloUsuario
+        } else if self.session.route().is_some_and(ir_session::Route::is_dual) {
+            MotivoDoPortador::Redundancia
         } else if portador == Carrier::Rfcomm {
             MotivoDoPortador::Preferido
         } else {
@@ -254,7 +256,7 @@ impl Daemon {
     }
 
     /// O estado corrente, no vocabulário publicado da interface.
-    pub(super) fn estado(&self) -> Estado {
+    pub(crate) fn estado(&self) -> Estado {
         Estado {
             enlace: link_state(self.session.phase()),
             papel: papel_de(self.session.role()),
@@ -273,6 +275,7 @@ impl Daemon {
             bloqueio_permitido: false,
             ultima_queda: None,
             recebidos_bytes: self.arquivos.recebidos().espaco(),
+            rota_dupla: self.session.route().is_some_and(ir_session::Route::is_dual),
         }
     }
 
@@ -286,7 +289,7 @@ impl Daemon {
             maquina: Maquina(bytes),
             nome: Nome::coagido("computador pareado"),
             recursos: Recursos::default(),
-            conectado: self.linked,
+            conectado: self.linked(),
         })
     }
 }

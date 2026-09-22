@@ -1,11 +1,13 @@
 //! O que a interface precisa saber.
 
 use ir_proto::carrier::Carrier;
+use ir_proto::ids::RadioAddress;
 use ir_proto::message::ErrorCode;
 use ir_proto::peer::MachineName;
 use ir_proto::screens::Edge;
 
 use super::LinkDown;
+use crate::session::Route;
 
 /// O que a interface precisa saber.
 ///
@@ -71,6 +73,21 @@ pub enum Notice {
         /// A borda desta tela que dá para a tela do par.
         edge: Edge,
     },
+    /// A rota da sessão de pé mudou: um portador entrou ou saiu, sem refazer a sessão.
+    ///
+    /// Distinto de [`Self::CarrierChanged`], que anuncia um aperto de mão novo por outro portador.
+    /// Aqui nada foi solto e nada recomeçou — é o que a rota dupla existe para permitir.
+    RouteChanged {
+        /// A rota que vale agora.
+        route: Route,
+        /// Por que ela é esta.
+        why: CarrierChoice,
+    },
+    /// O par contou o endereço do rádio dele.
+    ///
+    /// É o que permite discar o Bluetooth para um par que só era conhecido pela rede. Quem disca é
+    /// a periferia: a sessão só repassa o que ouviu.
+    PeerRadio(RadioAddress),
 }
 
 /// Por que um portador foi escolhido.
@@ -87,6 +104,8 @@ pub enum CarrierChoice {
     FellBackToNetwork,
     /// O usuário fixou este portador.
     PinnedByUser,
+    /// Bluetooth e rede juntos: cada quadro vai pelos dois, e vale o que chegar primeiro.
+    Redundant,
 }
 
 impl CarrierChoice {
@@ -97,6 +116,9 @@ impl CarrierChoice {
             Self::Preferred => "Bluetooth disponível, que é o preferido para teclado e mouse",
             Self::FellBackToNetwork => "Bluetooth indisponível; usando a rede local",
             Self::PinnedByUser => "fixado nas preferências",
+            Self::Redundant => {
+                "Bluetooth e rede local juntos: cada comando vai pelos dois e vale o que chegar primeiro"
+            }
         }
     }
 }
@@ -111,6 +133,7 @@ mod tests {
             CarrierChoice::Preferred,
             CarrierChoice::FellBackToNetwork,
             CarrierChoice::PinnedByUser,
+            CarrierChoice::Redundant,
         ] {
             assert!(
                 !choice.description().is_empty(),

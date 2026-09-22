@@ -107,7 +107,7 @@ async fn nada_de_sessao_trafega_antes_das_duas_confirmacoes() {
     let mut dupla = subir();
     let _ = parear(&mut dupla).await;
 
-    mandar(&dupla.aqui, BtCommand::SendFrame(b"tecla".to_vec()));
+    mandar(&dupla.aqui, BtCommand::quadro(b"tecla".to_vec()));
     assert!(
         durante_o_silencio(&mut dupla.la.events).await.is_none(),
         "nenhum quadro pode atravessar antes das confirmações"
@@ -141,11 +141,48 @@ async fn com_as_duas_confirmacoes_a_sessao_estabelece_e_o_quadro_passa() {
         }
     }
 
-    mandar(&dupla.aqui, BtCommand::SendFrame(b"tecla".to_vec()));
+    mandar(&dupla.aqui, BtCommand::quadro(b"tecla".to_vec()));
     match proximo(&mut dupla.la.events).await {
         BtEvent::Frame(bytes) => assert_eq!(bytes, b"tecla"),
         outro => panic!("esperava o quadro, veio {outro:?}"),
     }
+}
+
+#[tokio::test]
+async fn um_quadro_que_esperou_demais_na_fila_nao_vale_o_radio() {
+    // O rádio que travou sob interferência despejaria, ao voltar, segundos de quadros velhos na
+    // frente dos novos. O velho é descartado antes de ser cifrado; o novo passa.
+    let mut dupla = subir();
+    let _ = parear(&mut dupla).await;
+    mandar(&dupla.aqui, BtCommand::ConfirmPairing(true));
+    mandar(&dupla.la, BtCommand::ConfirmPairing(true));
+    for lado in [&mut dupla.aqui, &mut dupla.la] {
+        assert!(matches!(
+            proximo(&mut lado.events).await,
+            BtEvent::Established { .. }
+        ));
+    }
+
+    let ha_um_segundo = tokio::time::Instant::now()
+        .checked_sub(Duration::from_secs(1))
+        .expect("o relógio já andou um segundo");
+    mandar(
+        &dupla.aqui,
+        BtCommand::SendFrame {
+            bytes: b"velho".to_vec(),
+            queued_at: ha_um_segundo,
+        },
+    );
+    mandar(&dupla.aqui, BtCommand::quadro(b"novo".to_vec()));
+
+    match proximo(&mut dupla.la.events).await {
+        BtEvent::Frame(bytes) => assert_eq!(bytes, b"novo", "o velho não pode passar"),
+        outro => panic!("esperava o quadro novo, veio {outro:?}"),
+    }
+    assert!(
+        durante_o_silencio(&mut dupla.la.events).await.is_none(),
+        "e o enlace continua de pé, sem mais nada"
+    );
 }
 
 #[tokio::test]

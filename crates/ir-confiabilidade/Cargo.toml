@@ -1,0 +1,15 @@
+[package]
+name = "ir-confiabilidade"
+description = "Entrega confiável e ordenada sobre um caminho que perde, duplica e reordena. Pura."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ir-proto.workspace = true
+
+[lints]
+workspace = true

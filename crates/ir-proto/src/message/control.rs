@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::ids::MachineId;
+use crate::ids::{MachineId, RadioAddress};
 use crate::input::{InputState, PointerPosition};
 use crate::peer::{Capabilities, MachineName};
 use crate::screens::{Edge, ScreenLayout};
@@ -91,6 +91,16 @@ pub enum Control {
         code: ErrorCode,
         /// Se a sessão termina por causa disto.
         fatal: bool,
+    },
+    /// Por onde mais quem envia pode ser alcançado.
+    ///
+    /// Mandado ao estabelecer a sessão, e de novo quando muda. É o que deixa a rota dupla
+    /// (`docs/03-protocolo.md` §2.1) nascer de um pareamento feito pela rede: sem isto, quem só
+    /// conhece o par pela rede não teria para onde discar o Bluetooth. O endereço de rede não
+    /// viaja aqui — ele é achado pela descoberta, a partir do [`MachineId`] do par.
+    Reach {
+        /// O endereço do rádio Bluetooth de quem envia.
+        radio: RadioAddress,
     },
 }
 

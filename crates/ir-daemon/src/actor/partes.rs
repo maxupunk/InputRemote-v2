@@ -40,6 +40,8 @@ pub(crate) struct Entradas {
     pub(crate) fatos: UnboundedReceiver<FatoDoAgente>,
     /// O pedido de parada do serviço.
     pub(crate) parada: tokio::sync::watch::Receiver<bool>,
+    /// O par achado na rede pela descoberta, para a rota dupla ([`super::alcance`]).
+    pub(crate) achados: UnboundedReceiver<std::net::SocketAddr>,
 }
 
 /// O que o ator precisa para nascer.
@@ -87,12 +89,17 @@ pub(crate) struct Parts {
     /// Só isto: o ator não conduz transferência, não conhece o socket de dados e não vê bloco
     /// nenhum. Ele encaminha o pedido e segue no compasso da entrada.
     pub(crate) arquivos: ir_transferencia::Pedidos,
+    /// O endereço do rádio desta máquina, quando há rádio e ele diz.
+    pub(crate) radio_proprio: Option<ir_proto::ids::RadioAddress>,
+    /// Por onde a busca do par na rede devolve o que achou.
+    pub(crate) achados: tokio::sync::mpsc::UnboundedSender<std::net::SocketAddr>,
 }
 
 impl Daemon {
     /// Monta o ator.
     #[must_use]
     pub(crate) fn new(parts: Parts) -> Self {
+        let alcance = super::alcance::da_configuracao(&parts.config);
         Self {
             session: parts.session,
             out: CommandBatch::with_capacity(32),
@@ -111,7 +118,9 @@ impl Daemon {
             // Ninguém fixou nada até a interface pedir: a escolha começa automática.
             portador_fixado: None,
             seed_pointer: true,
-            linked: false,
+            alcance,
+            radio_proprio: parts.radio_proprio,
+            achados: parts.achados,
             ticks: 0,
             avisos: parts.avisos,
             machine: parts.machine,

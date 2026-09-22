@@ -17,6 +17,7 @@ ir-net.workspace = true
 ir-bt.workspace = true
 tokio.workspace = true
 anyhow.workspace = true
+tracing.workspace = true
 
 [lints]
 workspace = true

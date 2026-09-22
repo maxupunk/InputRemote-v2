@@ -52,6 +52,29 @@ pub struct SessionId(pub u64);
 #[serde(transparent)]
 pub struct MonitorId(pub u8);
 
+/// O endereço do rádio Bluetooth de uma máquina, na ordem em que ele é escrito
+/// (`AC:50:DE:47:EB:28` é `[0xAC, 0x50, 0xDE, 0x47, 0xEB, 0x28]`).
+///
+/// Viaja no [`Control::Reach`](crate::message::Control::Reach) para o par saber por onde discar
+/// o Bluetooth quando os dois se conheceram pela rede. É endereço de hardware, e por isso é a
+/// exceção declarada à regra deste módulo: não é identificador de nada no protocolo — quem
+/// identifica é o [`MachineId`] e quem autentica é a chave estática. Serve só para discar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct RadioAddress(pub [u8; 6]);
+
+impl core::fmt::Display for RadioAddress {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        for (indice, byte) in self.0.iter().enumerate() {
+            if indice > 0 {
+                f.write_str(":")?;
+            }
+            write!(f, "{byte:02X}")?;
+        }
+        Ok(())
+    }
+}
+
 /// Oito caracteres hexadecimais, sem alocação.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct ShortId([u8; 8]);
@@ -97,6 +120,12 @@ mod tests {
     fn short_id_pads_low_nibbles() {
         let id = MachineId([0x00, 0x0F, 0xF0, 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
         assert_eq!(id.short().to_string(), "000ff001");
+    }
+
+    #[test]
+    fn radio_address_is_written_like_the_system_writes_it() {
+        let radio = RadioAddress([0xAC, 0x50, 0xDE, 0x47, 0xEB, 0x28]);
+        assert_eq!(radio.to_string(), "AC:50:DE:47:EB:28");
     }
 
     #[test]

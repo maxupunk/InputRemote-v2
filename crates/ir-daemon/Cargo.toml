@@ -26,6 +26,8 @@ ir-acesso.workspace = true
 ir-input.workspace = true
 # Lançar o agente e o ajudante de clipboard na sessão do usuário, no Windows, e zelar por eles.
 ir-sessao.workspace = true
+# O que a máquina guarda em disco: configuração e identidade.
+ir-configuracao.workspace = true
 ir-ipc.workspace = true
 tokio.workspace = true
 tracing.workspace = true

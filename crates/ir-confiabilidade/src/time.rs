@@ -1,7 +1,7 @@
 //! Tempo, injetado.
 //!
 //! Este crate **nunca lê o relógio**. Todo instante entra por parâmetro, em
-//! [`Input::Tick`](crate::Input::Tick) ou junto de um evento. É a regra de
+//! `ir_session::Input::Tick` ou junto de um evento. É a regra de
 //! `docs/09-padroes-de-codigo.md` §3, e o motivo é prático: um cenário de reconexão de trinta
 //! segundos precisa rodar em microssegundos no teste, e de forma determinística.
 //!

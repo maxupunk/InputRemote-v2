@@ -2,13 +2,14 @@
 
 use ir_geometry::Desktop;
 use ir_proto::carrier::Carrier;
-use ir_proto::frame::Frame;
+use ir_proto::channel::ChannelId;
+use ir_proto::frame::{Frame, Sequence};
 use ir_proto::message::{Control, Feedback, Message};
 
 use crate::config::Role;
 use crate::event::{Command, CommandBatch, Notice};
 use crate::phase::Phase;
-use crate::reliability::Delivery;
+use crate::reliability::{Delivery, ReliableChannels};
 use crate::session::Session;
 use crate::time::Timestamp;
 
@@ -31,6 +32,7 @@ impl Session {
         // Atualizar aqui, antes de qualquer despacho, é o que impede a sessão de cair por
         // tempo enquanto processa uma rajada.
         self.clock.last_rx = now;
+        self.clock.mark_carrier_rx(carrier, now);
         self.arm_link_timeout(now, out);
         self.adopt_carrier_if_needed(carrier, out);
 
@@ -53,12 +55,21 @@ impl Session {
             return;
         }
 
+        // O canal do ponteiro não tem confirmação, mas tem ordem: o mais recente vence, e o que
+        // chega igual ou atrasado é descartado (`docs/03-protocolo.md` §4.2). Na rota dupla toda
+        // amostra chega duas vezes; aplicar as duas moveria o cursor o dobro.
         let channel = frame.channel();
-        if !channel.needs_app_reliability(carrier) {
+        if !ReliableChannels::covers(channel) {
+            if channel == ChannelId::Pointer && !self.admit_pointer(frame.seq) {
+                return;
+            }
+            self.wins.count(carrier);
             self.dispatch_message(now, frame.message, out);
             return;
         }
 
+        // Todo canal confiável passa pela ordenação e pela detecção de repetição, qualquer que
+        // seja o portador: a sessão trata toda rota como datagrama (`route`).
         match self.reliability.accept(channel, frame) {
             // Repetição: descartar sem processar não é otimização. Reaplicar um `KeyDown`
             // gravado do ar seria redigitar o que o usuário digitou
@@ -68,6 +79,7 @@ impl Session {
             // presa para sempre.
             Delivery::Duplicate | Delivery::Buffered => {}
             Delivery::Ready(frames) => {
+                self.wins.count(carrier);
                 for frame in frames {
                     self.dispatch_message(now, frame.message, out);
                 }
@@ -94,6 +106,18 @@ impl Session {
         }
     }
 
+    /// Se esta amostra de ponteiro é mais nova que a última aplicada — e, sendo, passa a ser ela.
+    fn admit_pointer(&mut self, seq: Sequence) -> bool {
+        if self
+            .last_pointer_rx
+            .is_some_and(|last| !seq.is_newer_than(last))
+        {
+            return false;
+        }
+        self.last_pointer_rx = Some(seq);
+        true
+    }
+
     /// Adota o portador por onde um quadro chegou, quando ainda não há nenhum.
     ///
     /// Sem isto, quem recebe o `Hello` primeiro não consegue responder — `send` não tem por
@@ -101,12 +125,19 @@ impl Session {
     /// `Hello` retransmitido do outro lado parecer novo. A regra passa a ser simples: **quem
     /// ouve primeiro, responde**. Receber um quadro por um portador é prova de que ele
     /// funciona; esperar o aviso local de que ele subiu é esperar informação que já chegou.
+    ///
+    /// Com a sessão de pé, um quadro por um portador de fora da rota é o par que já juntou esse
+    /// portador à rota dele: se ele também está de pé daqui, entra na rota deste lado também.
     fn adopt_carrier_if_needed(&mut self, carrier: Carrier, out: &mut CommandBatch) {
-        if self.carrier.is_some() || !carrier.carries_input() {
+        if !carrier.carries_input() {
+            return;
+        }
+        if self.route.is_some() {
+            self.widen_route(carrier, out);
             return;
         }
         self.available.set(carrier, true);
-        self.carrier = Some(carrier);
+        self.route = Some(super::Route::Single(carrier));
         if self.phase == Phase::Offline {
             self.move_to(Phase::Handshaking, out);
         }
@@ -136,6 +167,7 @@ impl Session {
             }
             Control::Pong { stamp_micros } => self.on_pong(now, stamp_micros, out),
             Control::Bye { reason } => self.on_bye(now, reason, out),
+            Control::Reach { radio } => Self::on_reach(radio, out),
             Control::Error { code, fatal } => {
                 out.push(Command::Notify(Notice::ProtocolError { code, fatal }));
                 if fatal || code.is_always_fatal() {

@@ -153,7 +153,8 @@ impl Session {
                 // Quem ouve primeiro, responde — mas numa encarnação própria, do zero. Sem isto a
                 // resposta sairia com a numeração e a época de uma sessão que já acabou.
                 self.available.set(carrier, true);
-                self.carrier = Some(carrier);
+                self.route = Some(super::Route::Single(carrier));
+                self.last_pointer_rx = None;
                 self.seqs.reset();
                 self.reliability.reset();
                 self.clock = Clock::started_at(now);
@@ -163,6 +164,7 @@ impl Session {
         } else {
             // No meio do nosso aperto de mão: o que o par mandou até aqui era de outra sessão dele.
             self.reliability.reset_receivers();
+            self.last_pointer_rx = None;
         }
         self.incarnations.follow_peer(epoch);
     }

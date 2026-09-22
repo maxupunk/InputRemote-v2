@@ -10,13 +10,17 @@ mod edge;
 mod frames;
 mod incarnation;
 mod link;
+mod reach;
+mod route;
 mod server;
 pub mod state;
+mod upkeep;
 
 use ir_geometry::{Desktop, Point};
 use ir_proto::carrier::Carrier;
 use ir_proto::channel::ChannelId;
-use ir_proto::frame::Frame;
+use ir_proto::frame::{Frame, Sequence};
+use ir_proto::ids::RadioAddress;
 use ir_proto::input::{InputState, PointerDelta};
 use ir_proto::message::Message;
 use ir_proto::screens::ScreenLayout;
@@ -29,6 +33,7 @@ use crate::sequences::Sequences;
 use crate::time::Timestamp;
 
 use incarnation::Incarnations;
+pub use route::{CarrierWins, Route, RouteReport};
 pub use state::{CarrierSet, Clock, LocalIdentity, PeerInfo};
 
 /// A sessão.
@@ -43,8 +48,8 @@ pub struct Session {
     pub(super) identity: LocalIdentity,
     pub(super) phase: Phase,
 
-    /// O portador de entrada em uso, quando há sessão.
-    pub(super) carrier: Option<Carrier>,
+    /// Por quais portadores de entrada a sessão fala, quando há sessão ([`route`]).
+    pub(super) route: Option<Route>,
     pub(super) available: CarrierSet,
     /// Portador fixado pelo usuário, se houver.
     pub(super) pinned: Option<Carrier>,
@@ -94,6 +99,19 @@ pub struct Session {
 
     /// O canal 4: o texto do clipboard indo e vindo.
     pub(super) area: area::Area,
+
+    /// O endereço do rádio desta máquina, para contar ao par ([`reach`]).
+    pub(super) local_radio: Option<RadioAddress>,
+
+    /// A sequência da última amostra de ponteiro aplicada.
+    ///
+    /// O canal 2 não tem confirmação, mas tem ordem: amostra com sequência igual ou anterior é
+    /// descartada (`docs/03-protocolo.md` §4.2). Na rota dupla toda amostra chega duas vezes, e o
+    /// movimento é relativo — sem este filtro, o cursor andaria o dobro.
+    pub(super) last_pointer_rx: Option<Sequence>,
+
+    /// Por qual portador cada quadro novo chegou primeiro — o placar da rota dupla.
+    pub(super) wins: CarrierWins,
 }
 
 impl Session {
@@ -104,7 +122,7 @@ impl Session {
             config,
             identity,
             phase: Phase::Offline,
-            carrier: None,
+            route: None,
             available: CarrierSet::NONE,
             pinned: None,
             peer: None,
@@ -120,15 +138,20 @@ impl Session {
             pending_pointer: PointerDelta::ZERO,
             last_rtt: None,
             area: area::Area::default(),
+            local_radio: None,
+            last_pointer_rx: None,
+            wins: CarrierWins::default(),
         }
     }
 
-    /// Fixa um portador, desligando a degradação automática.
+    /// Fixa um portador, desligando a degradação automática e a rota dupla.
     ///
     /// Quem fixa Bluetooth excluiu a rede de propósito: a partir daí, falhar é falhar, e não
-    /// vira outro caminho em silêncio.
-    pub const fn pin_carrier(&mut self, carrier: Option<Carrier>) {
+    /// vira outro caminho em silêncio. Com a sessão de pé na rota dupla, a rota estreita para o
+    /// portador fixado na hora, sem refazer a sessão; soltar a fixação volta a juntar os dois.
+    pub fn pin_carrier(&mut self, carrier: Option<Carrier>, out: &mut CommandBatch) {
         self.pinned = carrier;
+        self.apply_pin_to_route(out);
     }
 
     /// Sincroniza o ponteiro com a posição **absoluta** real da máquina, sem detectar travessia.
@@ -172,6 +195,7 @@ impl Session {
             Input::AgentReady => self.agent_ready = true,
             Input::AgentLost => self.on_agent_lost(now, out),
             Input::ClipboardText(texto) => self.on_clipboard_text(now, texto, out),
+            Input::LocalRadio(radio) => self.on_local_radio(now, radio, out),
         }
     }
 
@@ -215,14 +239,14 @@ impl Session {
         out.push(Command::ReleaseAll);
     }
 
-    /// Monta e despacha um quadro pelo portador ativo.
+    /// Monta e despacha um quadro por todos os portadores da rota.
     ///
-    /// Sem portador ativo, nada acontece: é o caso normal entre a queda e a reconexão, e
-    /// enfileirar silenciosamente seria pior — a mensagem chegaria fora de contexto.
+    /// Sem rota, nada acontece: é o caso normal entre a queda e a reconexão, e enfileirar
+    /// silenciosamente seria pior — a mensagem chegaria fora de contexto.
     pub(super) fn send(&mut self, now: Timestamp, message: Message, out: &mut CommandBatch) {
-        let Some(carrier) = self.carrier else { return };
+        let Some(route) = self.route else { return };
         let channel = message.channel();
-        if !channel.allows(carrier) {
+        if !route.carriers().all(|carrier| channel.allows(carrier)) {
             // Não deveria acontecer: quem monta a mensagem escolhe o canal. Descartar em
             // silêncio esconderia o defeito, então isto vira aviso para a interface.
             out.push(Command::Notify(Notice::ProtocolError {
@@ -237,9 +261,11 @@ impl Session {
 
         // Pega uma confirmação para carregar de volta. Aproveitar um quadro que já vai sair é
         // de graça, e é o que evita mandar `AckOnly` na maioria dos casos.
-        if channel.needs_app_reliability(carrier)
-            && let Some(pending) = self.ack_to_piggyback()
-        {
+        //
+        // Todo canal confiável tem confiabilidade de aplicação, qualquer que seja o portador: a
+        // sessão trata toda rota como datagrama ([`route`]).
+        let reliable = ReliableChannels::covers(channel);
+        if reliable && let Some(pending) = self.ack_to_piggyback() {
             frame = frame.with_ack(pending.channel, pending.ack);
         }
 
@@ -247,7 +273,7 @@ impl Session {
         // cada confirmação precisaria ser confirmada, e o laço encheria a janela do canal de
         // controle até derrubar a sessão. É a mesma razão pela qual um ACK puro de TCP não
         // carrega sequência a confirmar.
-        if channel.needs_app_reliability(carrier)
+        if reliable
             && !is_bare_ack(&frame)
             && self.reliability.on_sent(channel, now, seq, &frame) == SendOutcome::WindowFull
         {
@@ -258,7 +284,7 @@ impl Session {
             return;
         }
 
-        out.push(Command::Send { carrier, frame });
+        self.dispatch_on_route(frame, out);
     }
 
     /// A confirmação mais urgente a carregar num quadro que já vai sair.

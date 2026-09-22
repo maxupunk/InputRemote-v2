@@ -13,15 +13,9 @@ use ir_proto::version;
 use crate::config::Role;
 use crate::event::{CarrierChoice, Command, CommandBatch, LinkDown, Notice, TimerId};
 use crate::phase::Phase;
-use crate::reliability::Due;
 use crate::session::Session;
 use crate::session::state::{Clock, PeerInfo};
-use crate::time::{Millis, Timestamp};
-
-/// Intervalo entre confirmações puras.
-///
-/// Origem: `docs/03-protocolo.md` §4.1 — a cada 20 ms enquanto houver algo pendente.
-const ACK_INTERVAL: Millis = Millis(20);
+use crate::time::Timestamp;
 
 impl Session {
     pub(super) fn on_carrier_up(
@@ -37,12 +31,22 @@ impl Session {
             return;
         }
 
+        // Com a sessão de pé e nada fixado, o portador novo entra na rota sem aperto de mão.
+        if self.widen_route(carrier, out) {
+            return;
+        }
+        // Com um aperto de mão em curso e nada fixado, o portador novo entra na rota quando a
+        // sessão ficar de pé (`establish`). Recomeçar o aperto de mão por ele só atrasaria a sessão.
+        if self.pinned.is_none() && self.route.is_some() && self.phase != Phase::Offline {
+            return;
+        }
+
         let Some((chosen, why)) = self.available.pick_input_carrier(self.pinned) else {
             return;
         };
 
         // Já estamos usando o melhor portador disponível: nada a fazer.
-        if self.carrier == Some(chosen) && self.phase.is_established() {
+        if self.route.is_some_and(|route| route.uses(chosen)) && self.phase.is_established() {
             return;
         }
 
@@ -64,8 +68,14 @@ impl Session {
     ) {
         self.available.set(carrier, false);
 
-        if self.carrier != Some(carrier) {
+        if !self.route.is_some_and(|route| route.uses(carrier)) {
             return; // caiu um portador que não estava em uso
+        }
+
+        // Na rota dupla, o outro portador segue sozinho: nada é solto, nada recomeça. O que estava
+        // em trânsito no que caiu chega pelo outro, ou pela retransmissão (`route`).
+        if self.narrow_route(carrier, out) {
+            return;
         }
 
         self.tear_down(now, reason, out);
@@ -84,8 +94,9 @@ impl Session {
         why: CarrierChoice,
         out: &mut CommandBatch,
     ) {
-        self.carrier = Some(carrier);
+        self.route = Some(super::Route::Single(carrier));
         self.peer = None;
+        self.last_pointer_rx = None;
         // Sequências zeradas: uma herdada da sessão anterior faria o par descartar as
         // primeiras mensagens da nova.
         self.seqs.reset();
@@ -166,12 +177,16 @@ impl Session {
         }
         self.clock = Clock::started_at(now);
 
-        if let (Some(peer), Some(carrier)) = (self.peer.as_ref(), self.carrier) {
+        if let (Some(peer), Some(route)) = (self.peer.as_ref(), self.route) {
             out.push(Command::Notify(Notice::Connected {
                 peer: peer.name.clone(),
-                carrier,
+                carrier: route.primary(),
             }));
         }
+        // O aperto de mão foi por um portador; os outros de pé entram na rota agora, e o par fica
+        // sabendo por onde mais esta máquina é alcançada.
+        self.widen_route_to_available(out);
+        self.announce_reach(now, out);
 
         // O par precisa do nosso arranjo para saber onde o ponteiro entra.
         if let Some(desktop) = self.local_screens.as_ref() {
@@ -194,9 +209,11 @@ impl Session {
         // maioria das quedas é por perda parcial, não por meio morto. E ele **não** entra na
         // janela de retransmissão: não haveria quem confirmasse, e mandar por `send` poderia
         // reentrar aqui pela janela cheia.
+        //
+        // Pela rota inteira: o adeus que vai pelos dois portadores é o que tem mais chance de
+        // chegar, e a cópia que sobrar é descartada do outro lado como qualquer outra.
         if self.phase.is_established()
             && !matches!(reason, LinkDown::PeerClosed(_) | LinkDown::PeerRestarted)
-            && let Some(carrier) = self.carrier
         {
             let farewell = Frame::new(
                 Message::Control(Control::Bye {
@@ -205,10 +222,7 @@ impl Session {
                 Sequence::ZERO,
             )
             .in_epoch(self.incarnations.local());
-            out.push(Command::Send {
-                carrier,
-                frame: farewell,
-            });
+            self.dispatch_on_route(farewell, out);
         }
 
         // Primeiro soltar, depois qualquer outra coisa. A ordem é contrato.
@@ -223,7 +237,8 @@ impl Session {
         out.push(Command::Notify(Notice::Disconnected { reason, will_retry }));
 
         self.phase = Phase::Offline;
-        self.carrier = None;
+        self.route = None;
+        self.last_pointer_rx = None;
         self.peer = None;
         self.peer_screens = None;
         self.pending_pointer = ir_proto::input::PointerDelta::ZERO;
@@ -292,72 +307,6 @@ impl Session {
         self.service_retransmissions(now, out);
         self.pump_clipboard(now, out);
         self.send_bare_ack_if_needed(now, out);
-    }
-
-    /// Reenvia o que venceu, ou derruba o enlace se alguma mensagem esgotou as tentativas.
-    fn service_retransmissions(&mut self, now: Timestamp, out: &mut CommandBatch) {
-        let Some(carrier) = self.carrier else { return };
-        if !matches!(carrier.delivery(), ir_proto::carrier::Delivery::Datagram) {
-            return; // sobre stream o portador já garante entrega
-        }
-
-        let timings = self.config.timings;
-        let due = self
-            .reliability
-            .on_tick(now, timings.min_retransmit, timings.link_timeout);
-
-        match due {
-            Due::Idle => {}
-            Due::Retransmit(frames) => {
-                for frame in frames {
-                    out.push(Command::Send { carrier, frame });
-                }
-            }
-            Due::GiveUp { .. } => {
-                // Passado o prazo sem confirmação, prosseguir seguiria com uma lacuna no canal de
-                // teclado. Se a mensagem perdida for um `KeyUp`, a tecla fica presa na
-                // máquina do outro — e o usuário não sabe o que aconteceu nem como sair.
-                self.tear_down(now, LinkDown::Timeout, out);
-            }
-        }
-    }
-
-    /// Manda uma confirmação pura quando há o que confirmar e nada saindo para carregá-la.
-    ///
-    /// É o caso da digitação contínua: o servidor manda tecla após tecla e o cliente não tem
-    /// nada a dizer. Sem isto, a janela do servidor encheria depois de 64 teclas e a sessão
-    /// cairia no meio de uma frase.
-    fn send_bare_ack_if_needed(&mut self, now: Timestamp, out: &mut CommandBatch) {
-        let Some(carrier) = self.carrier else { return };
-        if !matches!(carrier.delivery(), ir_proto::carrier::Delivery::Datagram) {
-            return;
-        }
-        if !now.elapsed_at_least(self.clock.last_bare_ack, ACK_INTERVAL) {
-            return;
-        }
-
-        // Uma confirmação por canal com algo a confirmar. Um quadro carrega a confirmação de
-        // **um** canal, e mandar só a do canal mais urgente deixaria os outros sem
-        // confirmação nenhuma — a janela deles encheria e a sessão cairia por um caminho que
-        // ninguém associaria à causa.
-        let mut sent_any = false;
-        for channel in ir_proto::channel::ChannelId::ALL {
-            let Some(ack) = self.reliability.ack_for(channel) else {
-                continue;
-            };
-            // Sequência zero e nunca contada: uma confirmação pura não faz parte do fluxo
-            // ordenado. Se ela consumisse número de sequência sem ser retransmitida, perder
-            // uma criaria um buraco que nunca seria preenchido, e tudo depois dela ficaria
-            // esperando para sempre.
-            let frame = Frame::new(Message::Control(Control::AckOnly), Sequence::ZERO)
-                .with_ack(channel, ack)
-                .in_epoch(self.incarnations.local());
-            out.push(Command::Send { carrier, frame });
-            sent_any = true;
-        }
-        if sent_any {
-            self.clock.last_bare_ack = now;
-        }
     }
 
     pub(super) fn on_pong(&mut self, now: Timestamp, stamp_micros: u64, out: &mut CommandBatch) {

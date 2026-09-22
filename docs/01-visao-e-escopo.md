@@ -128,18 +128,22 @@ visíveis. Falha de transferência NÃO DEVE derrubar nem atrasar a entrada.
 O v1 tinha três modos com três políticas de degradação diferentes. O v2 tem **uma**
 política, sempre a mesma, e a interface mostra o resultado dela.
 
-Ordem de preferência para o canal de **entrada**:
+Para o canal de **entrada**, no automático:
 
-1. Bluetooth RFCOMM, se pareado no sistema operacional nos dois lados e o enlace subir;
-2. UDP na rede local;
+1. Bluetooth RFCOMM **e** UDP na rede local, se os dois subirem: a **rota dupla** — cada
+   comando vai pelos dois, e vale o que chegar primeiro ([ADR-0012](adr/0012-rota-dupla.md));
+2. só o que subir, se só um subir — Bluetooth, se pareado no sistema operacional nos dois lados;
+   senão a rede;
 3. nenhum — a sessão não estabelece e o motivo aparece escrito.
+
+Um portador entrar ou sair da rota não refaz a sessão nem solta teclas.
 
 Canal de **dados** (clipboard grande, imagens, arquivos): sempre TCP na rede local.
 Se não houver rede, esses recursos ficam indisponíveis e são anunciados como
 indisponíveis. Eles NÃO DEVEM ser empurrados para o Bluetooth.
 
 O usuário PODE fixar um portador ("usar somente Bluetooth", "usar somente rede"). Fixar
-desliga o item 2 da lista, e a falha passa a ser falha — não degradação silenciosa.
+desliga a rota dupla e a degradação, e a falha passa a ser falha — não degradação silenciosa.
 
 Em qualquer momento, o estado corrente DEVE ser observável: portador ativo, por que ele
 foi escolhido, latência mediana e p99 medidas na última janela de 10 s, e a última razão
