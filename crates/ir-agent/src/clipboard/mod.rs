@@ -133,8 +133,23 @@ fn conectar(endereco: &str, eventos: &Sender<Evento>) -> Result<Box<dyn Write + 
 }
 
 /// Traz os avisos do serviço para o laço principal, até a conexão cair.
+///
+/// O motivo de parar é registrado. Sem ele, "a conexão caiu" cobria três coisas muito diferentes —
+/// o serviço fechou, o quadro veio inválido, o canal deu erro — e a cópia que não atravessava não
+/// tinha como ser explicada. Custou uma investigação inteira.
 fn ler_avisos(mut leitura: Box<dyn Read + Send>, eventos: &Sender<Evento>) {
-    while let Ok(Some(mensagem)) = crate::ler_quadro::<ParaInterface>(&mut leitura) {
+    loop {
+        let mensagem = match crate::ler_quadro::<ParaInterface>(&mut leitura) {
+            Ok(Some(mensagem)) => mensagem,
+            Ok(None) => {
+                debug!("o serviço fechou o canal de controle");
+                break;
+            }
+            Err(erro) => {
+                warn!(erro = ?erro, "falha ao ler do canal de controle");
+                break;
+            }
+        };
         match mensagem {
             ParaInterface::Aviso(aviso) => {
                 if eventos.send(Evento::Aviso(aviso)).is_err() {

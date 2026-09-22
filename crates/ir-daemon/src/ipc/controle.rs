@@ -80,6 +80,9 @@ async fn atender(
     // Conta enquanto esta conexão viver, e só uma vez por conexão.
     let mut presenca = None;
     let mut proximo = Some(primeiro);
+    // Por que esta conexão terminou. Sem isto, "ajudante de clipboard desligado" não distinguia o
+    // cliente que fecha do aviso que não pôde ser escrito — e são defeitos diferentes.
+    let mut motivo = "o laço terminou";
     loop {
         if let Some(pedido) = proximo.take() {
             acompanhando |= matches!(pedido, Pedido::Acompanhar | Pedido::AcompanharClipboard);
@@ -88,27 +91,33 @@ async fn atender(
                 presenca = Some(ajudantes.entrou());
             }
             if !responder(&pedidos, &mut escrita, pedido, leitor.clone()).await {
+                motivo = "a resposta não pôde ser entregue";
                 break;
             }
         }
         tokio::select! {
             quadro = quadros::ler::<_, Pedido>(&mut leitura) => match quadro {
                 Ok(Some(pedido)) => proximo = Some(pedido),
-                Ok(None) => break,
+                Ok(None) => {
+                    motivo = "o cliente fechou";
+                    break;
+                }
                 Err(erro) => {
                     warn!(%erro, "quadro de controle malformado; encerrando conexão");
+                    motivo = "quadro malformado";
                     break;
                 }
             },
             aviso = avisos.recv(), if acompanhando => {
                 if !repassar(&mut escrita, aviso).await {
+                    motivo = "o aviso não pôde ser escrito";
                     break;
                 }
             }
         }
     }
     if presenca.is_some() {
-        info!("ajudante de clipboard desligado");
+        info!(motivo, "ajudante de clipboard desligado");
     }
     debug!("conexão de controle encerrada");
 }
