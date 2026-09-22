@@ -445,7 +445,8 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] `[H]` Rota dupla entre as duas máquinas, com o serviço v2 instalado dos dois lados: rota
       `bluetooth+udp` formada sozinha, rádio desligado e religado sem a sessão cair, 13 s sem rede
       cobertos pelo Bluetooth, placar ~50/50 ([log 43](docs/logs/43-a-rota-dupla.md))
-- [ ] `[H]` Tecla segura à mão enquanto o rádio cai — provada no núcleo; falta uma pessoa no teclado
+- [x] `[H]` Tecla segura à mão enquanto o rádio cai: a repetição no editor do Fedora não parou
+      durante 20 s de rádio desligado ([log 43](docs/logs/43-a-rota-dupla.md))
 
 ## Etapa 8 — Clipboard e arquivos
 - [x] Transporte do canal 5: `ir-net::bulk` — `u32` + corpo, `IK` sem pareamento, contador

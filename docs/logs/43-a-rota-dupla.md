@@ -150,6 +150,7 @@ por SSH, e o MSI no Windows com elevação pelo UAC. Os registros dos dois servi
 | 22:45:31 | Placar do Windows: `rede ouvido há 13498 ms` — **13 s sem rede**, cobertos pelo Bluetooth. É o silêncio do log 24, que antes derrubava a sessão |
 | 22:46:02 | **Uma queda por tempo**: os dois portadores calados por mais de 1 s ao mesmo tempo, logo depois dos 13 s sem rede (o SSH para o Fedora também expirou nessa janela). Sessão de volta em 1 s |
 | 22:46–22:52 | Nenhuma outra queda. Placar do Fedora às 22:52: **Bluetooth 2 673, rede 2 600** |
+| 23:19:08–31 | **Tecla segura à mão durante a queda do rádio.** O usuário manteve uma letra pressionada no teclado do Windows, com o cursor num editor do Fedora; o rádio do Fedora foi desligado por 20 s e religado. A rota foi a `udp` e voltou a `bluetooth+udp` às 23:19:31, sem sessão encerrada nem controle devolvido nos dois registros, e **a repetição da letra no editor não parou em momento nenhum** |
 
 O placar dividido quase ao meio é o dado mais importante: com Wi-Fi de 5 GHz e Bluetooth na mesma
 casa, **nenhum dos dois é sempre o mais rápido** — cada quadro chega pelo que estiver melhor
@@ -161,10 +162,6 @@ naquele segundo não foi investigada — a coincidência com o SSH expirado apon
 inteiro, e não para o rádio.
 
 ## O que não foi provado, e por quê
-
-**A tecla segura durante a queda do rádio, à mão.** A queda do rádio foi provada no hardware (a
-sessão seguiu e a rota voltou); a tecla segura durante ela precisa de uma pessoa no teclado do
-Windows, e está provada no núcleo por `losing_bluetooth_mid_keypress_keeps_the_session_and_the_key`.
 
 **O Linux não reduz o buffer do socket RFCOMM**, porque o `bluer` não expõe `SO_SNDBUF` e o `unsafe`
 do `ir-bt` é só do Winsock. O descarte por idade age antes do kernel.
