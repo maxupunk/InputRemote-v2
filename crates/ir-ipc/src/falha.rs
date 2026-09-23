@@ -70,6 +70,21 @@ pub enum Falha {
     /// voltava para dizer isso.
     #[error("o outro computador não respondeu")]
     ParNaoRespondeu,
+    /// Pediu-se o Bluetooth, e este computador não tem rádio ligado.
+    #[error("o Bluetooth deste computador está desligado ou não existe")]
+    SemBluetooth,
+    /// O pedido precisa dos dois computadores conectados, e eles não estão.
+    #[error("os dois computadores não estão conectados agora")]
+    SemConexao,
+    /// O outro computador roda uma versão que não conhece este pedido.
+    #[error("o outro computador tem uma versão mais antiga do InputRemote")]
+    ParDesatualizado,
+    /// O endereço digitado não é um `ip:porta` nem um endereço de Bluetooth.
+    #[error("não entendi o endereço")]
+    EnderecoInvalido,
+    /// A ferramenta do sistema recusou a mudança.
+    #[error("o sistema recusou a mudança")]
+    SistemaRecusou,
 }
 
 impl Falha {
@@ -114,6 +129,24 @@ impl Falha {
                 "Abra o InputRemote no outro computador e confira se os dois estão na mesma rede. \
                  Se ele não aparecer na lista, digite o endereço dele."
             }
+            Self::SemBluetooth => {
+                "Ligue o Bluetooth nas configurações do sistema, ou pareie pela rede local. O \
+                 InputRemote percebe o rádio sozinho quando ele liga."
+            }
+            Self::SemConexao => {
+                "Espere os dois computadores se conectarem de novo e tente outra vez. Se estiver \
+                 pausado, retome primeiro."
+            }
+            Self::ParDesatualizado => {
+                "Atualize o InputRemote no outro computador para a mesma versão deste."
+            }
+            Self::EnderecoInvalido => {
+                "Digite como 192.168.0.10:52525 para a rede, ou AA:BB:CC:DD:EE:FF para o Bluetooth."
+            }
+            Self::SistemaRecusou => {
+                "Veja o registro do serviço para o motivo, ou faça a mudança pelas configurações \
+                 do sistema."
+            }
         }
     }
 }
@@ -137,9 +170,17 @@ mod tests {
             Falha::BordaDoServidor,
             Falha::PareamentoInterrompido,
             Falha::ParNaoRespondeu,
+            Falha::SemBluetooth,
+            Falha::SemConexao,
+            Falha::ParDesatualizado,
+            Falha::EnderecoInvalido,
+            Falha::SistemaRecusou,
         ];
         for falha in falhas {
             assert!(!falha.to_string().is_empty(), "{falha:?} sem descrição");
+            // A continuação de linha das frases longas já se perdeu em edição por script, e o
+            // sintoma é um buraco de espaços no meio da frase.
+            assert!(!falha.o_que_fazer().contains("  "), "{falha:?} tem buraco");
             let acao = falha.o_que_fazer();
             assert!(!acao.is_empty(), "{falha:?} não diz o que fazer");
             // Uma instrução tem verbo. É o mínimo para ser acionável.
@@ -168,6 +209,11 @@ mod tests {
             (Falha::BordaDoServidor, 9),
             (Falha::PareamentoInterrompido, 10),
             (Falha::ParNaoRespondeu, 11),
+            (Falha::SemBluetooth, 12),
+            (Falha::SemConexao, 13),
+            (Falha::ParDesatualizado, 14),
+            (Falha::EnderecoInvalido, 15),
+            (Falha::SistemaRecusou, 16),
         ];
         for (falha, indice) in esperado {
             let bytes = postcard::to_allocvec(&falha).expect("serializa");

@@ -26,7 +26,7 @@ impl Daemon {
         if self.session.phase() != Phase::Offline {
             let agora = self.now();
             self.session
-                .stop(agora, LinkDown::UserStopped, &mut self.out);
+                .stop(agora, LinkDown::ServiceStopping, &mut self.out);
             self.apply_commands();
         }
         let _ = self.agente.send(ComandoDoAgente::Encerrar);

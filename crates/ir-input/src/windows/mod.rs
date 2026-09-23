@@ -2,9 +2,11 @@
 
 #![allow(unreachable_pub)]
 
+pub mod desktops;
 pub mod hooks;
 pub mod scancode;
 pub mod sendinput;
+pub mod telas;
 
 /// O tamanho da tela primária, em pixels.
 #[cfg(windows)]

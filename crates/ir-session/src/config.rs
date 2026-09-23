@@ -87,11 +87,6 @@ pub struct Timings {
     /// reenvio. Não há contagem de tentativas: o enlace cai quando uma mensagem passa de
     /// [`Self::link_timeout`] sem confirmação, contado do primeiro envio (log 23).
     pub min_retransmit: Millis,
-
-    /// Quanto esperar antes de tentar reconectar.
-    ///
-    /// Origem: `docs/01-visao-e-escopo.md` §6 — reconexão em até 5 s.
-    pub reconnect_delay: Millis,
 }
 
 impl Timings {
@@ -102,7 +97,6 @@ impl Timings {
         snapshot_interval: Millis(250),
         pointer_interval: Millis(8),
         min_retransmit: Millis(20),
-        reconnect_delay: Millis(1000),
     };
 
     /// Se os prazos fazem sentido entre si.

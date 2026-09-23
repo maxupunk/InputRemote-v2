@@ -1,0 +1,16 @@
+[package]
+name = "ir-area"
+description = "O canal 4 — o texto do clipboard — de uma ponta: oferta, pedaços e conferência. Puro."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+blake3.workspace = true
+ir-proto.workspace = true
+
+[lints]
+workspace = true

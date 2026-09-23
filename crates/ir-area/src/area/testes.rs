@@ -4,6 +4,8 @@ use ir_proto::carrier::Carrier;
 use ir_proto::channel::ChannelId;
 use ir_proto::frame::{Ack, Epoch, Frame, Sequence};
 
+use ir_proto::message::Message;
+
 use super::*;
 
 fn oferta_de(area: &mut Area, texto: &str) -> (ClipId, u32, [u8; 32]) {
@@ -23,7 +25,7 @@ fn atravessar(texto: &str) -> Option<ClipText> {
     );
     origem.pedido(id);
     let mut chegou = None;
-    while let Some(mensagem) = origem.fila.pop_front() {
+    while let Some(mensagem) = origem.proximo_pedaco() {
         match mensagem {
             ClipboardMessage::Chunk { id, index, data } => destino.pedaco(id, index, &data),
             ClipboardMessage::Done { id } => chegou = destino.fim(id),

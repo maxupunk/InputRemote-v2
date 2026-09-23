@@ -131,7 +131,7 @@ async fn abrir(
             None
         }
         Err(erro) => {
-            warn!(%erro, "manifesto impossível");
+            warn!(erro = %erro.sem_caminho(), "manifesto impossível");
             None
         }
     }
@@ -179,7 +179,8 @@ async fn aplicar(
             } else {
                 Motivo::Outro(erro.to_string())
             };
-            warn!(%erro, "transferência interrompida");
+            warn!(erro = %erro.sem_caminho(), "transferência interrompida");
+            debug!(%erro, "detalhe da interrupção");
             anunciar(
                 avisos,
                 Sentido::Recebendo,

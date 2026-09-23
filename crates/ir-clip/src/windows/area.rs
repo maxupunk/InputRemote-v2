@@ -21,14 +21,18 @@ use std::path::PathBuf;
 use windows::Win32::Foundation::{HANDLE, HGLOBAL, HWND};
 use windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
-    SetClipboardData,
+    RegisterClipboardFormatW, SetClipboardData,
 };
-use windows::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock};
-use windows::Win32::System::Ole::{CF_HDROP, CF_UNICODETEXT};
+use windows::Win32::System::Memory::{
+    GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock,
+};
+use windows::Win32::System::Ole::{CF_DIB, CF_DIBV5, CF_HDROP, CF_UNICODETEXT};
 use windows::Win32::UI::Shell::{DROPFILES, DragQueryFileW, HDROP};
+use windows::core::w;
 
 use crate::conteudo::{Conteudo, quebras_nativas};
 use crate::error::{ClipError, Result};
+use crate::imagem;
 
 /// Quanto cabe num caminho lido do `CF_HDROP`.
 ///
@@ -75,6 +79,11 @@ pub(super) fn ler() -> Result<Option<Conteudo>> {
     if unsafe { IsClipboardFormatAvailable(CF_UNICODETEXT.0.into()) }.is_ok() {
         return ler_texto().map(Some);
     }
+    // Imagem depois de texto: a planilha e o editor de texto põem uma figura das células junto com
+    // o texto delas, e quem copiou células quer colar células.
+    if let Some(imagem) = ler_imagem()? {
+        return Ok(Some(imagem));
+    }
     // Formato privado de algum aplicativo. Não é para nós, e não é erro.
     Ok(None)
 }
@@ -106,6 +115,53 @@ fn ler_texto() -> Result<Conteudo> {
     Ok(Conteudo::texto(&String::from_utf16_lossy(&unidades)))
 }
 
+/// O formato registrado `PNG`, que navegadores e editores de imagem põem junto do DIB.
+///
+/// É preferido quando existe: já é a forma canônica, e guarda a transparência que o `CF_DIB` de
+/// muitos programas perde.
+fn formato_png() -> u32 {
+    unsafe { RegisterClipboardFormatW(w!("PNG")) }
+}
+
+/// Lê uma imagem, se houver: `PNG` como está, senão o DIB convertido.
+fn ler_imagem() -> Result<Option<Conteudo>> {
+    let png = formato_png();
+    if png != 0 && unsafe { IsClipboardFormatAvailable(png) }.is_ok() {
+        return Ok(Some(Conteudo::Imagem(ler_bloco(png)?)));
+    }
+    for dib in [CF_DIBV5, CF_DIB] {
+        if unsafe { IsClipboardFormatAvailable(dib.0.into()) }.is_ok() {
+            let bytes = ler_bloco(dib.0.into())?;
+            // Uma paleta ou um JPEG embutido não atravessam: o clipboard fica como "não é para nós".
+            return match imagem::png_de_dib(&bytes) {
+                Ok(png) => Ok(Some(Conteudo::Imagem(png))),
+                Err(ClipError::FormatoNaoSuportado) => Ok(None),
+                Err(erro) => Err(erro),
+            };
+        }
+    }
+    Ok(None)
+}
+
+/// Copia o bloco de um formato, inteiro, para fora do clipboard.
+fn ler_bloco(formato: u32) -> Result<Vec<u8>> {
+    let dados = unsafe { GetClipboardData(formato) }
+        .map_err(|erro| ClipError::Sistema(erro.to_string()))?;
+    let bloco = HGLOBAL(dados.0);
+    let tamanho = unsafe { GlobalSize(bloco) };
+    let ponteiro = unsafe { GlobalLock(bloco) }.cast::<u8>();
+    if ponteiro.is_null() {
+        return Err(ClipError::Sistema(
+            "o bloco da imagem não pôde ser travado".to_owned(),
+        ));
+    }
+    // `GlobalSize` é o tamanho do bloco, que pode ter sobra no fim; os conversores leem só o que o
+    // cabeçalho diz.
+    let bytes = unsafe { core::slice::from_raw_parts(ponteiro, tamanho) }.to_vec();
+    let _ = unsafe { GlobalUnlock(bloco) };
+    Ok(bytes)
+}
+
 /// Lê `CF_HDROP` como lista de caminhos.
 fn ler_arquivos() -> Result<Conteudo> {
     let dados = unsafe { GetClipboardData(CF_HDROP.0.into()) }
@@ -132,23 +188,34 @@ fn ler_arquivos() -> Result<Conteudo> {
 ///
 /// # Errors
 ///
-/// [`ClipError::Ocupado`]; [`ClipError::FormatoNaoSuportado`] para imagem, que ainda não tem
-/// caminho aqui; [`ClipError::Sistema`] em falha de alocação.
+/// [`ClipError::Ocupado`]; [`ClipError::FormatoNaoSuportado`] para uma imagem que não é PNG;
+/// [`ClipError::Sistema`] em falha de alocação.
 pub(super) fn publicar(conteudo: &Conteudo) -> Result<()> {
-    let (formato, bytes) = match conteudo {
-        Conteudo::Texto(texto) => (CF_UNICODETEXT, bytes_de_texto(texto)),
-        Conteudo::Arquivos(caminhos) => (CF_HDROP, bytes_de_arquivos(caminhos)),
-        // A imagem é PNG no protocolo e `CF_DIBV5` no Windows, e a conversão é um assunto próprio
-        // ([05, §6](../../../docs/05-windows.md)). Recusar é honesto; converter mal não seria.
-        Conteudo::Imagem(_) => return Err(ClipError::FormatoNaoSuportado),
+    let formatos: Vec<(u32, Vec<u8>)> = match conteudo {
+        Conteudo::Texto(texto) => vec![(CF_UNICODETEXT.0.into(), bytes_de_texto(texto))],
+        Conteudo::Arquivos(caminhos) => vec![(CF_HDROP.0.into(), bytes_de_arquivos(caminhos))],
+        // Os dois: o `PNG` como chegou, para quem sabe lê-lo e para a guarda de eco reconhecer a
+        // própria cópia; o `CF_DIB`, para todo o resto — o Paint, o Word, o campo de chat.
+        Conteudo::Imagem(png) => vec![
+            (formato_png(), png.clone()),
+            (CF_DIB.0.into(), imagem::dib_de_png(png)?),
+        ],
     };
 
     let _aberto = Aberto::agora()?;
     unsafe { EmptyClipboard() }.map_err(|erro| ClipError::Sistema(erro.to_string()))?;
-    let bloco = copiar_para_o_sistema(&bytes)?;
+    for (formato, bytes) in formatos {
+        entregar(formato, &bytes)?;
+    }
+    Ok(())
+}
+
+/// Entrega um formato ao clipboard já aberto e esvaziado.
+fn entregar(formato: u32, bytes: &[u8]) -> Result<()> {
+    let bloco = copiar_para_o_sistema(bytes)?;
     // A partir daqui o bloco é do sistema: não se libera, não se toca. Se `SetClipboardData`
     // falhar, ele ainda é nosso — e aí sim há que soltar.
-    match unsafe { SetClipboardData(formato.0.into(), Some(HANDLE(bloco.0))) } {
+    match unsafe { SetClipboardData(formato, Some(HANDLE(bloco.0))) } {
         Ok(_) => Ok(()),
         Err(erro) => {
             let _ = unsafe { windows::Win32::Foundation::GlobalFree(Some(bloco)) };

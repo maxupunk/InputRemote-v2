@@ -56,6 +56,7 @@ impl Daemon {
             } => self.on_established(chave_do_par, de, portador),
             Fato::Quadro { bytes, .. } => self.on_frame(&bytes, portador),
             Fato::Caiu { motivo, .. } => self.on_link_down(&motivo, portador),
+            Fato::Perdido { motivo, .. } => self.on_radio_perdido(&motivo, portador),
             Fato::Erro { mensagem, .. } => {
                 warn!(%portador, mensagem, "erro de transporte");
                 self.discagem_com_erro(portador);
@@ -88,9 +89,26 @@ impl Daemon {
         self.notar_estado();
     }
 
+    /// O rádio deixou de existir: desligado nas configurações, adaptador removido.
+    ///
+    /// A sessão segue pelo que sobrar — a rede —, e o rádio volta sozinho quando reaparecer: o
+    /// reabridor tenta em segundo plano, e o que abrir chega como rádio tardio.
+    fn on_radio_perdido(&mut self, motivo: &str, portador: Carrier) {
+        warn!(%portador, motivo, "o rádio Bluetooth sumiu; a sessão segue pela rede e ele volta quando reaparecer");
+        if self.alcance.de_pe(portador) {
+            self.on_link_down(motivo, portador);
+        }
+        self.radio = None;
+        self.radio_proprio = None;
+        if let Some(reabridor) = &self.reabridor {
+            reabridor.reabrir();
+        }
+        let _ = self.avisos.send(ir_ipc::Aviso::EstadoMudou(self.estado()));
+    }
+
     /// O enlace seguro ficou pronto.
     fn on_established(&mut self, chave_do_par: PublicKey, de: Endereco, portador: Carrier) {
-        if let Some(pendente) = self.pending_peer {
+        if let Some(pendente) = self.pareamento.map(|pareamento| pareamento.chave) {
             // Com um código na tela, só o enlace do pareamento o conclui: o mesmo portador e a mesma
             // chave. Outro enlace nesse intervalo — o outro portador da rota dupla discando por
             // conta própria, ou outro computador — levaria a chave sem a confirmação do usuário.
@@ -101,7 +119,6 @@ impl Daemon {
                 }
                 return;
             }
-            self.pending_peer = None;
             self.pareamento = None;
             self.save_peer(chave_do_par, de);
             let _ = self
@@ -123,8 +140,18 @@ impl Daemon {
             }
             return;
         }
+        if self.recusar_pela_pausa() {
+            info!(%de, %portador, "pausado aqui; o enlace que chegou é recusado");
+            if let Some(transporte) = self.transporte(portador) {
+                transporte.desconectar();
+            }
+            return;
+        }
         self.alcance.subiu(portador);
         self.alcance.anotar(de);
+        if portador == Carrier::Udp {
+            self.atualizar_destino_dos_arquivos();
+        }
         self.peer = Some(de);
         // A próxima posição absoluta semeia o ponteiro: o cursor real está onde está, e o modelo
         // da sessão precisa começar no mesmo ponto, senão a primeira travessia dispara errado.
@@ -143,9 +170,11 @@ impl Daemon {
             addr: Some(de.to_string()),
             // Par novo, identidade nova: o rádio dele chega de novo pelo `Control::Reach`.
             radio: None,
+            nome: None,
+            tela_de_bloqueio: false,
         };
         self.config.peers = vec![pinned];
-        if let Err(error) = self.config.save(&self.data_dir) {
+        if let Err(error) = self.gravador.gravar_e_esperar(&self.config) {
             error!(%error, "não foi possível gravar o par");
         } else {
             info!("par gravado");
@@ -168,6 +197,9 @@ impl Daemon {
 
     /// Retoma a conexão conforme o que está caído.
     pub(super) fn reconnect_if_needed(&mut self) {
+        if self.dormindo || self.pausado() {
+            return; // o par já foi avisado; discar agora desfaria o que a pessoa ou o sistema pediu
+        }
         if self.pareando() {
             return; // no meio de um pareamento, até ele terminar; discar agora o desmontaria
         }
@@ -228,6 +260,8 @@ mod tests {
             pubkey: encode_key(&chave()),
             addr: None,
             radio: None,
+            nome: None,
+            tela_de_bloqueio: false,
         }];
     }
 
@@ -305,5 +339,22 @@ mod tests {
             !bancada.daemon.config.peers.is_empty(),
             "o par precisa ficar gravado"
         );
+    }
+
+    #[test]
+    fn o_radio_perdido_sai_de_cena_e_a_rede_continua() {
+        let mut bancada = Bancada::nova(Role::Server);
+        assert!(bancada.daemon.radio.is_some());
+
+        bancada.daemon.on_fato_do_transporte(Fato::Perdido {
+            portador: Carrier::Rfcomm,
+            motivo: "o rádio Bluetooth foi desligado".to_owned(),
+        });
+
+        assert!(
+            bancada.daemon.radio.is_none(),
+            "um rádio morto não recebe mais nada"
+        );
+        assert!(bancada.daemon.transporte(Carrier::Udp).is_some());
     }
 }

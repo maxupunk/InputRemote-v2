@@ -56,6 +56,19 @@ export struct EstadoUi {
     aviso-de-rede: string,
     /// Se o botão do aviso pede ao outro computador (`true`) ou a este.
     aviso-de-rede-no-par: bool,
+    /// Se o compartilhamento está pausado aqui: o botão vira "Retomar".
+    pausado: bool,
+    /// Se foi pausado no outro computador.
+    pausado-no-par: bool,
+    /// O aviso de que o outro computador está na tela de bloqueio e recusando o que se digita
+    /// daqui, ou vazio.
+    aviso-do-bloqueio-do-par: string,
+    /// A situação da digitação na tela de bloqueio, para Preferências.
+    sobre-o-bloqueio: string,
+    /// Se a borda está travada: o ponteiro não atravessa.
+    borda-travada: bool,
+    /// Se o outro computador bloqueia junto quando este bloquear.
+    bloquear-juntos: bool,
 }
 
 /// Em que ponto o pareamento está.
@@ -157,6 +170,9 @@ export global Dados {
     /// Quanto o produto moveu nesta sessão ("1,2 GB"), ou vazio enquanto nada moveu.
     in property <string> trafego;
 
+    /// As últimas medianas de atraso, de 0 a 1 da altura do gráfico, da mais antiga à mais nova.
+    in property <[float]> atrasos;
+
     /// Quanto a pasta de recebidos ocupa, já em texto ("8,1 GB" ou "nada guardado").
     in property <string> recebidos: "nada guardado";
 
@@ -191,8 +207,20 @@ export global Acoes {
     callback esquecer-par();
     /// Permitir, ou deixar de permitir, digitação na tela de bloqueio.
     callback permitir-bloqueio(bool);
-    /// Encerrar a sessão agora.
+    /// Pausar o compartilhamento: o outro computador é avisado, e ninguém reconecta até retomar.
     callback encerrar();
+    /// Voltar a compartilhar depois de uma pausa.
+    callback retomar();
+    /// Mandar Ctrl+Alt+Del ao outro computador.
+    callback ctrl-alt-del();
+    /// Parar a cópia de arquivos que está indo.
+    callback cancelar-copia();
+    /// Abrir a pasta de recebidos no gerenciador de arquivos.
+    callback abrir-recebidos();
+    /// Travar, ou destravar, a borda.
+    callback travar-borda(bool);
+    /// Bloquear, ou não, o outro computador junto com este.
+    callback bloquear-juntos(bool);
     /// Montar o diagnóstico e mostrá-lo para o usuário copiar.
     callback mostrar-diagnostico();
 

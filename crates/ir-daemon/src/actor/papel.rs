@@ -163,16 +163,11 @@ impl Daemon {
         }
         self.edge = edge;
         let texto = edge_para_texto(edge);
-        let mut nova = self.config.clone();
-        texto.clone_into(&mut nova.peer_edge);
-        if self.persistir(nova) == Resposta::Feito {
-            info!(borda = texto, "borda anunciada pelo servidor; já valendo");
-        } else {
-            warn!(
-                borda = texto,
-                "borda anunciada pelo servidor vale nesta sessão, mas não foi gravada"
-            );
-        }
+        // Sem esperar: o anúncio chega com a sessão de pé. Vale já; uma falha de gravação fica no
+        // registro, e o servidor anuncia de novo na próxima sessão.
+        texto.clone_into(&mut self.config.peer_edge);
+        self.gravador.gravar(&self.config);
+        info!(borda = texto, "borda anunciada pelo servidor; já valendo");
         let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
     }
 
@@ -203,6 +198,9 @@ impl Daemon {
         let fixado = self.portador_fixado.map(ir_ipc::Portador::no_protocolo);
         self.session.pin_carrier(fixado, &mut self.out);
         self.apply_commands();
+        if self.borda_travada {
+            self.drive(ir_session::Input::LockEdge(true));
+        }
         self.anunciar_radio_proprio();
         // Pelos portadores que estão de pé, e não por um presumido: trocar de papel sobre um
         // enlace de Bluetooth não pode reiniciar a sessão dizendo que ela é de rede.
@@ -216,7 +214,19 @@ impl Daemon {
     /// um deixaria a máquina controlada sem ter como ser controlada.
     #[cfg(not(windows))]
     fn garantir_entrada_local(&mut self, papel: Role) {
-        if papel != Role::Client || self.injector.is_some() {
+        if papel == Role::Server {
+            if self.capturer.is_none() {
+                match crate::fundo::capturar(&self.captura) {
+                    Ok(capturador) => {
+                        info!("captura ligada para o papel de servidor");
+                        self.capturer = Some(capturador);
+                    }
+                    Err(erro) => warn!(%erro, "captura local indisponível no papel de servidor"),
+                }
+            }
+            return;
+        }
+        if self.injector.is_some() {
             return;
         }
         match ir_input::open_injector() {
@@ -312,6 +322,7 @@ mod tests {
             .out
             .push(Command::Notify(Notice::EdgeChanged { edge: Edge::Left }));
         daemon.apply_commands();
+        daemon.gravador.esperar();
 
         assert!(
             gravado(&dir).contains(r#"peer_edge = "left""#),

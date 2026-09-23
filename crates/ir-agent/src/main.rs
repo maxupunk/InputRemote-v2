@@ -34,15 +34,16 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use ir_input::{CaptureEvent, Capturer, InjectEvent, Injector};
+use ir_input::{CaptureEvent, Capturer, Injector};
 use ir_ipc::codec::{self, PREFIXO};
 use ir_ipc::{ComandoDoAgente, FatoDoAgente};
-use ir_proto::input::PointerPosition;
 use ir_proto::screens::ScreenLayout;
 use tracing::{info, warn};
 
 mod clipboard;
+mod entrada;
 mod registro;
+mod vigia;
 
 /// Quanto tempo se insiste em achar o serviço antes de desistir.
 ///
@@ -79,7 +80,7 @@ fn main() {
 
 /// Conecta ao serviço, liga entrada e serve comandos até a conexão cair.
 fn servir() -> Result<()> {
-    let (escrita, mut leitura) = conectar()?;
+    let (escrita, leitura) = conectar()?;
     let escrita = Arc::new(Mutex::new(escrita));
     info!("conectado ao serviço");
 
@@ -89,116 +90,112 @@ fn servir() -> Result<()> {
     let injetor = abrir_injetor();
     let (capturador, eventos) = abrir_captura();
 
-    anunciar(&escrita, capturador.is_some())?;
+    let desktops = injetor
+        .as_ref()
+        .map(|injetor| injetor.desktops())
+        .unwrap_or_default();
+    anunciar(&escrita, capturador.is_some(), desktops)?;
     if let Some(eventos) = eventos {
         bombear_captura(eventos, Arc::clone(&escrita));
     }
 
-    let mut estado = Entrada {
+    // Nada pode ficar pressionado quando o agente vai embora, por qualquer saída: o `Drop` de
+    // `Entrada` solta tudo, inclusive quando a leitura falha no meio.
+    let mut estado = entrada::Entrada {
         injetor,
         capturador,
     };
-    // O laço principal: um comando de cada vez, na ordem em que o serviço mandou.
-    while let Some(comando) = ler_quadro::<ComandoDoAgente>(&mut leitura)? {
-        if matches!(comando, ComandoDoAgente::Encerrar) {
-            break;
+    vigiar_o_desktop(Arc::clone(&escrita));
+    let comandos = ler_comandos(leitura);
+    let mut vigia = vigia::Vigia::default();
+    // O laço principal: um comando de cada vez, na ordem em que o serviço mandou — com prazo, para
+    // o vigia poder agir quando o serviço se cala.
+    loop {
+        match comandos.recv_timeout(Duration::from_millis(250)) {
+            Ok(Ok(ComandoDoAgente::Encerrar))
+            | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return Ok(()),
+            Ok(Ok(comando)) => {
+                vigia.viu(comando, std::time::Instant::now());
+                estado.executar(comando, &escrita);
+            }
+            Ok(Err(erro)) => return Err(erro),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
         }
-        estado.executar(comando, &escrita);
+        if vigia.venceu(std::time::Instant::now()) {
+            warn!("o serviço parou de renovar a supressão; devolvendo o teclado e o mouse daqui");
+            estado.soltar_tudo();
+        }
     }
-
-    // Saída limpa: nada pode ficar pressionado quando o agente vai embora.
-    estado.soltar_tudo();
-    Ok(())
 }
 
-/// O que o agente tem para mexer na máquina local.
-struct Entrada {
-    injetor: Option<Box<dyn Injector>>,
-    capturador: Option<Box<dyn Capturer>>,
+/// A thread que conta ao serviço quando o desktop de entrada muda, e quando os monitores mudam.
+///
+/// A tela que bloqueia não passa pelos ganchos — nem o Win+L, nem a troca para o desktop seguro
+/// ([05, §5.1](../../../docs/05-windows.md)) —, então quem percebe é esta pergunta periódica. Do
+/// lado que controla, é o que devolve o controle quando a tela daqui bloqueia; do controlado, o que
+/// encerra a recusa quando a pessoa volta à área de trabalho. Só no Windows: lá é que há desktops.
+fn vigiar_o_desktop(escrita: Arc<Mutex<Escrita>>) {
+    if ir_input::desktop_de_entrada().is_none() {
+        return;
+    }
+    std::thread::spawn(move || {
+        let mut anterior = ir_input::desktop_de_entrada();
+        let mut telas = arranjo_da_sessao();
+        for volta in 1u32.. {
+            std::thread::sleep(Duration::from_millis(200));
+            // Um monitor ligado, desligado ou rearranjado: a cada dois segundos, o arranjo de novo.
+            if volta.is_multiple_of(10) && !contar_telas_se_mudaram(&escrita, &mut telas) {
+                return; // o serviço foi embora
+            }
+            let agora = ir_input::desktop_de_entrada();
+            if agora.is_none() || agora == anterior {
+                continue;
+            }
+            if let Some(nome) = agora.clone()
+                && enviar(&escrita, &FatoDoAgente::DesktopMudou { nome }).is_err()
+            {
+                return; // o serviço foi embora
+            }
+            anterior = agora;
+        }
+    });
 }
 
-impl Entrada {
-    /// Executa um comando do serviço.
-    fn executar(&mut self, comando: ComandoDoAgente, escrita: &Arc<Mutex<Escrita>>) {
-        match comando {
-            ComandoDoAgente::SoltarTudo => self.soltar_tudo(),
-            ComandoDoAgente::SuprimirEntradaLocal(ligado) => {
-                if let Some(capturador) = self.capturador.as_ref() {
-                    capturador.set_suppress(ligado);
+/// Conta o arranjo de telas ao serviço se ele mudou. `false` se o serviço foi embora.
+fn contar_telas_se_mudaram(
+    escrita: &Arc<Mutex<Escrita>>,
+    telas: &mut Option<ScreenLayout>,
+) -> bool {
+    let agora = arranjo_da_sessao();
+    if agora.is_none() || agora == *telas {
+        return true;
+    }
+    telas.clone_from(&agora);
+    agora.is_none_or(|arranjo| enviar(escrita, &FatoDoAgente::TelasMudaram(arranjo)).is_ok())
+}
+
+/// A thread que lê os comandos do serviço. O canal fecha no fim limpo; um erro vai por ele.
+fn ler_comandos(
+    mut leitura: impl Read + Send + 'static,
+) -> std::sync::mpsc::Receiver<Result<ComandoDoAgente>> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        loop {
+            match ler_quadro::<ComandoDoAgente>(&mut leitura) {
+                Ok(Some(comando)) => {
+                    if tx.send(Ok(comando)).is_err() {
+                        return;
+                    }
+                }
+                Ok(None) => return,
+                Err(erro) => {
+                    let _ = tx.send(Err(erro));
+                    return;
                 }
             }
-            ComandoDoAgente::PrenderPonteiro(posicao) => self.prender(posicao),
-            // A Sequência de Atenção Segura é N2: depende de `SendSAS` e da política do sistema
-            // ([05, §4.3](../../../docs/05-windows.md)), e entra com a tela de bloqueio.
-            ComandoDoAgente::SequenciaDeAtencao => {
-                warn!("Ctrl+Alt+Del pedido, mas ainda não implementado");
-            }
-            outro => self.injetar(outro, escrita),
         }
-    }
-
-    /// Injeta o que o comando pedir, e conta ao serviço se o sistema recusar.
-    fn injetar(&mut self, comando: ComandoDoAgente, escrita: &Arc<Mutex<Escrita>>) {
-        let Some(evento) = para_evento(comando) else {
-            return;
-        };
-        let Some(injetor) = self.injetor.as_mut() else {
-            return;
-        };
-        if let Err(erro) = injetor.inject(evento) {
-            // Do ponto de vista do usuário, nada aconteceu — ele não teria como saber. Por isso
-            // a recusa é contada, e não só registrada ([05, §4.4](../../../docs/05-windows.md)).
-            warn!(%erro, "injeção recusada pelo sistema");
-            let _ = enviar(
-                escrita,
-                &FatoDoAgente::InjecaoRecusada {
-                    desktop: "Default".to_owned(),
-                },
-            );
-        }
-    }
-
-    /// Põe o ponteiro local na posição normalizada, convertida para pixels desta tela.
-    ///
-    /// A conversão é feita **aqui**, e não no serviço: quem sabe o tamanho da tela do usuário é
-    /// quem está na sessão dele. Um serviço na sessão 0 leria métricas que não são as dele.
-    fn prender(&self, posicao: PointerPosition) {
-        let Some(capturador) = self.capturador.as_ref() else {
-            return;
-        };
-        let (largura, altura) = ir_input::primary_screen_size().unwrap_or((1920, 1080));
-        let x = i32::try_from(u32::from(posicao.x) * largura / 65_535).unwrap_or(0);
-        let y = i32::try_from(u32::from(posicao.y) * altura / 65_535).unwrap_or(0);
-        capturador.warp_pointer(x, y);
-    }
-
-    /// Solta tudo que possa estar pressionado. O comando mais importante do produto.
-    fn soltar_tudo(&mut self) {
-        if let Some(injetor) = self.injetor.as_mut() {
-            let _ = injetor.release_all();
-        }
-        if let Some(capturador) = self.capturador.as_ref() {
-            // Se caímos com a supressão ligada, o teclado do usuário ficaria morto.
-            capturador.set_suppress(false);
-        }
-    }
-}
-
-/// Converte um comando de injeção no evento do backend de entrada.
-fn para_evento(comando: ComandoDoAgente) -> Option<InjectEvent> {
-    Some(match comando {
-        ComandoDoAgente::Tecla { usage, pressionada } => InjectEvent::Key {
-            usage,
-            pressed: pressionada,
-        },
-        ComandoDoAgente::Botao { botao, pressionado } => InjectEvent::Button {
-            button: botao,
-            pressed: pressionado,
-        },
-        ComandoDoAgente::Roda(delta) => InjectEvent::Wheel(delta),
-        ComandoDoAgente::Ponteiro(posicao) => InjectEvent::Pointer(posicao),
-        _ => return None,
-    })
+    });
+    rx
 }
 
 /// Abre o injetor, sem derrubar o agente se não der.
@@ -228,23 +225,33 @@ fn abrir_captura() -> (
 }
 
 /// Conta ao serviço que estamos prontos, e qual é o arranjo de telas desta sessão.
-fn anunciar(escrita: &Arc<Mutex<Escrita>>, capturando: bool) -> Result<()> {
-    let desktops = if capturando {
-        vec!["Default".to_owned()]
-    } else {
-        Vec::new()
-    };
+fn anunciar(
+    escrita: &Arc<Mutex<Escrita>>,
+    capturando: bool,
+    mut desktops: Vec<String>,
+) -> Result<()> {
+    // Os desktops em que o agente injeta; sem a lista do injetor, a área de trabalho se ele captura.
+    if desktops.is_empty() && capturando {
+        desktops.push("Default".to_owned());
+    }
     enviar(escrita, &FatoDoAgente::Pronto { desktops })?;
 
-    // O tamanho da tela vem de quem está na sessão do usuário. É o dado que faz a travessia
-    // cair na borda certa, e o serviço na sessão 0 não tem como saber sozinho.
-    if let Some((largura, altura)) = ir_input::primary_screen_size()
-        && let Ok(arranjo) = ScreenLayout::single(largura, altura)
-    {
-        info!(largura, altura, "tela da sessão do usuário");
+    // O arranjo de telas vem de quem está na sessão do usuário. É o dado que faz a travessia cair
+    // na borda certa, e o serviço na sessão 0 não tem como saber sozinho. Todos os monitores, e não
+    // só o principal: com dois, o segundo não existia para o par.
+    if let Some(arranjo) = arranjo_da_sessao() {
+        info!(monitores = arranjo.len(), "telas da sessão do usuário");
         enviar(escrita, &FatoDoAgente::TelasMudaram(arranjo))?;
     }
     Ok(())
+}
+
+/// O arranjo de telas desta sessão: todos os monitores, ou pelo menos a tela principal.
+fn arranjo_da_sessao() -> Option<ScreenLayout> {
+    ir_input::arranjo_de_telas().or_else(|| {
+        let (largura, altura) = ir_input::primary_screen_size()?;
+        ScreenLayout::single(largura, altura).ok()
+    })
 }
 
 /// A thread que leva os eventos capturados para o serviço.
@@ -280,10 +287,10 @@ fn para_fato(evento: CaptureEvent) -> Option<FatoDoAgente> {
 }
 
 /// A metade de escrita do canal, sob cadeado (duas threads escrevem nela).
-type Escrita = Box<dyn Write + Send>;
+pub(crate) type Escrita = Box<dyn Write + Send>;
 
 /// Manda um fato ao serviço.
-fn enviar(escrita: &Arc<Mutex<Escrita>>, fato: &FatoDoAgente) -> Result<()> {
+pub(crate) fn enviar(escrita: &Arc<Mutex<Escrita>>, fato: &FatoDoAgente) -> Result<()> {
     let quadro = codec::codificar(fato).context("codificando o fato")?;
     let mut guarda = escrita
         .lock()

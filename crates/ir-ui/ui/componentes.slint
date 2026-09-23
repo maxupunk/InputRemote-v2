@@ -25,6 +25,9 @@ export component Cartao inherits Rectangle {
 ///
 /// `primario` marca a ação que a tela quer que aconteça — e há no máximo uma por tela. Duas
 /// ações em destaque é o mesmo que nenhuma.
+///
+/// Alcançável pelo teclado: Tab chega nele, Enter ou Espaço aciona, e o anel mostra onde está o
+/// foco. Leitores de tela o anunciam como botão, pelo texto.
 export component Botao inherits Rectangle {
     in property <string> texto;
     in property <bool> primario: false;
@@ -34,13 +37,22 @@ export component Botao inherits Rectangle {
 
     height: 34px;
     border-radius: Tema.raio-pequeno;
-    border-width: root.primario ? 0px : Tema.traco;
-    border-color: root.perigo ? Tema.ruim : Tema.borda;
+    border-width: foco.has-focus ? 2px : (root.primario ? 0px : Tema.traco);
+    border-color: foco.has-focus ? Tema.foco : (root.perigo ? Tema.ruim : Tema.borda);
     background: root.primario
-        ? (toque.has-hover ? Tema.acao-sobre : Tema.acao)
+        ? (toque.has-hover ? Tema.acao-fundo-sobre : Tema.acao-fundo)
         : (toque.has-hover ? Tema.superficie-suave : transparent);
     opacity: root.habilitado ? 1.0 : 0.4;
     animate background, opacity { duration: 120ms; }
+
+    accessible-role: button;
+    accessible-label: root.texto;
+    accessible-enabled: root.habilitado;
+    accessible-action-default => {
+        if root.habilitado {
+            root.acionado();
+        }
+    }
 
     HorizontalLayout {
         alignment: center;
@@ -62,7 +74,53 @@ export component Botao inherits Rectangle {
         enabled: root.habilitado;
         mouse-cursor: root.habilitado ? MouseCursor.pointer : MouseCursor.not-allowed;
         clicked => {
+            foco.focus();
             root.acionado();
+        }
+    }
+
+    foco := FocusScope {
+        enabled: root.habilitado;
+        key-pressed(evento) => {
+            if evento.text == Key.Return || evento.text == " " {
+                root.acionado();
+                return accept;
+            }
+            return reject;
+        }
+    }
+}
+
+/// Um botão para o que não tem volta: o primeiro clique pede confirmação, o segundo faz.
+///
+/// Esquecer o par, esvaziar os recebidos, trocar o papel: tudo acontecia num clique só, e um
+/// clique errado custava parear de novo ou perder o que ainda não foi colado. A confirmação fica
+/// no próprio botão, por alguns segundos, em vez de uma janela por cima.
+export component BotaoConfirmado inherits Botao {
+    in property <string> texto-normal;
+    in property <string> texto-de-confirmacao;
+    callback confirmado();
+
+    property <bool> confirmando: false;
+
+    texto: root.confirmando ? root.texto-de-confirmacao : root.texto-normal;
+    perigo: true;
+    primario: root.confirmando;
+
+    acionado => {
+        if root.confirmando {
+            root.confirmando = false;
+            root.confirmado();
+        } else {
+            root.confirmando = true;
+        }
+    }
+
+    Timer {
+        interval: 4s;
+        running: root.confirmando;
+        triggered => {
+            root.confirmando = false;
         }
     }
 }
@@ -205,10 +263,16 @@ export component Alternativas inherits HorizontalLayout {
         height: 30px;
         border-radius: Tema.raio-pequeno;
         border-width: Tema.traco;
-        border-color: indice == root.escolhida ? Tema.acao : Tema.borda;
+        border-color: indice == root.escolhida ? Tema.acao-fundo : Tema.borda;
         background: indice == root.escolhida
-            ? Tema.acao
+            ? Tema.acao-fundo
             : (toque.has-hover ? Tema.superficie-suave : transparent);
+        accessible-role: button;
+        accessible-label: opcao;
+        accessible-checked: indice == root.escolhida;
+        accessible-action-default => {
+            root.escolher(indice);
+        }
         animate background { duration: 120ms; }
 
         HorizontalLayout {

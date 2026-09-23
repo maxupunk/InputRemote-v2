@@ -23,12 +23,20 @@ pub const SAUDE_ATENCAO: i32 = 2;
 /// O produto não funciona agora.
 pub const SAUDE_RUIM: i32 = 3;
 
+/// O que dizer quando o outro computador está na tela de bloqueio e recusa o que se digita daqui.
+///
+/// Sem isto o teclado simplesmente parava de funcionar lá, e a pessoa não tinha como saber se era
+/// defeito ou proteção.
+pub const AVISO_DO_BLOQUEIO_DO_PAR: &str = "O outro computador está na tela de bloqueio, e o que \
+     você digita daqui não chega lá: a digitação na tela de bloqueio não foi permitida nele. Um \
+     administrador de lá pode ligar em Preferências.";
+
 /// Traduz o estado publicado para o que a janela desenha.
 #[must_use]
 pub fn estado_ui(estado: &Estado) -> EstadoUi {
     EstadoUi {
         resumo: estado.resumo().into(),
-        enlace: estado.enlace.frase().into(),
+        enlace: estado.frase_do_enlace().into(),
         saude: saude(estado),
         conectado: estado.enlace.conectado(),
         servidor: estado.papel == Papel::Servidor,
@@ -53,7 +61,38 @@ pub fn estado_ui(estado: &Estado) -> EstadoUi {
             .aviso_de_rede()
             .map_or_else(SharedString::default, |aviso| aviso.frase.into()),
         aviso_de_rede_no_par: estado.aviso_de_rede().is_some_and(|aviso| aviso.no_par),
+        pausado: estado.pausa == Some(ir_ipc::Pausa::Aqui),
+        pausado_no_par: estado.pausa == Some(ir_ipc::Pausa::NoPar),
+        aviso_do_bloqueio_do_par: if estado.par_recusa_tela_de_bloqueio {
+            AVISO_DO_BLOQUEIO_DO_PAR.into()
+        } else {
+            SharedString::default()
+        },
+        sobre_o_bloqueio: estado.sobre_a_tela_de_bloqueio().into(),
+        borda_travada: estado.borda_travada,
+        bloquear_juntos: estado.bloquear_juntos,
     }
+}
+
+/// A dica do ícone da bandeja: o estado curto e a frase principal.
+///
+/// O Windows corta a dica em 127 caracteres; a frase principal é cortada antes, numa palavra.
+#[must_use]
+pub fn dica_da_bandeja(enlace: &str, resumo: &str) -> String {
+    const TETO: usize = 120;
+    let mut dica = format!("InputRemote — {enlace}");
+    if !resumo.is_empty() {
+        dica.push('\n');
+        dica.push_str(resumo);
+    }
+    if dica.chars().count() > TETO {
+        let cortada: String = dica.chars().take(TETO - 1).collect();
+        let ate_palavra = cortada
+            .rfind(' ')
+            .map_or(cortada.as_str(), |fim| &cortada[..fim]);
+        return format!("{ate_palavra}…");
+    }
+    dica
 }
 
 /// Quão bem o produto está, num número que governa cor e ponto.
@@ -65,6 +104,10 @@ pub fn estado_ui(estado: &Estado) -> EstadoUi {
 pub fn saude(estado: &Estado) -> i32 {
     if !estado.agente_pronto {
         return SAUDE_RUIM;
+    }
+    // Uma pausa é vontade de alguém, e não defeito: nem vermelho, nem verde.
+    if estado.pausa.is_some() {
+        return SAUDE_ATENCAO;
     }
     match estado.enlace {
         LinkState::Pronto | LinkState::EmUso => {

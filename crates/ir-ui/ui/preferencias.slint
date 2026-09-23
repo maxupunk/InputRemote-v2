@@ -8,7 +8,9 @@ import { Tema } from "tema.slint";
 import { Dados, Acoes } from "dados.slint";
 import { TextEdit } from "std-widgets.slint";
 
-import { Cartao, Botao, Dado, Faixa, Selo, Secao, Alternativas } from "componentes.slint";
+import {
+    Cartao, Botao, BotaoConfirmado, Dado, Faixa, Selo, Secao, Alternativas,
+} from "componentes.slint";
 
 component Grupo inherits VerticalLayout {
     in property <string> titulo;
@@ -32,6 +34,9 @@ component Grupo inherits VerticalLayout {
 
 /// A tela de preferências.
 export component Preferencias inherits VerticalLayout {
+    /// O papel escolhido e ainda não confirmado: -1 nenhum, 0 tem o teclado, 1 é controlado.
+    property <int> papel-pedido: -1;
+
     spacing: Tema.e4;
 
     Cartao {
@@ -43,9 +48,45 @@ export component Preferencias inherits VerticalLayout {
 
             Alternativas {
                 opcoes: ["Tem o teclado", "É controlado"];
-                escolhida: Dados.estado.servidor ? 0 : 1;
+                escolhida: root.papel-pedido >= 0
+                    ? root.papel-pedido
+                    : (Dados.estado.servidor ? 0 : 1);
                 escolher(indice) => {
-                    Acoes.definir-papel(indice == 0);
+                    // Trocar o papel refaz a conexão: um clique errado derrubava a sessão.
+                    if indice != (Dados.estado.servidor ? 0 : 1) {
+                        root.papel-pedido = indice;
+                    } else {
+                        root.papel-pedido = -1;
+                    }
+                }
+            }
+
+            if root.papel-pedido >= 0: HorizontalLayout {
+                spacing: Tema.e2;
+
+                Text {
+                    text: "Trocar o papel reinicia a conexão com o outro computador.";
+                    font-size: Tema.fonte-nota;
+                    color: Tema.texto-fraco;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                }
+
+                Botao {
+                    texto: "Trocar";
+                    primario: true;
+                    acionado => {
+                        Acoes.definir-papel(root.papel-pedido == 0);
+                        root.papel-pedido = -1;
+                    }
+                }
+
+                Botao {
+                    texto: "Cancelar";
+                    acionado => {
+                        root.papel-pedido = -1;
+                    }
                 }
             }
         }
@@ -71,9 +112,8 @@ export component Preferencias inherits VerticalLayout {
     Cartao {
         Grupo {
             titulo: "TELA DE BLOQUEIO";
-            nota: "Com isto ligado, o teclado do outro computador digita na tela de bloqueio e "
-                + "nos pedidos de permissão deste. É o que permite desbloquear esta máquina de "
-                + "lá — e é por isso que exige administrador.";
+            nota: Dados.estado.sobre-o-bloqueio + " Exige administrador, e liga também o "
+                + "Ctrl+Alt+Del pedido de lá (Ctrl+Alt+End no teclado do outro computador).";
 
             Alternativas {
                 opcoes: ["Não permitir", "Permitir"];
@@ -106,12 +146,22 @@ export component Preferencias inherits VerticalLayout {
             }
         }
 
-        if !Dados.estado.nivel-suficiente: Faixa {
-            texto: "Este computador ainda não consegue aceitar digitação na tela de bloqueio. "
-                + "Verifique se o serviço do InputRemote está instalado e em execução, e se o "
-                + "programa está assinado e instalado na pasta de programas.";
-            cor: Tema.atencao;
-            cor-de-fundo: Tema.atencao-suave;
+
+    }
+
+    if Dados.estado.servidor: Cartao {
+        Grupo {
+            titulo: "BLOQUEAR JUNTOS";
+            nota: "Quando este computador bloquear a tela, o outro, que ele controla, bloqueia "
+                + "também — ele não fica aberto para quem passar por ele.";
+
+            Alternativas {
+                opcoes: ["Bloquear os dois", "Só este"];
+                escolhida: Dados.estado.bloquear-juntos ? 0 : 1;
+                escolher(indice) => {
+                    Acoes.bloquear-juntos(indice == 0);
+                }
+            }
         }
     }
 
@@ -153,9 +203,17 @@ export component Preferencias inherits VerticalLayout {
                 Rectangle { }
 
                 Botao {
-                    texto: "Limpar agora";
-                    habilitado: Dados.recebidos-tem-o-que-limpar;
+                    texto: "Abrir a pasta";
                     acionado => {
+                        Acoes.abrir-recebidos();
+                    }
+                }
+
+                BotaoConfirmado {
+                    texto-normal: "Limpar agora";
+                    texto-de-confirmacao: "Apagar tudo?";
+                    habilitado: Dados.recebidos-tem-o-que-limpar;
+                    confirmado => {
                         Acoes.limpar-recebidos();
                     }
                 }
@@ -166,8 +224,8 @@ export component Preferencias inherits VerticalLayout {
     Cartao {
         Grupo {
             titulo: "QUANDO ALGO DÁ ERRADO";
-            nota: "O relatório traz portador, atraso medido, motivo da última queda e nível de "
-                + "capacidade. Não traz nada do que foi digitado.";
+            nota: "O relatório traz o meio de conexão, o atraso medido, o motivo da última queda e "
+                + "o nível de capacidade. Não traz nada do que foi digitado nem nome de arquivo.";
 
             if Dados.diagnostico == "": Botao {
                 texto: "Mostrar diagnóstico";
@@ -187,10 +245,24 @@ export component Preferencias inherits VerticalLayout {
                 font-size: Tema.fonte-nota;
             }
 
-            if Dados.diagnostico != "": Text {
-                text: "Selecione tudo com Ctrl+A e copie com Ctrl+C.";
-                font-size: Tema.fonte-nota;
-                color: Tema.texto-fraco;
+            if Dados.diagnostico != "": HorizontalLayout {
+                spacing: Tema.e2;
+
+                Text {
+                    text: "Selecione tudo com Ctrl+A e copie com Ctrl+C.";
+                    font-size: Tema.fonte-nota;
+                    color: Tema.texto-fraco;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+
+                // O relatório é uma foto: depois de reproduzir o problema, a pessoa quer a nova.
+                Botao {
+                    texto: "Atualizar";
+                    acionado => {
+                        Acoes.mostrar-diagnostico();
+                    }
+                }
             }
         }
     }
@@ -201,10 +273,10 @@ export component Preferencias inherits VerticalLayout {
             nota: "Esquecer apaga a chave combinada. Para voltar a usar, os dois lados precisam "
                 + "parear de novo e comparar um código novo.";
 
-            Botao {
-                texto: "Esquecer " + Dados.estado.par-nome;
-                perigo: true;
-                acionado => {
+            BotaoConfirmado {
+                texto-normal: "Esquecer " + Dados.estado.par-nome;
+                texto-de-confirmacao: "Clique de novo para esquecer";
+                confirmado => {
                     Acoes.esquecer-par();
                 }
             }

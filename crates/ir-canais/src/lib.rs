@@ -123,8 +123,8 @@ pub fn iniciar_controle(
 /// Quantos comandos ficam em espera para o agente antes de os mais velhos serem descartados.
 ///
 /// Maior que a fila de avisos: aqui cada item é uma tecla ou um movimento, e o caminho é o
-/// quente do produto. Um agente que se atrase além disto perdeu entrada de verdade, e o aviso
-/// de atraso é registrado em nível alto por isso.
+/// quente do produto. Um agente que se atrase além disto perderia entrada de verdade, então a
+/// conexão com ele é derrubada: ele solta tudo ao sair, e o serviço o relança.
 const FILA_DE_COMANDOS: usize = 4096;
 
 /// O nome do canal do agente, sobrescrevível por `IR_AGENT_ENDPOINT` para o teste.

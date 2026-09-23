@@ -113,6 +113,27 @@ pub enum Control {
     /// Só isto: um par autenticado pode pedir que a placa daqui não cochile, e nada mais sobre a
     /// configuração da máquina. O botão que manda o pedido está na tela do outro computador.
     DisableNetworkPowerSaving,
+    /// Gere Ctrl+Alt+Del aí. Desde a versão 4.
+    ///
+    /// O Ctrl+Alt+Del de verdade nunca chega a quem tem o teclado: o Windows o intercepta antes de
+    /// qualquer gancho. Por isso é um pedido explícito — o atalho Ctrl+Alt+End do lado que controla
+    /// —, e quem o recebe gera a Sequência de Atenção Segura pelo caminho do sistema
+    /// (`docs/05-windows.md` §4.3), só se o administrador de lá tiver permitido.
+    SecureAttention,
+    /// Se quem envia está recusando digitação num desktop protegido. Desde a versão 4.
+    ///
+    /// A tela de bloqueio e o UAC do lado controlado só aceitam digitação do par com a permissão
+    /// do administrador de lá. Sem ela, a digitação é descartada — e quem digita precisa saber
+    /// por que o teclado parou, em vez de achar que o produto travou (`docs/04-seguranca.md` §6).
+    ProtectedDesktop {
+        /// `true` enquanto recusa; `false` quando volta à área de trabalho.
+        refused: bool,
+    },
+    /// Bloqueie a tela aí. Desde a versão 4.
+    ///
+    /// Quem tem o teclado bloqueou a própria tela: o outro computador, que ele controlava, não pode
+    /// ficar aberto para quem passar por ele.
+    LockScreen,
 }
 
 /// A economia de energia do Wi-Fi de uma máquina.

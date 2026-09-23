@@ -149,7 +149,22 @@
                         Start="auto"
                         Account="LocalSystem"
                         ErrorControl="normal"
-                        Vital="yes" />
+                        Vital="yes">
+          <!-- Reinicio automatico apos falha. Sem ele um servico que caisse deixava o outro
+               computador sem teclado ate alguem abrir o console de servicos. As tres tentativas
+               esperam 5 s, e a contagem zera depois de um dia sem falha. -->
+          <util:ServiceConfig FirstFailureActionType="restart"
+                              SecondFailureActionType="restart"
+                              ThirdFailureActionType="restart"
+                              RestartServiceDelayInSeconds="5"
+                              ResetPeriodInDays="1" />
+          <!-- Tambem quando o servico para sozinho com codigo de erro, e nao so quando o
+               processo morre: e o caso de uma subida que falha (service.rs devolve codigo de
+               saida diferente de zero justamente para isto). -->
+          <ServiceConfig FailureActionsWhen="failedToStopOrReturnedError"
+                         OnInstall="yes"
+                         OnReinstall="yes" />
+        </ServiceInstall>
         <ServiceControl Id="ControleInputRemote"
                         Name="InputRemote"
                         Start="install"

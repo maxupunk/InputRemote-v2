@@ -101,7 +101,8 @@ async fn uma_transferencia(
     let plano = match manifesto::montar(id, &caminhos, leitor).await {
         Ok(plano) => plano,
         Err(erro) => {
-            warn!(%erro, "não consegui montar o manifesto");
+            warn!(erro = %erro.sem_caminho(), "não consegui montar o manifesto");
+            debug!(%erro, "detalhe do manifesto");
             anunciar(&ajuste.avisos, Sentido::Enviando, "", (0, 0), parada(&erro));
             return true;
         }

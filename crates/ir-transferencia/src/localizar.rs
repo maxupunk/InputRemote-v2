@@ -34,12 +34,7 @@ pub fn sem_localizador() -> Localizador {
 #[must_use]
 pub fn da_descoberta(descoberta: &ir_transporte::Descoberta) -> Localizador {
     let descoberta = descoberta.clone();
-    Arc::new(move |chave| Box::pin(descoberta.localizar(maquina_da_chave(&chave))))
-}
-
-/// O id de máquina de um par, derivado da chave pública dele.
-fn maquina_da_chave(chave: &PublicKey) -> ir_proto::ids::MachineId {
-    ir_proto::ids::MachineId(chave.0[..16].try_into().unwrap_or([0u8; 16]))
+    Arc::new(move |chave| Box::pin(descoberta.localizar(ir_transporte::maquina_da_chave(&chave))))
 }
 
 /// Para onde discar: o endereço de rede configurado, e senão onde a rede diz que o par está.

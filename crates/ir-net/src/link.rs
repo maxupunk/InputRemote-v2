@@ -6,6 +6,7 @@
 
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use ir_crypto::Transport;
 use tokio::net::UdpSocket;
@@ -19,6 +20,10 @@ pub struct SecureLink {
     socket: Arc<UdpSocket>,
     peer: SocketAddr,
     transport: Transport,
+    /// Troca de chaves pedida por fora do contador — só os testes pedem.
+    rechave_pedida: bool,
+    /// Quando estas chaves nasceram, para a troca por idade.
+    nascido: Instant,
 }
 
 impl SecureLink {
@@ -29,13 +34,33 @@ impl SecureLink {
             socket,
             peer,
             transport,
+            rechave_pedida: false,
+            nascido: Instant::now(),
         }
+    }
+
+    /// Há quanto tempo estas chaves estão em uso.
+    #[must_use]
+    pub fn idade(&self) -> Duration {
+        self.nascido.elapsed()
     }
 
     /// O endereço do par.
     #[must_use]
     pub const fn peer(&self) -> SocketAddr {
         self.peer
+    }
+
+    /// Se já convém trocar as chaves, pelo volume de quadros enviados neste enlace.
+    #[must_use]
+    pub fn should_rekey(&self) -> bool {
+        self.rechave_pedida || self.transport.should_rekey()
+    }
+
+    /// Nos testes, antecipa a troca de chaves sem mandar um milhão de quadros antes.
+    #[cfg(test)]
+    pub(crate) const fn pedir_rechave(&mut self) {
+        self.rechave_pedida = true;
     }
 
     /// Cifra e envia um texto claro da espécie dada.

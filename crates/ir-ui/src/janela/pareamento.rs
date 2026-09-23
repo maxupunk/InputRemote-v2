@@ -54,12 +54,19 @@ impl Contexto {
         self.etapa(EtapaDoPareamento::Comparando);
     }
 
-    /// Pede o pareamento a um endereço, e a tela passa a esperar o outro lado.
+    /// Pede o pareamento a um endereço, e a tela passa a esperar o outro lado — se o serviço
+    /// aceitou o pedido.
+    ///
+    /// A tela ia para "Chamando o outro computador…" mesmo quando o serviço recusava (um endereço
+    /// de Bluetooth numa máquina sem rádio, por exemplo), e ficava ali para sempre: o aviso que ela
+    /// prometia nunca vinha, porque o pedido nem tinha saído.
     fn parear_com(&self, endereco: String) {
-        self.enviar(Pedido::IniciarPareamento {
+        match self.servico.pedir(Pedido::IniciarPareamento {
             candidato: endereco,
-        });
-        self.etapa(EtapaDoPareamento::Esperando);
+        }) {
+            Resposta::Falha(falha) => self.falha_no_pareamento(falha),
+            _ => self.etapa(EtapaDoPareamento::Esperando),
+        }
     }
 }
 

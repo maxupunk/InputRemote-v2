@@ -12,7 +12,7 @@ use ir_ipc::transferencia::{Fase, Motivo, Sentido};
 use ir_proto::message::{BulkMessage, CancelReason};
 use ir_transporte::dados::Remetente;
 use tokio::sync::Mutex;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::Ajuste;
 use crate::enviando::parada;
@@ -58,7 +58,8 @@ pub(crate) async fn despejar(
             Ok(Some(mensagem)) => mensagem,
             Ok(None) => return Despejo::Pronto,
             Err(erro) => {
-                warn!(%erro, "leitura falhou no meio do envio");
+                warn!(erro = %erro.sem_caminho(), "leitura falhou no meio do envio");
+                debug!(%erro, "detalhe da leitura que falhou");
                 // O identificador **desta** transferência. Era `TransferId(0)`, e quem recebe
                 // ignora mensagem de outra transferência — então o cancelamento nunca chegava, e a
                 // recepção do outro lado ficava aberta até o enlace cair.

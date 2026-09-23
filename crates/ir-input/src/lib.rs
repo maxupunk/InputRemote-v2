@@ -117,6 +117,24 @@ pub trait Injector: Send {
     ///
     /// [`InputError`] em falha do sistema.
     fn release_all(&mut self) -> Result<()>;
+
+    /// O desktop em que o último evento foi injetado, onde a plataforma tem mais de um.
+    ///
+    /// No Windows, `Default`, `Winlogon` (tela de bloqueio e UAC) ou `Screen-saver`. O agente o
+    /// conta ao serviço quando muda.
+    fn desktop(&self) -> Option<String> {
+        None
+    }
+
+    /// Os desktops em que este injetor alcança — para o serviço saber o nível desta máquina.
+    fn desktops(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Se pode injetar fora da área de trabalho: tela de bloqueio, UAC, protetor de tela.
+    ///
+    /// Onde a plataforma não separa desktops, não há o que permitir.
+    fn permitir_desktop_protegido(&mut self, _permitir: bool) {}
 }
 
 /// Captura entrada local e suprime a entrada enquanto o controle está no par.
@@ -162,11 +180,75 @@ pub fn open_injector() -> Result<Box<dyn Injector>> {
     }
     #[cfg(windows)]
     {
-        Ok(Box::new(windows::sendinput::SendInputInjector::new()))
+        // Uma thread por desktop, para a tela de bloqueio e o UAC (ADR-0008). Se nem a área de
+        // trabalho abrir por ela, o injetor simples da thread corrente.
+        match windows::desktops::InjetorPorDesktop::novo() {
+            Ok(injetor) => Ok(Box::new(injetor)),
+            Err(_) => Ok(Box::new(windows::sendinput::SendInputInjector::new())),
+        }
     }
     #[cfg(not(any(target_os = "linux", windows)))]
     {
         Err(InputError::Unsupported)
+    }
+}
+
+/// O arranjo de telas desta sessão — todos os monitores —, onde a plataforma diz.
+///
+/// No Windows vem de `EnumDisplayMonitors`. Fora dele, `None`: o serviço usa a tela da configuração.
+#[must_use]
+pub fn arranjo_de_telas() -> Option<ir_proto::screens::ScreenLayout> {
+    #[cfg(windows)]
+    {
+        windows::telas::arranjo()
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
+/// O retângulo do desktop virtual — origem, largura e altura —, onde a plataforma diz.
+#[must_use]
+pub fn desktop_virtual() -> Option<(i32, i32, u32, u32)> {
+    #[cfg(windows)]
+    {
+        windows::telas::desktop_virtual()
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
+/// Bloqueia a tela desta sessão, como o Win+L. Só no Windows, e só de dentro da sessão — é o
+/// agente quem chama. Devolve se o sistema aceitou.
+#[must_use]
+pub fn bloquear_a_tela() -> bool {
+    #[cfg(windows)]
+    {
+        #[allow(unsafe_code)]
+        // SAFETY: a função não recebe nada; fora de uma sessão interativa ela só falha.
+        unsafe { ::windows::Win32::System::Shutdown::LockWorkStation() }.is_ok()
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
+/// O desktop que recebe a entrada agora — `Default`, `Winlogon`, `Screen-saver` — no Windows.
+///
+/// Fora do Windows não há desktops separados, e a resposta é sempre `None`.
+#[must_use]
+pub fn desktop_de_entrada() -> Option<String> {
+    #[cfg(windows)]
+    {
+        windows::desktops::nome_do_desktop_de_entrada()
+    }
+    #[cfg(not(windows))]
+    {
+        None
     }
 }
 
@@ -175,29 +257,30 @@ pub fn open_injector() -> Result<Box<dyn Injector>> {
 ///
 /// É o mesmo fato que [`start_capture`] expressa ao falhar com [`InputError::Unsupported`], dito
 /// **antes** de tentar: quem decide o papel da máquina precisa saber disso sem instalar ganchos
-/// para descobrir. No Windows a captura existe (ganchos de baixo nível, no agente); no Linux ainda
-/// não — ela é o portal `InputCapture` + `libei`, da Fase 2 ([06, §3](../../../docs/06-linux.md)).
+/// para descobrir. No Windows, ganchos de baixo nível no agente; no Linux, `evdev` lido pelo
+/// serviço, que roda como root ([`linux::captura`]).
 #[must_use]
 pub const fn capture_supported() -> bool {
-    cfg!(windows)
+    cfg!(any(windows, target_os = "linux"))
 }
 
 /// Começa a capturar, entregando os eventos por `sink`.
 ///
 /// # Errors
 ///
-/// [`InputError::Unsupported`] onde não há backend de captura; [`InputError`] em falha ao
-/// instalar os ganchos.
+/// [`InputError::Unsupported`] onde não há backend de captura, ou no Linux sem dispositivo legível;
+/// [`InputError`] em falha ao instalar os ganchos.
 pub fn start_capture(sink: Sender<CaptureEvent>) -> Result<Box<dyn Capturer>> {
     #[cfg(windows)]
     {
         Ok(Box::new(windows::hooks::HookCapturer::start(sink)?))
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
     {
-        // No Linux o papel de servidor é o portal `InputCapture` + `libei`, que é Fase 2
-        // ([06, §3](../../../docs/06-linux.md)). Aqui a captura ainda não existe.
-        //
+        Ok(Box::new(linux::captura::EvdevCapturer::start(sink)?))
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
+    {
         // O canal é descartado explicitamente: quem chamou entregou a ponta de escrita, e
         // largá-la fecha o canal na hora, em vez de deixar quem escuta esperando para sempre.
         drop(sink);
@@ -205,9 +288,9 @@ pub fn start_capture(sink: Sender<CaptureEvent>) -> Result<Box<dyn Capturer>> {
     }
 }
 
-// Só onde a captura não existe: no Windows, `start_capture` instala ganchos de verdade na sessão
+// Só onde a captura não existe: no Windows e no Linux, `start_capture` toma o teclado de verdade
 // de quem roda o teste, e um teste de unidade não tem o direito de fazer isso.
-#[cfg(all(test, not(windows)))]
+#[cfg(all(test, not(windows), not(target_os = "linux")))]
 mod tests {
     use super::*;
 

@@ -6,7 +6,7 @@
 
 import { Tema } from "tema.slint";
 import { Dados, Acoes, Saude } from "dados.slint";
-import { Cartao, Botao, Selo, Dado, Faixa, Ponto, Secao } from "componentes.slint";
+import { Cartao, Botao, Selo, Dado, Faixa, Ponto, Secao, Alternativas } from "componentes.slint";
 import { EscolhaDeBorda } from "bordas.slint";
 import { CartaoDeCopia, ListaDeCopias } from "copia.slint";
 
@@ -65,6 +65,14 @@ export component Inicio inherits VerticalLayout {
             cor-de-fundo: Tema.atencao-suave;
         }
 
+        // O teclado que "para de funcionar" na tela de bloqueio do outro computador: é proteção, e
+        // a pessoa precisa saber disso ali, e não achar que o produto travou.
+        if Dados.estado.aviso-do-bloqueio-do-par != "": Faixa {
+            texto: Dados.estado.aviso-do-bloqueio-do-par;
+            cor: Tema.atencao;
+            cor-de-fundo: Tema.atencao-suave;
+        }
+
         // O Wi-Fi que cochila faz o mouse pela rede travar em rajadas. O aviso vem com o botão que
         // resolve: sem ele, a pessoa teria de achar sozinha a configuração de energia da placa — e,
         // quando a placa é a do outro computador, ir até ele.
@@ -85,6 +93,7 @@ export component Inicio inherits VerticalLayout {
 
                 HorizontalLayout {
                     alignment: start;
+                    spacing: Tema.e3;
 
                     Botao {
                         texto: "Resolver";
@@ -92,6 +101,16 @@ export component Inicio inherits VerticalLayout {
                         acionado => {
                             Acoes.resolver-economia(Dados.estado.aviso-de-rede-no-par);
                         }
+                    }
+
+                    // O custo da escolha, dito antes do clique: a placa acordada gasta mais.
+                    Text {
+                        text: "A placa fica sempre acordada: gasta um pouco mais de bateria.";
+                        font-size: Tema.fonte-nota;
+                        color: Tema.texto-fraco;
+                        vertical-alignment: center;
+                        wrap: word-wrap;
+                        horizontal-stretch: 1;
                     }
                 }
             }
@@ -122,6 +141,27 @@ export component Inicio inherits VerticalLayout {
                 valor: Dados.estado.latencia;
                 cor-do-valor: Dados.estado.latencia-boa ? Tema.bom : Tema.atencao;
             }
+
+            // O último minuto, uma barra por segundo: o pico que explica o "travou agora há pouco".
+            if Dados.atrasos.length > 1: HorizontalLayout {
+                height: 28px;
+                spacing: 1px;
+                alignment: end;
+                accessible-role: text;
+                accessible-label: "Atraso do último minuto: " + Dados.estado.latencia;
+
+                for altura in Dados.atrasos: Rectangle {
+                    width: 4px;
+                    VerticalLayout {
+                        alignment: end;
+                        Rectangle {
+                            height: parent.height * altura;
+                            border-radius: 1px;
+                            background: altura >= 1.0 ? Tema.atencao : Tema.acao;
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -130,6 +170,12 @@ export component Inicio inherits VerticalLayout {
     if Dados.tem-copia: Cartao {
         CartaoDeCopia {
             copia: Dados.copia;
+            cancelar => {
+                Acoes.cancelar-copia();
+            }
+            abrir => {
+                Acoes.abrir-recebidos();
+            }
         }
 
         // As últimas cópias ficam atrás de um clique: quem abriu a janela quer saber da atual, e
@@ -175,11 +221,35 @@ export component Inicio inherits VerticalLayout {
         }
     }
 
-    if Dados.estado.conectado: Botao {
-        texto: "Encerrar conexão";
-        perigo: true;
+    // Pausar é pausar de verdade: o outro computador é avisado e ninguém reconecta até alguém
+    // retomar. "Encerrar conexão" só derrubava o enlace, e a reconexão voltava em 3 s.
+    if Dados.estado.pausado: Botao {
+        texto: "Retomar";
+        primario: true;
         acionado => {
-            Acoes.encerrar();
+            Acoes.retomar();
+        }
+    }
+
+    if Dados.estado.conectado && !Dados.estado.pausado: HorizontalLayout {
+        spacing: Tema.e2;
+
+        Botao {
+            texto: "Pausar";
+            horizontal-stretch: 1;
+            acionado => {
+                Acoes.encerrar();
+            }
+        }
+
+        // O Ctrl+Alt+Del de verdade nunca sai deste teclado; o atalho é Ctrl+Alt+End, e o botão
+        // é para quem não se lembra dele.
+        if Dados.estado.servidor: Botao {
+            texto: "Ctrl+Alt+Del no outro";
+            horizontal-stretch: 1;
+            acionado => {
+                Acoes.ctrl-alt-del();
+            }
         }
     }
 
@@ -187,6 +257,25 @@ export component Inicio inherits VerticalLayout {
     // escolha nos dois lados deixou a bancada com as duas telas dizendo "esquerda" (log 24).
     if Dados.estado.tem-par && Dados.estado.servidor: Cartao {
         EscolhaDeBorda { }
+
+        // Travar a borda é para quando o ponteiro atravessa sem querer — uma apresentação, um
+        // jogo em tela cheia. O atalho continua levando o controle.
+        Alternativas {
+            opcoes: ["Borda livre", "Borda travada"];
+            escolhida: Dados.estado.borda-travada ? 1 : 0;
+            escolher(indice) => {
+                Acoes.travar-borda(indice == 1);
+            }
+        }
+
+        Text {
+            text: "Atalhos: Ctrl+Alt+Shift+Espaço leva o controle ao outro computador e o traz "
+                + "de volta; Ctrl+Alt+Shift+Esc devolve o controle e solta tudo; Ctrl+Alt+End é "
+                + "o Ctrl+Alt+Del do outro computador.";
+            font-size: Tema.fonte-nota;
+            color: Tema.texto-fraco;
+            wrap: word-wrap;
+        }
     }
 
     Rectangle { }

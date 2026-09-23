@@ -20,6 +20,8 @@ version = "0.62"
 features = [
     "Win32_Foundation",
     "Win32_Security",
+    # `SendSAS`, o Ctrl+Alt+Del gerado pelo serviço.
+    "Win32_Security_Authentication_Identity",
     "Win32_System_Environment",
     "Win32_System_RemoteDesktop",
     "Win32_System_Threading",

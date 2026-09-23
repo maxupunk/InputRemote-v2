@@ -49,6 +49,12 @@ struct Contexto {
     copia_medida: RefCell<Option<String>>,
     /// As últimas cópias e o tráfego da sessão.
     historico: RefCell<crate::historico::Historico>,
+    /// Onde os recebidos ficam, pelo último estado, para o botão "Abrir a pasta".
+    pasta_de_recebidos: RefCell<String>,
+    /// Se o último estado tinha sessão de pé, para perceber a queda.
+    conectado_antes: Cell<bool>,
+    /// As últimas medianas de atraso, para o gráfico.
+    atrasos: RefCell<crate::historico::Atrasos>,
 }
 
 impl Contexto {
@@ -60,12 +66,24 @@ impl Contexto {
 
     fn aplicar(&self, estado: &Estado) {
         *self.par.borrow_mut() = estado.par.as_ref().map(|par| par.maquina);
+        self.pasta_de_recebidos
+            .replace(estado.pasta_de_recebidos.clone());
+        let conectado = estado.enlace.conectado();
+        if self.conectado_antes.replace(conectado) && !conectado {
+            self.avisar_queda(estado);
+        }
+        let barras = {
+            let mut atrasos = self.atrasos.borrow_mut();
+            atrasos.anotar(estado.latencia.filter(|_| conectado).map(|m| m.mediana_ms));
+            atrasos.barras()
+        };
         let (recebidos, tem_o_que_limpar) = crate::historico::recebidos_ui(estado.recebidos_bytes);
         self.com_janela(|janela| {
             let dados = janela.global::<Dados>();
             dados.set_estado(ponte::estado_ui(estado));
             dados.set_recebidos(recebidos.clone().into());
             dados.set_recebidos_tem_o_que_limpar(tem_o_que_limpar);
+            dados.set_atrasos(ModelRc::new(VecModel::from(barras.clone())));
         });
     }
 
@@ -155,6 +173,7 @@ impl Contexto {
             }
             Aviso::Transferencia(transferencia) => self.mostrar_copia(&transferencia),
             Aviso::PareamentoFalhou(falha) => self.falha_no_pareamento(falha),
+            Aviso::Falhou(falha) => self.recado(Some(falha)),
             Aviso::PareamentoConcluido { sucesso: false } => {
                 // Uma recusa que a própria janela pediu já está na tela com o motivo certo, e o
                 // aviso que chega atrás dela não pode trocá-lo por um genérico. Fora isso, a
@@ -302,6 +321,9 @@ pub fn abrir(
         velocimetro: RefCell::default(),
         copia_medida: RefCell::default(),
         historico: RefCell::default(),
+        pasta_de_recebidos: RefCell::default(),
+        conectado_antes: Cell::new(false),
+        atrasos: RefCell::default(),
     });
 
     {
@@ -329,6 +351,24 @@ pub fn abrir(
         batida.escutar();
         batida.observar_conexao();
     });
+
+    // Com a janela aberta, o estado a cada segundo: o atraso muda sem a fase mudar, e o serviço só
+    // avisa quando a fase muda. Fechada, nada — ninguém está olhando o gráfico.
+    let medidor = Timer::default();
+    let olhar = Rc::clone(&contexto);
+    medidor.start(
+        TimerMode::Repeated,
+        std::time::Duration::from_secs(1),
+        move || {
+            let aberta = olhar
+                .janela
+                .upgrade()
+                .is_some_and(|janela| janela.window().is_visible());
+            if aberta {
+                olhar.sincronizar();
+            }
+        },
+    );
 
     crate::bandeja::rodar(&janela, inicio, marca)
 }

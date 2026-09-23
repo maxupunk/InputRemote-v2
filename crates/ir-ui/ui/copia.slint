@@ -6,6 +6,7 @@
 // desenha.
 
 import { Tema } from "tema.slint";
+import { Botao } from "componentes.slint";
 
 /// Uma cópia, na forma em que a tela a desenha.
 export struct CopiaUi {
@@ -19,6 +20,10 @@ export struct CopiaUi {
     estado: int,
     /// A taxa medida, "30,0 MB/s", ou vazio enquanto não há duas medidas.
     velocidade: string,
+    /// Se é uma cópia saindo daqui, e ainda andando — a única que se cancela daqui.
+    cancelavel: bool,
+    /// Se chegou aqui e está entregue — aí há uma pasta a abrir.
+    recebida: bool,
 }
 
 /// Uma cópia que já terminou, para a lista das últimas.
@@ -62,6 +67,10 @@ component Barra inherits Rectangle {
 /// O bloco que conta a cópia. Serve na janela e no aviso flutuante — o mesmo texto nos dois.
 export component CartaoDeCopia inherits VerticalLayout {
     in property <CopiaUi> copia;
+    /// Parar a cópia que está saindo daqui.
+    callback cancelar();
+    /// Abrir a pasta onde a cópia recebida está.
+    callback abrir();
 
     spacing: Tema.e2;
 
@@ -109,6 +118,27 @@ export component CartaoDeCopia inherits VerticalLayout {
     if root.copia.estado == 0: Barra {
         progresso: root.copia.progresso;
         cor: Copia.cor(root.copia.estado);
+    }
+
+    // As duas ações que a cópia pede: parar a que está saindo daqui, e achar a que chegou. Uma
+    // cópia que parou não tem botão de repetir — quem sabe o que copiar é o Ctrl+C —, e o detalhe
+    // já diz o motivo e o que fazer.
+    if root.copia.cancelavel || root.copia.recebida: HorizontalLayout {
+        alignment: start;
+
+        if root.copia.cancelavel: Botao {
+            texto: "Cancelar";
+            acionado => {
+                root.cancelar();
+            }
+        }
+
+        if root.copia.recebida: Botao {
+            texto: "Abrir a pasta";
+            acionado => {
+                root.abrir();
+            }
+        }
     }
 }
 

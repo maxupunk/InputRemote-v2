@@ -87,7 +87,9 @@ precisa ler o ELF no próprio sistema de destino para acertar os `Requires`.
 
 ## Como usar agora
 
-O teclado e o mouse do Windows já chegam ao Linux por rede, com pareamento cifrado, na sessão desbloqueada (nível N1). O passo a passo está em [USAR.md](USAR.md).
+Windows e Linux, nos dois sentidos, por Bluetooth e rede ao mesmo tempo, com pareamento cifrado;
+copiar e colar texto, arquivos e imagens; pausa, atalhos e a saída de emergência. O passo a passo, e
+o que ainda não foi provado em hardware, está em [USAR.md](USAR.md).
 
 ## Documentação
 

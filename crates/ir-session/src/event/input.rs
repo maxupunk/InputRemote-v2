@@ -103,6 +103,16 @@ pub enum Input {
 
     /// O usuário pediu, daqui, que o par desligue a economia de energia do Wi-Fi dele.
     DisablePeerNetworkPowerSaving,
+    /// Peça Ctrl+Alt+Del ao par — pelo botão da janela, além do atalho Ctrl+Alt+End.
+    SecureAttention,
+    /// A periferia daqui passou a recusar (`true`), ou voltou a aceitar, digitação do par no
+    /// desktop protegido — a tela de bloqueio e o UAC.
+    LocalProtectedDesktop(bool),
+    /// Trave, ou destrave, a borda: com ela travada, o ponteiro não atravessa para o par — só o
+    /// atalho Ctrl+Alt+Shift+Espaço leva o controle.
+    LockEdge(bool),
+    /// A tela daqui bloqueou: peça ao par que bloqueie a dele.
+    LockPeerScreen,
 }
 
 /// Por que um portador caiu, do ponto de vista local.
@@ -124,6 +134,11 @@ pub enum LinkDown {
     /// É o caso do adeus que se perdeu no caminho. Não se avisa o par de nada: ele já está em
     /// outra sessão, e um adeus desta seria descartado por ser de uma encarnação que acabou.
     PeerRestarted,
+    /// O serviço desta máquina está parando: desligamento, atualização.
+    ///
+    /// Distinto de [`Self::UserStopped`]: o par entende "pedido pelo usuário" como pausa e para
+    /// de discar; um serviço que para para atualizar volta em segundos, e o par deve esperá-lo.
+    ServiceStopping,
 }
 
 impl LinkDown {
@@ -132,7 +147,11 @@ impl LinkDown {
     pub const fn should_retry(self) -> bool {
         match self {
             Self::PeerClosed(reason) => reason.should_retry(),
-            Self::Timeout | Self::TransportFailed | Self::Suspending | Self::PeerRestarted => true,
+            Self::Timeout
+            | Self::TransportFailed
+            | Self::Suspending
+            | Self::PeerRestarted
+            | Self::ServiceStopping => true,
             Self::UserStopped => false,
         }
     }
@@ -146,6 +165,7 @@ impl LinkDown {
             Self::TransportFailed => DisconnectReason::ProtocolError,
             Self::Suspending => DisconnectReason::Suspending,
             Self::UserStopped => DisconnectReason::UserRequested,
+            Self::ServiceStopping => DisconnectReason::ServiceStopping,
             // Nunca vai ao par; o mais próximo do que aconteceu é uma reconfiguração.
             Self::PeerRestarted => DisconnectReason::Reconfiguring,
         }

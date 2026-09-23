@@ -10,7 +10,7 @@ use std::time::Instant;
 use ir_proto::carrier::Carrier;
 use ir_proto::ids::RadioAddress;
 use ir_session::Input;
-use tracing::{info, warn};
+use tracing::info;
 
 use super::Daemon;
 use crate::config::Config;
@@ -70,7 +70,9 @@ impl Daemon {
         if !self.alcance.buscar_agora(agora) {
             return;
         }
-        let busca = self.descoberta.localizar(crate::machine_id_of(&chave));
+        let busca = self
+            .descoberta
+            .localizar(ir_transporte::maquina_da_chave(&chave));
         let de_fundo = self.de_fundo.clone();
         runtime.spawn(async move {
             if let Some(endereco) = busca.await {
@@ -83,7 +85,22 @@ impl Daemon {
     pub(crate) fn on_par_achado(&mut self, endereco: SocketAddr) {
         info!(%endereco, "par achado na rede");
         self.alcance.anotar(Endereco::Rede(endereco));
+        self.atualizar_destino_dos_arquivos();
         self.discar_o_que_falta();
+    }
+
+    /// Conta ao canal de arquivos onde o par está agora, pelo [`ir_transporte::Alcance`].
+    ///
+    /// O canal de arquivos lia o endereço da configuração uma vez, e fazia a própria busca na rede:
+    /// quando o serviço achava o par em outro endereço — um DHCP que mudou —, a entrada ia para o
+    /// endereço novo e os arquivos continuavam discando o velho. O `Alcance` é a fonte de onde o par
+    /// está; o que a configuração diz entra nele na subida.
+    pub(crate) fn atualizar_destino_dos_arquivos(&self) {
+        let mut destino = crate::arquivos::destino(&self.config);
+        if let Some(rede) = self.alcance.endereco(Carrier::Udp) {
+            destino.alvo = Some(rede);
+        }
+        self.arquivos.trocar_destino(destino);
     }
 
     /// O par contou o endereço do rádio dele: guardar — também no disco, para a próxima subida já
@@ -95,9 +112,8 @@ impl Daemon {
             self.alcance.anotar(endereco);
             if let Some(par) = self.config.peers.first_mut() {
                 par.radio = Some(endereco.to_string());
-                if let Err(erro) = self.config.save(&self.data_dir) {
-                    warn!(%erro, "não foi possível gravar o endereço do rádio do par");
-                }
+                // Sem esperar: isto chega com a sessão recém-estabelecida, e o ponteiro já anda.
+                self.gravador.gravar(&self.config);
             }
         }
         self.discar_o_que_falta();
@@ -113,6 +129,9 @@ impl Daemon {
         self.radio_proprio = aberto.proprio;
         self.descoberta.adotar_pareados(aberto.pareados);
         self.anunciar_radio_proprio();
+        // O rádio novo não ouviu a decisão sobre pedidos de pareamento de fora.
+        self.abertura_anunciada = None;
+        self.anunciar_abertura();
         self.discar_o_que_falta();
     }
 
@@ -146,5 +165,4 @@ impl Daemon {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
 mod testes;

@@ -333,7 +333,11 @@ o reaplica a cada 500 ms enquanto estiver em modo remoto.
 por repetição com espera curta — outra aplicação pode estar segurando o clipboard.
 
 - texto: `CF_UNICODETEXT`, convertendo LF do protocolo para CRLF ao publicar;
-- imagem: `CF_DIB`/`CF_DIBV5` na leitura, PNG canônico no protocolo, `CF_DIBV5` ao publicar;
+- imagem: o formato registrado `PNG` na leitura quando existe (navegadores e editores o põem, e
+  ele guarda a transparência), senão `CF_DIBV5`/`CF_DIB` convertido para PNG; ao publicar, `PNG` e
+  `CF_DIB` de 32 bits juntos — o primeiro para quem o lê e para a guarda de eco reconhecer a própria
+  cópia, o segundo para todo o resto. Lida **depois** do texto: a planilha põe uma figura das
+  células junto com o texto delas. A conversão fica em `ir-clip/src/imagem.rs`, sem `unsafe`;
 - arquivos: `CF_HDROP`, materializados em pasta temporária antes de publicar.
 
 Clipboard pertence ao agente do desktop `Default`. No desktop `Winlogon` não há clipboard

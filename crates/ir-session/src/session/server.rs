@@ -15,7 +15,7 @@ use ir_proto::message::{Control, InputMessage, Message, PointerMessage};
 use ir_proto::screens::Edge;
 
 use crate::config::Role;
-use crate::event::{Command, CommandBatch, Notice, TimerId};
+use crate::event::{Command, CommandBatch, Notice};
 use crate::phase::Phase;
 use crate::session::Session;
 use crate::time::Timestamp;
@@ -45,8 +45,19 @@ impl Session {
 
         match advance(desktop, self.pointer, delta, self.config.peer_edge) {
             Movement::Stayed(point) => self.pointer = point,
+            // Com a borda travada, bater nela não atravessa: o ponteiro fica onde está.
+            Movement::Crossed(_) if self.edge_locked => {}
             Movement::Crossed(crossing) => self.give_control_away(now, crossing, out),
         }
+    }
+
+    /// Leva o controle ao par sem passar pela borda: pelo meio dela, como se tivesse atravessado ali.
+    pub(super) fn switch_to_peer(&mut self, now: Timestamp, out: &mut CommandBatch) {
+        let crossing = Crossing {
+            exit_edge: self.config.peer_edge,
+            fraction: u16::MAX / 2,
+        };
+        self.give_control_away(now, crossing, out);
     }
 
     /// Entrega o controle ao par.
@@ -71,10 +82,6 @@ impl Session {
         self.pending_pointer = PointerDelta::ZERO;
         self.clock.last_pointer = now;
         self.clock.last_snapshot = now;
-        out.push(Command::SetTimer {
-            id: TimerId::Snapshot,
-            at: now.plus(self.config.timings.snapshot_interval),
-        });
     }
 
     /// Onde o ponteiro deve aparecer no par.
@@ -107,13 +114,6 @@ impl Session {
             self.clock.last_pointer,
             self.config.timings.pointer_interval,
         ) {
-            out.push(Command::SetTimer {
-                id: TimerId::PointerFlush,
-                at: self
-                    .clock
-                    .last_pointer
-                    .plus(self.config.timings.pointer_interval),
-            });
             return;
         }
         let delta = core::mem::replace(&mut self.pending_pointer, PointerDelta::ZERO);
@@ -139,10 +139,6 @@ impl Session {
             position: self.local_position(),
         };
         self.send(now, Message::Control(message), out);
-        out.push(Command::SetTimer {
-            id: TimerId::Snapshot,
-            at: now.plus(self.config.timings.snapshot_interval),
-        });
     }
 
     pub(super) fn local_position(&self) -> PointerPosition {
@@ -163,6 +159,12 @@ impl Session {
         pressed: bool,
         out: &mut CommandBatch,
     ) {
+        if self.config.role.captures() {
+            self.held_here = self.held_here.applying(usage, pressed);
+            if self.phase.is_established() && self.take_shortcut(now, usage, pressed, out) {
+                return;
+            }
+        }
         if !self.is_forwarding() {
             return;
         }
@@ -284,7 +286,5 @@ impl Session {
             self.phase = Phase::Ready;
             out.push(Command::Notify(Notice::ControlMoved { remote: false }));
         }
-        out.push(Command::ClearTimer(TimerId::Snapshot));
-        out.push(Command::ClearTimer(TimerId::PointerFlush));
     }
 }

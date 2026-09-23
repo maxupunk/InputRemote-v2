@@ -72,6 +72,10 @@ impl Transporte for Rede {
         let _ = self.comandos.send(NetCommand::ConfirmPairing(conferiu));
     }
 
+    fn aceitar_pareamento(&self, aceitar: bool) {
+        let _ = self.comandos.send(NetCommand::AcceptPairing(aceitar));
+    }
+
     fn desconectar(&self) {
         let _ = self.comandos.send(NetCommand::Disconnect);
     }

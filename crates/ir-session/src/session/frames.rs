@@ -33,7 +33,6 @@ impl Session {
         // tempo enquanto processa uma rajada.
         self.clock.last_rx = now;
         self.clock.mark_carrier_rx(carrier, now);
-        self.arm_link_timeout(now, out);
         self.adopt_carrier_if_needed(carrier, out);
 
         // A confirmação vem antes de qualquer despacho: ela libera janela do nosso lado, e
@@ -170,6 +169,18 @@ impl Session {
             Control::Reach { radio } => Self::on_reach(radio, out),
             Control::NetworkPower(state) => Self::on_peer_network_power(state, out),
             Control::DisableNetworkPowerSaving => Self::on_network_power_fix_requested(out),
+            // Só o controlado gera Ctrl+Alt+Del; pedido ao contrário é engano do par, e ignorado.
+            // Quem gera o Ctrl+Alt+Del, e decide se pode, é a periferia do controlado.
+            Control::SecureAttention if self.config.role == crate::config::Role::Client => {
+                out.push(Command::SecureAttention);
+            }
+            Control::ProtectedDesktop { refused } => {
+                out.push(Command::Notify(Notice::PeerProtectedDesktop { refused }));
+            }
+            // Só quem é controlado bloqueia a pedido; o contrário seria o par trancando quem digita.
+            Control::LockScreen if self.config.role == crate::config::Role::Client => {
+                out.push(Command::LockScreen);
+            }
             Control::Error { code, fatal } => {
                 out.push(Command::Notify(Notice::ProtocolError { code, fatal }));
                 if fatal || code.is_always_fatal() {

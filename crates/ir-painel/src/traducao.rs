@@ -1,0 +1,134 @@
+//! As traduções entre o vocabulário da sessão e o da interface — e o do agente.
+//!
+//! Uma por conceito, num lugar só: a borda, o papel e o portador tinham nome em três vocabulários
+//! (protocolo, interface, arquivo de configuração), e cada módulo do serviço convertia do seu jeito.
+
+use ir_ipc::{Borda, ComandoDoAgente, LinkState, Papel, Portador};
+use ir_proto::carrier::Carrier;
+use ir_proto::screens::Edge;
+use ir_session::{Injection, Phase, Role};
+
+/// A fase da sessão, traduzida para o enlace que a interface mostra.
+#[must_use]
+pub const fn link_state(phase: Phase) -> LinkState {
+    match phase {
+        Phase::Offline => LinkState::Desconectado,
+        Phase::Handshaking => LinkState::Conectando,
+        Phase::Ready => LinkState::Pronto,
+        Phase::Engaged => LinkState::EmUso,
+    }
+}
+
+/// O papel da sessão, no vocabulário da interface.
+#[must_use]
+pub const fn papel_de(role: Role) -> Papel {
+    match role {
+        Role::Server => Papel::Servidor,
+        Role::Client => Papel::Cliente,
+    }
+}
+
+/// O papel da interface, no vocabulário da sessão.
+#[must_use]
+pub const fn role_de(papel: Papel) -> Role {
+    match papel {
+        Papel::Servidor => Role::Server,
+        Papel::Cliente => Role::Client,
+    }
+}
+
+/// A borda do protocolo, no vocabulário da interface.
+#[must_use]
+pub const fn borda_de(edge: Edge) -> Borda {
+    match edge {
+        Edge::Left => Borda::Esquerda,
+        Edge::Right => Borda::Direita,
+        Edge::Top => Borda::Acima,
+        Edge::Bottom => Borda::Abaixo,
+    }
+}
+
+/// O portador do protocolo, no vocabulário da interface.
+#[must_use]
+pub const fn portador_de(carrier: Carrier) -> Portador {
+    match carrier {
+        Carrier::Rfcomm => Portador::Bluetooth,
+        Carrier::Udp => Portador::RedeLocal,
+        Carrier::Tcp => Portador::RedeDeArquivos,
+    }
+}
+
+/// O portador como fica no arquivo de configuração.
+#[must_use]
+pub const fn texto_do_portador(portador: Portador) -> &'static str {
+    match portador {
+        Portador::Bluetooth => "bluetooth",
+        Portador::RedeLocal | Portador::RedeDeArquivos => "rede",
+    }
+}
+
+/// O portador fixado no arquivo de configuração, se o texto for um dos conhecidos.
+#[must_use]
+pub fn portador_do_texto(texto: Option<&str>) -> Option<Portador> {
+    match texto? {
+        "bluetooth" => Some(Portador::Bluetooth),
+        "rede" => Some(Portador::RedeLocal),
+        _ => None,
+    }
+}
+
+/// A economia de energia do Wi-Fi, como a sessão a conta, no vocabulário da tela — só quando
+/// atrapalha.
+#[must_use]
+pub const fn economia_na_tela(
+    estado: Option<ir_proto::message::NetworkPowerSaving>,
+) -> Option<ir_ipc::EconomiaDoWifi> {
+    use ir_proto::message::NetworkPowerSaving as E;
+    match estado {
+        Some(E::On) => Some(ir_ipc::EconomiaDoWifi::Ligada),
+        Some(E::OnBattery) => Some(ir_ipc::EconomiaDoWifi::SoNaBateria),
+        Some(E::Off) | None => None,
+    }
+}
+
+/// Um comando de injeção da sessão, no vocabulário do agente.
+#[must_use]
+pub const fn comando_do_agente(injection: Injection) -> Option<ComandoDoAgente> {
+    Some(match injection {
+        Injection::Key { usage, pressed } => ComandoDoAgente::Tecla {
+            usage,
+            pressionada: pressed,
+        },
+        Injection::Button { button, pressed } => ComandoDoAgente::Botao {
+            botao: button,
+            pressionado: pressed,
+        },
+        Injection::Wheel(delta) => ComandoDoAgente::Roda(delta),
+        Injection::Pointer(position) => ComandoDoAgente::Ponteiro(position),
+        _ => return None,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn o_portador_vai_ao_arquivo_e_volta_igual() {
+        for portador in [Portador::Bluetooth, Portador::RedeLocal] {
+            assert_eq!(
+                portador_do_texto(Some(texto_do_portador(portador))),
+                Some(portador)
+            );
+        }
+        assert_eq!(portador_do_texto(Some("pombo-correio")), None);
+        assert_eq!(portador_do_texto(None), None);
+    }
+
+    #[test]
+    fn o_papel_vai_e_volta() {
+        for role in [Role::Server, Role::Client] {
+            assert_eq!(role_de(papel_de(role)), role);
+        }
+    }
+}

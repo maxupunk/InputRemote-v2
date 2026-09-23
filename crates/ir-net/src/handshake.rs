@@ -43,6 +43,8 @@ pub enum ConnectMode {
     Pair,
     /// Reconexão, com a chave estática do par fixada.
     Reconnect(PublicKey),
+    /// Troca de chaves de um enlace que está de pé, com a mesma chave do par.
+    Rekey(PublicKey),
 }
 
 impl ConnectMode {
@@ -50,6 +52,7 @@ impl ConnectMode {
         match self {
             Self::Pair => Mode::Pair,
             Self::Reconnect(_) => Mode::Reconnect,
+            Self::Rekey(_) => Mode::Rekey,
         }
     }
 }
@@ -79,7 +82,9 @@ pub async fn drive_initiator(
 ) -> Result<Established> {
     let handshake = match mode {
         ConnectMode::Pair => Handshake::pair_initiator(identity)?,
-        ConnectMode::Reconnect(peer_key) => Handshake::reconnect_initiator(identity, peer_key)?,
+        ConnectMode::Reconnect(peer_key) | ConnectMode::Rekey(peer_key) => {
+            Handshake::reconnect_initiator(identity, peer_key)?
+        }
     };
     run_desde(socket, peer, handshake, mode.wire_mode(), None).await
 }
@@ -102,7 +107,7 @@ pub async fn drive_responder(
     let (mode, message) = wire::parse_handshake(first).ok_or(NetError::Malformed)?;
     let mut handshake = match mode {
         Mode::Pair => Handshake::pair_responder(identity)?,
-        Mode::Reconnect => Handshake::reconnect_responder(identity)?,
+        Mode::Reconnect | Mode::Rekey => Handshake::reconnect_responder(identity)?,
     };
     handshake.read_message(message)?;
     run_desde(socket, peer, handshake, mode, Some(first)).await

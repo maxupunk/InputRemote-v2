@@ -1,5 +1,7 @@
 //! O ajudante contra um clipboard de mentira.
 
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use super::*;
 
 /// Um clipboard de mentira que lembra o que foi publicado e devolve o que tem.
@@ -181,4 +183,54 @@ fn um_envio_que_falhou_pode_ser_repetido_pela_mesma_copia() {
         2,
         "a falha tinha de liberar a repetição"
     );
+}
+
+#[test]
+fn uma_imagem_atravessa_como_arquivo_e_chega_como_imagem() {
+    // Deste lado: a imagem copiada vira um pedido de envio de um PNG reconhecível.
+    let png = b"png de mentira do teste do ajudante".to_vec();
+    let mut clip = Mentira {
+        dentro: Some(Conteudo::Imagem(png.clone())),
+        ..Mentira::default()
+    };
+    let mut saida = Vec::new();
+    oferecer(&mut saida, &mut clip, &mut Eco::nova());
+    let saiu = pedidos(&saida);
+    let [Pedido::EnviarArquivos { caminhos }] = saiu.as_slice() else {
+        panic!("a imagem tinha de virar um envio");
+    };
+    let [caminho] = caminhos.as_slice() else {
+        panic!("um arquivo só");
+    };
+    let enviado = PathBuf::from(caminho);
+    assert_eq!(std::fs::read(&enviado).unwrap(), png);
+
+    // Do outro lado: o arquivo chega à pasta de recebidos e volta a ser imagem.
+    let recebidos = std::env::temp_dir().join(format!("ir-recebidos-{}", std::process::id()));
+    std::fs::create_dir_all(&recebidos).unwrap();
+    let chegou = recebidos.join(enviado.file_name().unwrap());
+    std::fs::copy(&enviado, &chegou).unwrap();
+    let mut outro = Mentira::default();
+    let mut eco = Eco::nova();
+    let concluida = Transferencia {
+        sentido: Sentido::Recebendo,
+        nome: "imagem".to_owned(),
+        bytes_feitos: 1,
+        bytes_total: 1,
+        fase: Fase::Concluida {
+            destino: chegou.to_string_lossy().into_owned(),
+        },
+    };
+    reagir(&concluida, &mut outro, &mut eco);
+    assert_eq!(outro.publicado, vec![Conteudo::Imagem(png)]);
+    assert!(!chegou.exists(), "a imagem recebida não fica na pasta");
+
+    // E a leitura seguinte não devolve a imagem ao par.
+    let mut volta = Vec::new();
+    oferecer(&mut volta, &mut outro, &mut eco);
+    assert!(
+        pedidos(&volta).is_empty(),
+        "o eco da imagem voltou para o par"
+    );
+    let _ = std::fs::remove_dir_all(recebidos);
 }

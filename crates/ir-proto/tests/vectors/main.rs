@@ -1,4 +1,4 @@
-//! Vetores gravados do formato de fio, versão 3.
+//! Vetores gravados do formato de fio, versão 4.
 //!
 //! Este arquivo é a única proteção contra a falha mais perigosa deste protocolo.
 //!

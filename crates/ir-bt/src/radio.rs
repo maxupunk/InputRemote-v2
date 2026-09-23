@@ -146,6 +146,8 @@ pub(crate) mod mentira {
         /// Quem está pareado no "sistema" desta máquina.
         pareados: Vec<BdAddr>,
         disponivel: bool,
+        /// Se a escuta morreu, como no Windows quando o Bluetooth é desligado.
+        escuta_morta: bool,
     }
 
     impl RadioDeMentira {
@@ -171,6 +173,7 @@ pub(crate) mod mentira {
                     entradas: Mutex::new(de_la),
                     pareados: lista(LA),
                     disponivel: true,
+                    escuta_morta: false,
                 }),
                 Arc::new(Self {
                     endereco: LA,
@@ -178,6 +181,7 @@ pub(crate) mod mentira {
                     entradas: Mutex::new(de_aqui),
                     pareados: lista(AQUI),
                     disponivel: true,
+                    escuta_morta: false,
                 }),
             )
         }
@@ -191,6 +195,20 @@ pub(crate) mod mentira {
                 entradas: Mutex::new(entradas),
                 pareados: Vec::new(),
                 disponivel: false,
+                escuta_morta: false,
+            })
+        }
+
+        /// Um rádio que existia e foi desligado: a escuta acabou.
+        pub(crate) fn desligado_depois() -> Arc<Self> {
+            let (para_o_outro, entradas) = mpsc::unbounded_channel();
+            Arc::new(Self {
+                endereco: AQUI,
+                para_o_outro,
+                entradas: Mutex::new(entradas),
+                pareados: Vec::new(),
+                disponivel: true,
+                escuta_morta: true,
             })
         }
     }
@@ -237,6 +255,11 @@ pub(crate) mod mentira {
         }
 
         async fn aceitar(&self) -> Result<(Self::Canal, BdAddr)> {
+            if self.escuta_morta {
+                return Err(BtError::SemRadio(
+                    "o rádio de mentira foi desligado".to_owned(),
+                ));
+            }
             let mut entradas = self.entradas.lock().await;
             match entradas.recv().await {
                 Some(entrante) => Ok(entrante),

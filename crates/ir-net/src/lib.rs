@@ -34,6 +34,7 @@ pub mod endpoint;
 pub mod error;
 pub mod handshake;
 pub mod link;
+mod vocabulario;
 /// A regra de quem disca, agora compartilhada com o Bluetooth: mora no `ir-crypto`.
 pub use ir_crypto::turno;
 pub mod wire;

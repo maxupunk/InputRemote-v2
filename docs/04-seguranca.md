@@ -91,7 +91,12 @@ Regras que sustentam a garantia:
   ([ADR-0012](adr/0012-rota-dupla.md): com a rota dupla, o outro lado disca o segundo portador
   por conta própria);
 - 5 tentativas de pareamento por par, com espera crescente entre elas;
-- a comparação do código recebido é feita em tempo constante.
+- a comparação do código recebido é feita em tempo constante;
+- uma máquina que **já tem par** só atende pedido de pareamento vindo de fora nos três minutos
+  depois de alguém abrir o pareamento nela; fora disso o transporte recusa antes de qualquer
+  criptografia, sem código na tela. Antes, qualquer um na rede local podia mandar um pedido a cada
+  poucos segundos: um código aparecia sem ninguém ter pedido, e a reconexão ao par de verdade
+  esperava atrás dele ([log 45](logs/45-a-varredura-implementada.md)).
 
 ### 3.2.1. O que o par pode pedir a esta máquina
 
@@ -139,6 +144,14 @@ perfil no BlueZ. Nenhuma capacidade é mantida: `CapabilityBoundingSet=` vazio,
 Se a PoC-3 mostrar que o registro do perfil BlueZ exige `root`, o serviço sobe como `root`
 e larga o privilégio depois de abrir `/dev/uinput` e o barramento — a ordem correta fica
 decidida pela PoC, não por suposição.
+
+**As pastas do serviço não herdam permissão.** No Windows, `%ProgramData%` dá leitura a todos os
+usuários, e o que é criado dentro herda isso — inclusive a chave privada da máquina. A pasta de
+estado recebe uma DACL **protegida** (sem herança) só com `SYSTEM` e Administradores
+(`D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)`); a de recebidos acrescenta o usuário interativo, que
+precisa abrir e apagar o que chegou. No Linux, os arquivos de configuração e de chave são criados
+já `0600` (`create_new` + modo, e não um `chmod` depois, que deixava uma janela aberta), e uma
+falha em restringir é erro, não aviso ([log 45](logs/45-a-varredura-implementada.md)).
 
 ### 4.1. O caso especial do agente no Windows
 
@@ -238,7 +251,9 @@ O produto vê tudo o que é digitado, incluindo senhas. Regras absolutas:
 - o nível `trace` de entrada existe, mas exige recompilação com a *feature*
   `unsafe-input-logging`, que **NÃO DEVE** estar habilitada em nenhum artefato publicado;
 - clipboard: registra-se tipo e tamanho, nunca conteúdo;
-- nomes de arquivo em transferência: registrados em `debug`, com opção de anonimizar;
+- nomes de arquivo em transferência: registrados em `debug`, com opção de anonimizar; caminhos
+  completos, nunca acima de `debug`;
+- o código de pareamento nunca vai ao registro: ele só vale olhando as duas telas;
 - o relatório de diagnóstico exportável é montado por uma função dedicada, com lista de
   campos permitidos (*allowlist*), nunca por filtro de exclusão;
 - segredos em memória usam `zeroize` e são apagados na queda da sessão.

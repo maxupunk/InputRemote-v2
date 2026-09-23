@@ -61,6 +61,7 @@ linha. Versões são fixadas na implementação, depois da PoC correspondente.
 | Erros | `thiserror` (libs), `anyhow` (binários) | fronteira explícita entre erro de biblioteca e de aplicação |
 | Logs | `tracing` + `tracing-appender` | escrita sem bloqueio, exigida por [02, §6](02-arquitetura.md) |
 | Configuração | `toml` + `serde` | editável à mão quando a interface não abre |
+| Imagem do clipboard | `png` | o protocolo leva imagem em PNG e o Windows a guarda em DIB; codificar e decodificar PNG à mão seria zlib e CRC nossos no caminho de dados de outro programa. Rust puro, sem `unsafe` ([log 45](logs/45-a-varredura-implementada.md)) |
 
 **Não usamos PAKE.** O v1 dependia de `spake2 0.5.0-pre` — uma versão pré-lançamento no
 caminho de segurança. Ela é desnecessária: como o produto já exige comparação visual do
@@ -74,6 +75,7 @@ dependência a menos e nada para o usuário digitar. Ver [04, §3.2](04-seguranc
 |---|---|---|
 | UDP e TCP | `tokio::net` | sockets crus; a confiabilidade do canal de entrada é nossa, e é pequena ([03, §4.1](03-protocolo.md)) |
 | Descoberta | própria, por broadcast (`ir_net::descoberta`) + `if-addrs` | o `mdns-sd` saiu: no Windows o serviço (SYSTEM) não compartilha a 5353 com programas do usuário ([03, §10](03-protocolo.md)) |
+| *Keepalive* do TCP | `socket2` | o canal de dados precisa saber que o par sumiu sem esperar horas pelo *keepalive* do sistema; o `tokio` não expõe os tempos ([log 45](logs/45-a-varredura-implementada.md)) |
 
 **Não usamos QUIC.** `quinn` + `rustls` + `rcgen` + `tokio-rustls` somavam quatro
 dependências grandes no v1 para resolver, na rede, um problema que o Bluetooth continuava

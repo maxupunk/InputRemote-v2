@@ -115,3 +115,139 @@ impl Drop for Descritor {
         }
     }
 }
+
+/// Troca o DACL de uma pasta por um protegido, e o propaga ao que já está dentro dela.
+///
+/// Existe pela chave da máquina: `%ProgramData%` dá leitura a todos os usuários, e a pasta de
+/// estado herdava isso — qualquer conta local lia o `identity.key` e podia se passar por esta
+/// máquina diante do par. Protegido (`P`), o DACL deixa de herdar do pai; e
+/// `SetNamedSecurityInfoW`, ao contrário de `SetFileSecurityW`, reaplica a herança aos arquivos
+/// que já existem, então a chave gravada antes desta correção também é fechada.
+///
+/// # Errors
+///
+/// Erro do Windows se o SDDL for inválido ou a pasta não puder ter a segurança trocada.
+pub fn proteger_pasta(pasta: &std::path::Path, sddl: &str) -> Result<()> {
+    use windows::Win32::Security::Authorization::{SE_FILE_OBJECT, SetNamedSecurityInfoW};
+    use windows::Win32::Security::{
+        ACL, DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl,
+        PROTECTED_DACL_SECURITY_INFORMATION,
+    };
+
+    let descritor = Descritor::de_sddl(sddl)?;
+    let mut presente = windows::core::BOOL::default();
+    let mut padrao = windows::core::BOOL::default();
+    let mut dacl: *mut ACL = std::ptr::null_mut();
+    // SAFETY: o descritor é válido enquanto `descritor` viver, e os três destinos são locais.
+    unsafe {
+        GetSecurityDescriptorDacl(
+            descritor.descritor,
+            std::ptr::from_mut(&mut presente),
+            std::ptr::from_mut(&mut dacl),
+            std::ptr::from_mut(&mut padrao),
+        )
+    }
+    .context("lendo o DACL do SDDL")?;
+    anyhow::ensure!(presente.as_bool() && !dacl.is_null(), "o SDDL não tem DACL");
+    let nome = HSTRING::from(pasta.as_os_str());
+    // SAFETY: `nome` termina em nulo e vive até o fim da chamada; `dacl` aponta para dentro de
+    // `descritor`, que também vive até lá.
+    let erro = unsafe {
+        SetNamedSecurityInfoW(
+            PCWSTR(nome.as_ptr()),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+            None,
+            None,
+            Some(dacl.cast_const()),
+            None,
+        )
+    };
+    erro.ok()
+        .with_context(|| format!("protegendo {}", pasta.display()))
+}
+
+/// O DACL atual de um caminho, em SDDL — para conferir o que [`proteger_pasta`] fez.
+///
+/// # Errors
+///
+/// Erro do Windows se o caminho não puder ser lido.
+pub fn dacl_em_sddl(caminho: &std::path::Path) -> Result<String> {
+    use windows::Win32::Security::Authorization::{
+        ConvertSecurityDescriptorToStringSecurityDescriptorW, GetNamedSecurityInfoW, SE_FILE_OBJECT,
+    };
+    use windows::Win32::Security::DACL_SECURITY_INFORMATION;
+
+    let nome = HSTRING::from(caminho.as_os_str());
+    let mut descritor = PSECURITY_DESCRIPTOR::default();
+    // SAFETY: `nome` vive até o fim da chamada; o descritor devolvido é liberado abaixo.
+    unsafe {
+        GetNamedSecurityInfoW(
+            PCWSTR(nome.as_ptr()),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            None,
+            None,
+            None,
+            None,
+            std::ptr::from_mut(&mut descritor),
+        )
+    }
+    .ok()
+    .with_context(|| format!("lendo a segurança de {}", caminho.display()))?;
+    let mut texto = windows::core::PWSTR::null();
+    // SAFETY: `descritor` veio do Windows e é válido; `texto` é liberado com `LocalFree`.
+    let convertido = unsafe {
+        ConvertSecurityDescriptorToStringSecurityDescriptorW(
+            descritor,
+            SDDL_REVISION_1,
+            DACL_SECURITY_INFORMATION,
+            std::ptr::from_mut(&mut texto),
+            None,
+        )
+    };
+    // SAFETY: as duas memórias vieram do Windows, que manda liberá-las com `LocalFree`.
+    let resultado = convertido
+        .context("convertendo o descritor em SDDL")
+        .and_then(|()| unsafe { texto.to_string() }.context("SDDL fora de UTF-16"));
+    unsafe {
+        let _ = LocalFree(Some(HLOCAL(texto.0.cast())));
+        let _ = LocalFree(Some(HLOCAL(descritor.0)));
+    }
+    resultado
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_pasta_protegida_para_de_herdar_e_fecha_o_que_ja_existia() {
+        let pasta = std::env::temp_dir().join(format!("ir-acesso-dacl-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&pasta);
+        std::fs::create_dir_all(&pasta).unwrap();
+        // Como `%ProgramData%`: Usuários lê, e o que é criado dentro herda isso.
+        proteger_pasta(&pasta, "D:P(A;OICI;FA;;;OW)(A;OICI;FR;;;BU)").unwrap();
+        let chave = pasta.join("identity.key");
+        std::fs::write(&chave, b"segredo").unwrap();
+        assert!(dacl_em_sddl(&chave).unwrap().contains(";BU)"));
+
+        // `OW` mantém o dono (quem roda o teste) capaz de apagar a pasta no fim.
+        proteger_pasta(
+            &pasta,
+            "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;OW)",
+        )
+        .unwrap();
+
+        let da_pasta = dacl_em_sddl(&pasta).unwrap();
+        assert!(da_pasta.starts_with("D:P"), "{da_pasta}");
+        let da_chave = dacl_em_sddl(&chave).unwrap();
+        assert!(
+            !da_chave.contains(";BU)"),
+            "a chave antiga também fecha: {da_chave}"
+        );
+        assert!(!da_chave.contains(";AU)"), "{da_chave}");
+        std::fs::remove_dir_all(&pasta).unwrap();
+    }
+}

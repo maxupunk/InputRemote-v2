@@ -1,0 +1,17 @@
+[package]
+name = "ir-painel"
+description = "O que a janela vê: o retrato do serviço traduzido no estado publicado e no diagnóstico."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ir-proto.workspace = true
+ir-session.workspace = true
+ir-ipc.workspace = true
+
+[lints]
+workspace = true

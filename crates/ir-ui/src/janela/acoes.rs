@@ -51,6 +51,24 @@ pub(super) fn ligar_sessao(janela: &Janela, contexto: &Rc<Contexto>) {
     acoes.on_encerrar(move || alvo.enviar(Pedido::Encerrar));
 
     let alvo = Rc::clone(contexto);
+    acoes.on_retomar(move || alvo.enviar(Pedido::Retomar));
+
+    let alvo = Rc::clone(contexto);
+    acoes.on_ctrl_alt_del(move || alvo.enviar(Pedido::CtrlAltDel));
+
+    let alvo = Rc::clone(contexto);
+    acoes.on_cancelar_copia(move || alvo.enviar(Pedido::CancelarCopia));
+
+    let alvo = Rc::clone(contexto);
+    acoes.on_abrir_recebidos(move || alvo.abrir_recebidos());
+
+    let alvo = Rc::clone(contexto);
+    acoes.on_travar_borda(move |travar| alvo.enviar(Pedido::TravarBorda(travar)));
+
+    let alvo = Rc::clone(contexto);
+    acoes.on_bloquear_juntos(move |juntos| alvo.enviar(Pedido::BloquearJuntos(juntos)));
+
+    let alvo = Rc::clone(contexto);
     acoes.on_esquecer_par(move || {
         if let Some(maquina) = alvo.par_corrente() {
             alvo.enviar(Pedido::EsquecerPar { maquina });
@@ -84,4 +102,73 @@ pub(super) fn ligar_sessao(janela: &Janela, contexto: &Rc<Contexto>) {
 
     let alvo = Rc::clone(contexto);
     acoes.on_descartar_recado(move || alvo.recado(None));
+}
+
+impl Contexto {
+    /// Abre a pasta de recebidos no gerenciador de arquivos do sistema.
+    ///
+    /// Quem abre é a janela, que roda como o usuário: o serviço não tem sessão gráfica.
+    pub(super) fn abrir_recebidos(&self) {
+        let pasta = self.pasta_de_recebidos.borrow().clone();
+        if pasta.is_empty() {
+            return;
+        }
+        let programa = if cfg!(windows) {
+            "explorer"
+        } else {
+            "xdg-open"
+        };
+        if std::process::Command::new(programa)
+            .arg(&pasta)
+            .spawn()
+            .is_err()
+        {
+            self.recado(Some(ir_ipc::Falha::SistemaRecusou));
+        }
+    }
+}
+
+impl Contexto {
+    /// A conexão caiu sem ninguém pedir: um aviso fora da janela, porque quem estava usando o
+    /// teclado do outro computador não está olhando para ela.
+    ///
+    /// Uma pausa, ou uma queda que a pessoa mesma provocou, não avisa: ela já sabe.
+    pub(super) fn avisar_queda(&self, estado: &ir_ipc::Estado) {
+        use ir_ipc::MotivoDaQueda as Q;
+        if estado.pausa.is_some()
+            || matches!(
+                estado.ultima_queda,
+                Some(Q::PedidoPeloUsuario | Q::TrocandoDeMeio)
+            )
+        {
+            return;
+        }
+        let aberta = self
+            .janela
+            .upgrade()
+            .is_some_and(|janela| janela.window().is_visible());
+        if aberta {
+            return;
+        }
+        let detalhe = estado.resumo();
+        #[cfg(windows)]
+        self.aviso.borrow_mut().mostrar(
+            crate::gerado::CopiaUi {
+                titulo: "Conexão perdida".into(),
+                detalhe: detalhe.into(),
+                progresso: 0.0,
+                estado: crate::copia::PARADA,
+                velocidade: slint::SharedString::default(),
+                cancelavel: false,
+                recebida: false,
+            },
+            true,
+        );
+        #[cfg(not(windows))]
+        {
+            let _ = std::process::Command::new("notify-send")
+                .args(["--app-name=InputRemote", "Conexão perdida", &detalhe])
+                .spawn();
+        }
+    }
 }

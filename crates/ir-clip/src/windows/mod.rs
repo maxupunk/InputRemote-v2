@@ -132,4 +132,37 @@ mod tests {
         let total = ESPERA * TENTATIVAS;
         assert!(total <= Duration::from_millis(600), "{total:?}");
     }
+
+    /// Mexe no clipboard de verdade de quem roda: só à mão, `--ignored`.
+    #[test]
+    #[ignore = "troca o clipboard do usuário"]
+    fn uma_imagem_publicada_volta_igual_do_clipboard_de_verdade() {
+        let dib = {
+            // Um PNG de 2×1 feito pelo próprio conversor, a partir de um DIB conhecido.
+            let mut dib = Vec::new();
+            dib.extend_from_slice(&40u32.to_le_bytes());
+            dib.extend_from_slice(&2i32.to_le_bytes());
+            dib.extend_from_slice(&1i32.to_le_bytes());
+            dib.extend_from_slice(&1u16.to_le_bytes());
+            dib.extend_from_slice(&32u16.to_le_bytes());
+            dib.extend_from_slice(&[0; 24]);
+            dib.extend_from_slice(&[0, 0, 255, 255, 255, 0, 0, 255]);
+            dib
+        };
+        let png = crate::imagem::png_de_dib(&dib).unwrap();
+        let mut clip = abrir().unwrap();
+        clip.publicar(&Conteudo::Imagem(png.clone())).unwrap();
+        assert_eq!(clip.ler().unwrap(), Some(Conteudo::Imagem(png)));
+    }
+
+    /// Lê o que outro programa pôs — rode depois de copiar uma imagem, `--ignored`.
+    #[test]
+    #[ignore = "precisa de uma imagem copiada por outro programa"]
+    fn uma_imagem_de_outro_programa_e_lida_como_png() {
+        let Some(Conteudo::Imagem(png)) = abrir().unwrap().ler().unwrap() else {
+            panic!("não havia imagem no clipboard");
+        };
+        assert!(png.starts_with(&[0x89, b'P', b'N', b'G']), "não saiu PNG");
+        assert!(crate::imagem::dib_de_png(&png).is_ok());
+    }
 }

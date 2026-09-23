@@ -6,17 +6,11 @@
 //! vocabulário de dentro e o de fora. As `impl` são do mesmo [`Daemon`]; um submódulo enxerga
 //! os campos privados do pai, então nada precisou virar público para isto morar aqui.
 
-use ir_ipc::{
-    Aviso, Borda, Candidato, Estado, Falha, LinkState, Maquina, MotivoDoPortador, Nivel, Nome,
-    Papel, ParConhecido, Pedido, Portador, Recursos, Resposta,
-};
-use ir_proto::carrier::Carrier;
-use ir_proto::screens::Edge;
-use ir_session::{Phase, Role};
+use ir_ipc::{Aviso, Candidato, Falha, Pedido, Portador, Resposta};
 use tracing::error;
 
 use super::Daemon;
-use crate::config::{Config, decode_key};
+use crate::config::Config;
 use crate::ipc::PedidoRecebido;
 use ir_transporte::Endereco;
 
@@ -47,6 +41,7 @@ impl Daemon {
                 Resposta::Feito
             }
             Pedido::Procurar => {
+                self.abrir_para_pareamento();
                 self.procurar();
                 Resposta::Feito
             }
@@ -61,30 +56,54 @@ impl Daemon {
                     Resposta::Falha(Falha::CodigosDiferentes)
                 }
             }
-            Pedido::Encerrar => {
-                self.desconectar_todos();
+            Pedido::Encerrar => self.pausar(),
+            Pedido::Retomar => self.retomar(),
+            Pedido::CtrlAltDel => {
+                self.drive(ir_session::Input::SecureAttention);
                 Resposta::Feito
             }
-            Pedido::EsquecerPar { .. } => self.esquecer_par(),
-            Pedido::FixarPortador(portador) => {
-                // Guardado dos dois lados: a sessão precisa dele para desligar a degradação, e a
-                // interface precisa vê-lo de volta para dizer "fixado nas preferências" em vez de
-                // inventar um motivo.
-                self.portador_fixado = portador;
-                self.session
-                    .pin_carrier(portador.map(Portador::no_protocolo), &mut self.out);
-                self.apply_commands();
+            Pedido::TravarBorda(travar) => {
+                self.borda_travada = travar;
+                self.drive(ir_session::Input::LockEdge(travar));
                 let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
                 Resposta::Feito
             }
+            Pedido::BloquearJuntos(juntos) => {
+                let mut nova = self.config.clone();
+                nova.bloquear_juntos = juntos;
+                let resposta = self.persistir(nova);
+                let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
+                resposta
+            }
+            Pedido::EsquecerPar { .. } => self.esquecer_par(),
+            Pedido::FixarPortador(portador) => self.fixar_portador(portador),
             // As duas trocas valem na hora (`super::papel`): a de papel refaz a sessão, e a de borda
             // só a ajusta — e só no servidor, que é quem decide a borda.
             Pedido::DefinirBorda(borda) => self.trocar_borda(borda.no_protocolo()),
-            Pedido::DefinirPapel(papel) => self.trocar_papel(role_de(papel)),
+            Pedido::DefinirPapel(papel) => self.trocar_papel(ir_painel::role_de(papel)),
             Pedido::Diagnostico => Resposta::Diagnostico(self.diagnostico()),
             // Arquivos e clipboard são o outro assunto desta conexão, e ficam juntos.
             outro => self.tratar_conteudo(outro, leitor),
         }
+    }
+
+    /// Fixa um portador, ou volta à escolha automática — e grava, para valer depois de reiniciar.
+    ///
+    /// Guardado dos dois lados: a sessão precisa dele para desligar a degradação, e a interface
+    /// precisa vê-lo de volta para dizer "fixado nas preferências" em vez de inventar um motivo.
+    pub(super) fn fixar_portador(&mut self, portador: Option<Portador>) -> Resposta {
+        let mut nova = self.config.clone();
+        nova.portador_fixado =
+            portador.map(|portador| ir_painel::texto_do_portador(portador).to_owned());
+        if let Resposta::Falha(falha) = self.persistir(nova) {
+            return Resposta::Falha(falha);
+        }
+        self.portador_fixado = portador;
+        self.session
+            .pin_carrier(portador.map(Portador::no_protocolo), &mut self.out);
+        self.apply_commands();
+        let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
+        Resposta::Feito
     }
 
     /// Os pedidos sobre o que atravessa: arquivos e clipboard.
@@ -100,8 +119,17 @@ impl Daemon {
             // conferir de permissão, só se há par para receber.
             Pedido::OferecerTexto(texto) => self.oferecer_texto(texto),
             Pedido::DesligarEconomiaDeEnergia { no_par } => self.desligar_economia(no_par),
-            // A tela de bloqueio é N2: depende do agente no desktop seguro, que ainda não entra.
-            // O curinga cobre também variantes futuras do contrato ainda não tratadas aqui.
+            Pedido::PermitirTelaDeBloqueio { permitir, .. } => {
+                self.permitir_tela_de_bloqueio(permitir)
+            }
+            Pedido::CancelarCopia => {
+                if self.arquivos.cancelar() {
+                    Resposta::Feito
+                } else {
+                    Resposta::Falha(Falha::ForaDeContexto)
+                }
+            }
+            // O curinga cobre variantes futuras do contrato ainda não tratadas aqui.
             _ => Resposta::Falha(Falha::ForaDeContexto),
         }
     }
@@ -109,7 +137,7 @@ impl Daemon {
     /// Leva o texto copiado ao par, pelo canal 4 da sessão.
     fn oferecer_texto(&mut self, texto: ir_ipc::TextoDoClipboard) -> Resposta {
         if !self.session.phase().is_established() {
-            return Resposta::Falha(Falha::ForaDeContexto);
+            return Resposta::Falha(Falha::SemConexao);
         }
         // Os dois tipos têm o mesmo limite, o do canal 4; a conversão não recusa nada.
         let Some(texto) = ir_session::ClipText::new(texto.em_string()) else {
@@ -135,7 +163,7 @@ impl Daemon {
         if self.arquivos.enviar(caminhos, leitor) {
             Resposta::Feito
         } else {
-            Resposta::Falha(Falha::ForaDeContexto)
+            Resposta::Falha(Falha::SemConexao)
         }
     }
 
@@ -178,12 +206,13 @@ impl Daemon {
     /// que permite o Bluetooth entrar sem vocabulário novo na interface.
     fn iniciar_pareamento(&mut self, candidato: &str) -> Resposta {
         let Some(alvo) = Endereco::ler(candidato) else {
-            return Resposta::Falha(Falha::ForaDeContexto);
+            return Resposta::Falha(Falha::EnderecoInvalido);
         };
+        self.abrir_para_pareamento();
         if self.transporte(alvo.portador()).is_none() {
             // Pediram para parear por um portador que não está aberto nesta máquina — sem rádio,
             // por exemplo. Dizer isso é melhor que ficar em silêncio esperando um código.
-            return Resposta::Falha(Falha::ForaDeContexto);
+            return Resposta::Falha(Falha::SemBluetooth);
         }
         // O endereço é guardado **antes** de discar: é ele que diz por onde responder à
         // comparação de códigos, e a resposta do par pode chegar antes da próxima linha.
@@ -195,13 +224,36 @@ impl Daemon {
         Resposta::Feito
     }
 
+    /// Liga ou desliga a digitação do par na tela de bloqueio e nos pedidos de permissão daqui.
+    ///
+    /// Gravado por par, e o agente fica sabendo na hora: é ele quem recusa injetar no desktop
+    /// protegido quando a permissão não existe ([04, §6](../../../docs/04-seguranca.md)).
+    fn permitir_tela_de_bloqueio(&mut self, permitir: bool) -> Resposta {
+        if self.config.peers.is_empty() {
+            return Resposta::Falha(Falha::ParDesconhecido);
+        }
+        let mut nova = self.config.clone();
+        if let Some(par) = nova.peers.first_mut() {
+            par.tela_de_bloqueio = permitir;
+        }
+        #[cfg(windows)]
+        let nova = self.politica_de_atencao(nova, permitir);
+        let resposta = self.persistir(nova);
+        if resposta == Resposta::Feito {
+            tracing::info!(permitir, "digitação do par na tela de bloqueio");
+            self.contar_ao_agente_a_permissao();
+            let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
+        }
+        resposta
+    }
+
     /// Grava a configuração nova e **só então** a adota.
     ///
     /// Um ponto só para toda ação que grava. A ordem é o que importa: se a gravação falha, nem o
     /// arquivo nem a memória mudam, e os dois nunca divergem — antes a memória mudava primeiro, e
     /// uma gravação que falhasse deixava o serviço usando um valor que o próximo reinício perderia.
     pub(super) fn persistir(&mut self, nova: Config) -> Resposta {
-        match nova.save(&self.data_dir) {
+        match self.gravador.gravar_e_esperar(&nova) {
             Ok(()) => {
                 self.config = nova;
                 Resposta::Feito
@@ -211,133 +263,5 @@ impl Daemon {
                 Resposta::Falha(Falha::Interna)
             }
         }
-    }
-
-    /// O relatório de diagnóstico, já pronto para copiar.
-    fn diagnostico(&self) -> String {
-        let radio = match (self.radio.is_some(), self.radio_proprio) {
-            (true, Some(radio)) => format!("aberto ({radio})"),
-            (true, None) => "aberto".to_owned(),
-            (false, _) => "indisponível".to_owned(),
-        };
-        format!(
-            "papel: {:?}
-fase: {}
-pares gravados: {}
-par: {}
-rádio Bluetooth: {radio}
-             rota: {}
-ajudantes de clipboard ligados: {}",
-            self.session.role(),
-            self.session.phase(),
-            self.config.peers.len(),
-            self.alcance,
-            self.session.route_report(self.now()),
-            self.ajudantes.ligados(),
-        )
-    }
-
-    /// Por que o portador em uso foi escolhido.
-    ///
-    /// Antes isto era `RedeComoAlternativa` fixo, o que fazia a tela dizer "Bluetooth
-    /// indisponível; usando a rede local" **mesmo com o rádio ligado e conectado dos dois
-    /// lados** — a frase que deu origem a este trabalho. A escolha é da sessão
-    /// ([`CarrierSet::pick_input_carrier`](ir_session::CarrierSet)); aqui só se conta qual foi.
-    fn motivo_do_portador(&self) -> Option<MotivoDoPortador> {
-        let portador = self.session.carrier()?;
-        Some(if self.portador_fixado.is_some() {
-            MotivoDoPortador::FixadoPeloUsuario
-        } else if self.session.route().is_some_and(ir_session::Route::is_dual) {
-            MotivoDoPortador::Redundancia
-        } else if portador == Carrier::Rfcomm {
-            MotivoDoPortador::Preferido
-        } else {
-            MotivoDoPortador::RedeComoAlternativa
-        })
-    }
-
-    /// O estado corrente, no vocabulário publicado da interface.
-    pub(crate) fn estado(&self) -> Estado {
-        Estado {
-            enlace: link_state(self.session.phase()),
-            papel: papel_de(self.session.role()),
-            borda_do_par: borda_de(self.edge),
-            esta_maquina: self.machine,
-            este_nome: self.nome.clone(),
-            par: self.par_conhecido(),
-            portador: self.session.carrier().map(portador_de),
-            portador_fixado: self.portador_fixado,
-            motivo_do_portador: self.motivo_do_portador(),
-            latencia: None,
-            nivel_privilegiado: Nivel::SoDesbloqueado,
-            // Pronto para digitar: ou o agente está de pé (Windows), ou o serviço injeta direto
-            // por `uinput` (Linux). Sem um dos dois, nada é digitado nesta máquina.
-            agente_pronto: self.agente_pronto || self.injector.is_some() || self.capturer.is_some(),
-            bloqueio_permitido: false,
-            ultima_queda: None,
-            recebidos_bytes: self.arquivos.recebidos().espaco(),
-            rota_dupla: self.session.route().is_some_and(ir_session::Route::is_dual),
-            economia_aqui: self.economia_aqui_na_tela(),
-            economia_no_par: self.economia_no_par_na_tela(),
-        }
-    }
-
-    /// O par gravado, resumido para a interface.
-    fn par_conhecido(&self) -> Option<ParConhecido> {
-        let pinned = self.config.peers.first()?;
-        let bytes: [u8; 16] = decode_key(&pinned.pubkey)
-            .and_then(|chave| chave.0.get(..16).and_then(|fatia| fatia.try_into().ok()))
-            .unwrap_or([0u8; 16]);
-        Some(ParConhecido {
-            maquina: Maquina(bytes),
-            nome: Nome::coagido("computador pareado"),
-            recursos: Recursos::default(),
-            conectado: self.linked(),
-        })
-    }
-}
-
-/// A fase da sessão, traduzida para o enlace que a interface mostra.
-const fn link_state(phase: Phase) -> LinkState {
-    match phase {
-        Phase::Offline => LinkState::Desconectado,
-        Phase::Handshaking => LinkState::Conectando,
-        Phase::Ready => LinkState::Pronto,
-        Phase::Engaged => LinkState::EmUso,
-    }
-}
-
-/// O papel da sessão, no vocabulário da interface.
-const fn papel_de(role: Role) -> Papel {
-    match role {
-        Role::Server => Papel::Servidor,
-        Role::Client => Papel::Cliente,
-    }
-}
-
-/// A borda do protocolo, no vocabulário da interface.
-const fn borda_de(edge: Edge) -> Borda {
-    match edge {
-        Edge::Left => Borda::Esquerda,
-        Edge::Right => Borda::Direita,
-        Edge::Top => Borda::Acima,
-        Edge::Bottom => Borda::Abaixo,
-    }
-}
-
-/// O portador do protocolo, no vocabulário da interface.
-const fn portador_de(carrier: Carrier) -> Portador {
-    match carrier {
-        Carrier::Rfcomm => Portador::Bluetooth,
-        Carrier::Udp => Portador::RedeLocal,
-        Carrier::Tcp => Portador::RedeDeArquivos,
-    }
-}
-
-/// O papel da interface, no vocabulário da sessão.
-const fn role_de(papel: Papel) -> Role {
-    match papel {
-        Papel::Servidor => Role::Server,
-        Papel::Cliente => Role::Client,
     }
 }

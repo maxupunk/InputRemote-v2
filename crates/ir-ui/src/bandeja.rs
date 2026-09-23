@@ -111,9 +111,13 @@ impl Bandeja {
         use tray_icon::menu::{Menu, MenuItem, PredefinedMenuItem};
 
         let abrir = MenuItem::new("Abrir o InputRemote", true, None);
+        // Pausar sem abrir a janela: é o que se quer quando o outro computador vai ser usado por
+        // outra pessoa, ou para uma apresentação.
+        let pausar = MenuItem::new("Pausar o compartilhamento", true, None);
         let sair = MenuItem::new("Sair", true, None);
         let menu = Menu::new();
         menu.append(&abrir).ok()?;
+        menu.append(&pausar).ok()?;
         menu.append(&PredefinedMenuItem::separator()).ok()?;
         menu.append(&sair).ok()?;
 
@@ -129,11 +133,18 @@ impl Bandeja {
             .ok()?;
 
         let alvo = slint::ComponentHandle::as_weak(janela);
-        let (abrir, sair) = (abrir.id().clone(), sair.id().clone());
+        let itens = Itens {
+            abrir: abrir.id().clone(),
+            pausar,
+            sair: sair.id().clone(),
+        };
+        let dica = icone.clone();
+        let mut ultima = String::new();
         let batida = slint::Timer::default();
         batida.start(slint::TimerMode::Repeated, BATIDA, move || {
             let Some(janela) = alvo.upgrade() else { return };
-            atender(&janela, &marca, &abrir, &sair);
+            atender(&janela, &marca, &itens);
+            atualizar_dica(&janela, &dica, &itens.pausar, &mut ultima);
         });
         Some(Self {
             _icone: icone,
@@ -142,19 +153,46 @@ impl Bandeja {
     }
 }
 
+/// Os itens do menu que a batida atende.
+#[cfg(windows)]
+struct Itens {
+    abrir: tray_icon::menu::MenuId,
+    pausar: tray_icon::menu::MenuItem,
+    sair: tray_icon::menu::MenuId,
+}
+
 /// De quanto em quanto tempo a bandeja é atendida. Um clique respondido em até 100 ms parece
 /// imediato.
 #[cfg(windows)]
 const BATIDA: std::time::Duration = std::time::Duration::from_millis(100);
 
+/// A dica do ícone acompanha o estado — passar o mouse sobre ele responde "está funcionando?" sem
+/// abrir a janela. Antes ela dizia "InputRemote" para sempre.
+#[cfg(windows)]
+fn atualizar_dica(
+    janela: &Janela,
+    icone: &tray_icon::TrayIcon,
+    pausar: &tray_icon::menu::MenuItem,
+    ultima: &mut String,
+) {
+    use slint::ComponentHandle;
+    let estado = janela.global::<crate::gerado::Dados>().get_estado();
+    let dica = crate::ponte::dica_da_bandeja(&estado.enlace, &estado.resumo);
+    if dica != *ultima {
+        let _ = icone.set_tooltip(Some(&dica));
+        pausar.set_text(if estado.pausado {
+            "Retomar o compartilhamento"
+        } else {
+            "Pausar o compartilhamento"
+        });
+        pausar.set_enabled(estado.pausado || estado.conectado);
+        *ultima = dica;
+    }
+}
+
 /// Uma batida: cliques no ícone, escolhas do menu, a janela minimizada, e a outra abertura.
 #[cfg(windows)]
-fn atender(
-    janela: &Janela,
-    marca: &Marca,
-    abrir: &tray_icon::menu::MenuId,
-    sair: &tray_icon::menu::MenuId,
-) {
+fn atender(janela: &Janela, marca: &Marca, itens: &Itens) {
     use slint::ComponentHandle;
     use tray_icon::{MouseButton, MouseButtonState, TrayIconEvent};
 
@@ -176,11 +214,19 @@ fn atender(
         );
     }
     while let Ok(escolha) = tray_icon::menu::MenuEvent::receiver().try_recv() {
-        if escolha.id == *sair {
+        if escolha.id == itens.sair {
             let _ = slint::quit_event_loop();
             return;
         }
-        mostrar |= escolha.id == *abrir;
+        if escolha.id == *itens.pausar.id() {
+            let acoes = janela.global::<crate::gerado::Acoes>();
+            if janela.global::<crate::gerado::Dados>().get_estado().pausado {
+                acoes.invoke_retomar();
+            } else {
+                acoes.invoke_encerrar();
+            }
+        }
+        mostrar |= escolha.id == itens.abrir;
     }
     let janela = janela.window();
     if mostrar {

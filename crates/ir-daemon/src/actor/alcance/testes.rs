@@ -1,5 +1,7 @@
 //! O alcance visto de fora: o que o serviço disca, grava e derruba para manter a rota dupla.
 
+#![allow(clippy::expect_used)]
+
 use ir_crypto::PublicKey;
 use ir_ipc::{Pedido, Portador};
 use ir_proto::carrier::Carrier;
@@ -27,6 +29,8 @@ fn pareado_pela_rede() -> Bancada {
         pubkey: encode_key(&chave()),
         addr: Some(rede().to_string()),
         radio: None,
+        nome: None,
+        tela_de_bloqueio: false,
     }];
     bancada.daemon.alcance.anotar(rede());
     bancada
@@ -63,6 +67,7 @@ fn o_radio_contado_pelo_par_e_discado_e_gravado() {
         vec![Endereco::do_radio(RADIO)],
         "com a rede de pé, o Bluetooth que faltava é discado na hora"
     );
+    bancada.daemon.gravador.esperar();
     let gravada = load_config(&bancada.dir).expect("a configuração foi gravada");
     assert_eq!(
         gravada.peers.first().and_then(|par| par.radio.as_deref()),
@@ -183,6 +188,8 @@ fn a_configuracao_antiga_com_endereco_de_radio_vale_como_radio() {
         pubkey: encode_key(&chave()),
         addr: Some("AC:50:DE:47:EB:28".to_owned()),
         radio: None,
+        nome: None,
+        tela_de_bloqueio: false,
     }];
     let alcance = super::da_configuracao(&bancada.daemon.config);
     assert_eq!(

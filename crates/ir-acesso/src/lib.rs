@@ -47,6 +47,17 @@ const SDDL_RESTRITO: &str = "D:P(A;;GA;;;SY)(A;;GA;;;BA)";
 #[cfg(windows)]
 const SDDL_INTERATIVO: &str = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)";
 
+/// A pasta de estado do serviço: só ele e os administradores, também no que for criado dentro.
+///
+/// Guarda a chave privada da máquina; herdar a leitura que `%ProgramData%` dá a todos os usuários
+/// deixava qualquer conta local se passar por esta máquina diante do par.
+#[cfg(windows)]
+pub const SDDL_PASTA_DE_ESTADO: &str = "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)";
+/// A pasta de recebidos dentro dela: o usuário interativo lê, move e apaga o que chegou para ele.
+#[cfg(windows)]
+pub const SDDL_PASTA_DE_RECEBIDOS: &str =
+    "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1301bf;;;IU)";
+
 #[cfg(windows)]
 impl Acesso {
     /// A cadeia SDDL correspondente.

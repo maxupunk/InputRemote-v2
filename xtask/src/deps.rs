@@ -21,9 +21,11 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ("ir-geometry", &["ir-proto"]),
     // A confiabilidade dos canais: pura, e só sobre o protocolo.
     ("ir-confiabilidade", &["ir-proto"]),
+    // O canal 4 de uma ponta: oferta, pedaços e conferência. Puro, como a sessão que o conduz.
+    ("ir-area", &["ir-proto"]),
     (
         "ir-session",
-        &["ir-proto", "ir-geometry", "ir-confiabilidade"],
+        &["ir-proto", "ir-geometry", "ir-confiabilidade", "ir-area"],
     ),
     ("ir-crypto", &["ir-proto"]),
     ("ir-ipc", &["ir-proto"]),
@@ -61,6 +63,11 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ("ir-energia", &[]),
     // O que a máquina guarda em disco: configuração e identidade.
     ("ir-configuracao", &["ir-proto", "ir-crypto", "ir-session"]),
+    // O processo visto pelo sistema operacional: SCM, registro, sinais e `logind`. Não conhece o
+    // produto; o ator só recebe dele os avisos do sistema.
+    ("ir-servico", &["ir-acesso", "ir-sessao"]),
+    // O que a janela vê: o retrato do serviço traduzido no vocabulário publicado da interface.
+    ("ir-painel", &["ir-proto", "ir-session", "ir-ipc"]),
     (
         "ir-daemon",
         &[
@@ -78,6 +85,8 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "ir-configuracao",
             "ir-canais",
             "ir-energia",
+            "ir-servico",
+            "ir-painel",
         ],
     ),
     ("ir-agent", &["ir-proto", "ir-ipc", "ir-input", "ir-clip"]),
@@ -92,7 +101,13 @@ const ALLOWED: &[(&str, &[&str])] = &[
 /// A lista de proibidos não é de nomes de crate, é de capacidades: relógio, socket, arquivo,
 /// runtime assíncrono. Se um deles entrar, o núcleo deixa de ser testável em microssegundos e
 /// o argumento do ADR-0004 se desfaz.
-const PURE: &[&str] = &["ir-proto", "ir-geometry", "ir-confiabilidade", "ir-session"];
+const PURE: &[&str] = &[
+    "ir-proto",
+    "ir-geometry",
+    "ir-confiabilidade",
+    "ir-area",
+    "ir-session",
+];
 
 /// Dependências que denunciam E/S ou relógio.
 const IMPURE: &[&str] = &[

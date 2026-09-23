@@ -53,7 +53,8 @@
 pub mod config;
 pub mod event;
 pub mod phase;
-pub mod sequences;
+/// Um contador de sequência por canal — mora em `ir-confiabilidade`, com o resto da numeração.
+pub use ir_confiabilidade::sequences;
 pub mod session;
 
 /// A confiabilidade dos canais, que mora no `ir-confiabilidade` desde a rota dupla.
@@ -63,7 +64,7 @@ pub use ir_confiabilidade::time;
 
 pub use config::{Role, SessionConfig, Timings};
 pub use event::{
-    CarrierChoice, ClipText, Command, CommandBatch, Injection, Input, LinkDown, Notice, TimerId,
+    CarrierChoice, ClipText, Command, CommandBatch, Injection, Input, LinkDown, Notice,
 };
 pub use phase::Phase;
 pub use session::{

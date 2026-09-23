@@ -123,10 +123,12 @@ impl Radio for RadioWindows {
         let mut entrantes = self.entrantes.lock().await;
         match entrantes.recv().await {
             Some(entrante) => Ok(entrante),
-            // A thread de escuta acabou, e ninguém mais vai ligar. Devolver erro aqui faria o
-            // laço do endpoint girar sem parar; esperar é o comportamento certo de uma escuta
-            // que não tem mais quem atender.
-            None => std::future::pending().await,
+            // A thread de escuta acabou: o rádio foi desligado ou removido. O endpoint conta que
+            // perdeu o rádio e termina, e a subida tenta abri-lo de novo — antes a espera era para
+            // sempre, e o Bluetooth só voltava reiniciando o serviço.
+            None => Err(BtError::SemRadio(
+                "o rádio Bluetooth foi desligado".to_owned(),
+            )),
         }
     }
 }

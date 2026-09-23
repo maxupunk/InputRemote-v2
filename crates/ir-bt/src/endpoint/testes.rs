@@ -311,3 +311,19 @@ async fn desconectar_a_pedido_derruba_so_uma_vez() {
     mandar(&dupla.aqui, BtCommand::Disconnect);
     assert!(durante_o_silencio(&mut dupla.aqui.events).await.is_none());
 }
+
+#[tokio::test]
+async fn o_radio_desligado_no_meio_e_contado_como_perdido() {
+    let mut alca = Endpoint::spawn(
+        RadioDeMentira::desligado_depois(),
+        Arc::new(Identity::generate()),
+    );
+    let evento = proximo(&mut alca.events).await;
+    assert!(
+        matches!(evento, BtEvent::RadioLost(_)),
+        "antes a escuta esperava para sempre, e o rádio não voltava: {evento:?}"
+    );
+    // O endpoint terminou: não há mais quem ouvir comandos.
+    tokio::time::sleep(SILENCIO).await;
+    assert!(alca.commands.send(BtCommand::Disconnect).is_err());
+}

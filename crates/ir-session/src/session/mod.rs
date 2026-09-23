@@ -3,6 +3,7 @@
 //! Entra um evento, sai uma lista de comandos. Sem E/S, sem relógio lido, sem `async`, sem
 //! estado compartilhado — [ADR-0004](../../../docs/adr/0004-nucleo-sans-io.md).
 
+mod agent;
 mod area;
 mod client;
 mod consultas;
@@ -13,6 +14,7 @@ mod link;
 mod power;
 mod reach;
 mod route;
+mod secure;
 mod server;
 pub mod state;
 mod upkeep;
@@ -24,9 +26,8 @@ use ir_proto::frame::{Frame, Sequence};
 use ir_proto::ids::RadioAddress;
 use ir_proto::input::{InputState, PointerDelta};
 use ir_proto::message::Message;
-use ir_proto::screens::ScreenLayout;
 
-use crate::config::{Role, SessionConfig};
+use crate::config::SessionConfig;
 use crate::event::{Command, CommandBatch, Input, LinkDown, Notice};
 use crate::phase::Phase;
 use crate::reliability::{ReliableChannels, SendOutcome};
@@ -91,6 +92,12 @@ pub struct Session {
     /// Parte do estado observável exigido por `docs/01-visao-e-escopo.md` §5: a interface
     /// mostra o portador ativo **e** a latência dele.
     pub(super) last_rtt: Option<crate::time::Millis>,
+    /// A tecla que disparou um atalho, para a subida dela também não ir ao par ([`secure`]).
+    pub(super) swallowed: Option<ir_proto::input::HidUsage>,
+    /// Os modificadores apertados neste teclado, encaminhados ou não — para os atalhos.
+    pub(super) held_here: ir_proto::input::Modifiers,
+    /// Se a borda está travada: o ponteiro não atravessa ([`secure`]).
+    pub(super) edge_locked: bool,
 
     /// Movimento de ponteiro ainda não despachado.
     ///
@@ -99,7 +106,7 @@ pub struct Session {
     pub(super) pending_pointer: PointerDelta,
 
     /// O canal 4: o texto do clipboard indo e vindo.
-    pub(super) area: area::Area,
+    pub(super) area: ir_area::Area,
 
     /// O endereço do rádio desta máquina, para contar ao par ([`reach`]).
     pub(super) local_radio: Option<RadioAddress>,
@@ -141,7 +148,10 @@ impl Session {
             clock: Clock::default(),
             pending_pointer: PointerDelta::ZERO,
             last_rtt: None,
-            area: area::Area::default(),
+            swallowed: None,
+            held_here: ir_proto::input::Modifiers::NONE,
+            edge_locked: false,
+            area: ir_area::Area::default(),
             local_radio: None,
             last_pointer_rx: None,
             wins: CarrierWins::default(),
@@ -202,52 +212,18 @@ impl Session {
             Input::ClipboardText(texto) => self.on_clipboard_text(now, texto, out),
             Input::LocalRadio(radio) => self.on_local_radio(now, radio, out),
             Input::LocalNetworkPower(state) => self.on_local_network_power(now, state, out),
+            Input::SecureAttention => self.request_secure_attention(now, out),
+            Input::LocalProtectedDesktop(refused) => {
+                self.on_local_protected_desktop(now, refused, out);
+            }
+            Input::LockEdge(locked) => self.edge_locked = locked,
+            Input::LockPeerScreen => self.request_peer_lock(now, out),
             Input::DisablePeerNetworkPowerSaving => {
                 if !self.on_disable_peer_network_power(now, out) {
                     out.push(Command::Notify(Notice::PeerCannotFixNetworkPower));
                 }
             }
         }
-    }
-
-    /// Atualiza o arranjo local e conta ao par.
-    fn on_local_screens(&mut self, now: Timestamp, layout: ScreenLayout, out: &mut CommandBatch) {
-        self.local_screens = Desktop::from_layout(&layout);
-        if let Some(desktop) = self.local_screens.as_ref() {
-            // A posição guardada pode ter ficado fora de qualquer tela quando um monitor foi
-            // removido. Trazer de volta aqui evita coordenada inválida em todo o resto.
-            self.pointer = desktop.nearest_valid(self.pointer);
-        }
-        if self.phase.is_established() {
-            self.send(
-                now,
-                Message::Control(ir_proto::message::Control::Screens(layout)),
-                out,
-            );
-        }
-    }
-
-    /// O agente local sumiu.
-    ///
-    /// Se havia entrada em curso, solta tudo antes de qualquer outra coisa: o agente novo vai
-    /// nascer sem saber o que estava pressionado, e o estado é do serviço exatamente para
-    /// isto (`docs/02-arquitetura.md` §1.1).
-    fn on_agent_lost(&mut self, now: Timestamp, out: &mut CommandBatch) {
-        self.agent_ready = false;
-        if self.phase.may_hold_input() {
-            self.release_everything(out);
-            if self.config.role == Role::Client {
-                // Devolve o controle: sem agente não há como injetar, e segurar o ponteiro
-                // do usuário do outro lado seria pior.
-                self.report_edge_return(now, out);
-            }
-        }
-    }
-
-    /// Solta tudo, local e logicamente.
-    pub(super) fn release_everything(&mut self, out: &mut CommandBatch) {
-        self.input_state.release_all();
-        out.push(Command::ReleaseAll);
     }
 
     /// Monta e despacha um quadro por todos os portadores da rota.

@@ -27,6 +27,7 @@ pub mod faxina;
 mod fila;
 mod localizar;
 mod passo;
+mod porta;
 mod recebendo;
 mod sessao;
 
@@ -49,7 +50,6 @@ pub use localizar::{Localizador, da_descoberta, sem_localizador};
 pub(crate) type PedidoDeEnvio = (Vec<PathBuf>, Leitor);
 use ir_ipc::Aviso;
 use ir_ipc::transferencia::{Fase, Motivo, Sentido, Transferencia};
-use ir_transporte::dados::Porta;
 use tokio::sync::{broadcast, mpsc, watch};
 use tracing::{debug, info, warn};
 
@@ -81,6 +81,24 @@ pub struct Destino {
     /// Onde alcançá-lo, quando se sabe. Só o de rede é discado: arquivo nunca vai pelo rádio. Sem
     /// ele, o [`Localizador`] acha o par na rede local.
     pub alvo: Option<ir_transporte::Endereco>,
+}
+
+impl Destino {
+    /// O destino pelo que a configuração diz: a chave fixada, e o endereço configurado à mão — que
+    /// vence — ou, sem ele, o endereço por onde o par foi pareado.
+    #[must_use]
+    pub fn da_configuracao(
+        chave: Option<PublicKey>,
+        configurado: Option<&str>,
+        gravado: Option<&str>,
+    ) -> Self {
+        Self {
+            chave,
+            alvo: configurado
+                .or(gravado)
+                .and_then(ir_transporte::Endereco::ler),
+        }
+    }
 }
 
 /// Por onde o ator pede um envio.
@@ -149,6 +167,15 @@ impl Pedidos {
             *atual = destino;
             mudou
         });
+    }
+
+    /// Para a cópia em curso e esquece a que esperava. `false` se não havia cópia.
+    ///
+    /// O outro lado recebe o cancelamento e apaga o que já gravou: a montagem dele só vira arquivo
+    /// no fim.
+    #[must_use]
+    pub fn cancelar(&self) -> bool {
+        self.fila.cancelar_tudo()
     }
 
     /// Pede o envio destes caminhos, lidos com a autoridade de `leitor`. `false` quando a
@@ -269,13 +296,8 @@ async fn servir(
     {
         return;
     }
-    let porta = match Porta::abrir(ajuste.porta, Arc::clone(&ajuste.identidade)).await {
-        Ok(porta) => porta,
-        Err(erro) => {
-            warn!(%erro, "não consegui abrir o TCP de arquivos");
-            recusar_tudo(&ajuste, &mut entrada, Motivo::Outro(erro.to_string())).await;
-            return;
-        }
+    let Some(porta) = porta::abrir_a_porta(&ajuste, &mut entrada).await else {
+        return;
     };
     info!(porta = ajuste.porta, "canal de arquivos no ar");
 
@@ -348,16 +370,8 @@ async fn esperar_par(
 ///
 /// Dizer não é melhor que ficar calado: um pedido que some deixa o usuário achando que a cópia foi
 /// feita.
-async fn recusar_tudo(ajuste: &Ajuste, entrada: &mut Entrada, motivo: Motivo) {
-    while entrada.esperar().await.is_some() {
-        if let Some(trabalho) = entrada.fila.descartar() {
-            recusar(ajuste, &trabalho.caminhos, motivo.clone());
-        }
-    }
-}
-
 /// Conta à interface que este pedido não vai sair, e por quê.
-fn recusar(ajuste: &Ajuste, caminhos: &[PathBuf], motivo: Motivo) {
+pub(crate) fn recusar(ajuste: &Ajuste, caminhos: &[PathBuf], motivo: Motivo) {
     let nome = caminhos
         .first()
         .and_then(|caminho| caminho.file_name())

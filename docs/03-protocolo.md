@@ -99,7 +99,14 @@ contador já visto ou anterior à janela é descartado sem processar. Isso imped
 de um `KeyDown` capturado do ar — em um produto que digita senhas, repetição não é
 detalhe acadêmico.
 
-Rechaveamento a cada 2^20 mensagens ou 10 minutos, o que vier primeiro.
+Rechaveamento a cada 2^20 mensagens ou 10 minutos, o que vier primeiro. Na rede é um
+`Noise_IK` novo no mesmo socket (modo `Rekey` do datagrama de handshake), com a chave do par que já
+está fixada, e o enlace troca **sem derrubar a sessão**. Por idade, só a ponta de menor chave
+pública pede — as duas fazem dez minutos quase juntas, e dois pedidos cruzados se atropelariam;
+por volume, pede quem enviou. Um par que não conhece o modo ignora o pedido, e o enlace atual
+segue. No Bluetooth as chaves se renovam a cada reconexão do RFCOMM, e não no meio do enlace: um
+handshake dentro do fluxo pediria enquadramento próprio, e o contador de 64 bits do ChaCha20-Poly1305
+não chega perto de se esgotar numa sessão.
 
 ## 4. Canais (L3)
 
@@ -220,6 +227,9 @@ Nomes definitivos vivem em `ir-proto`. Este é o contrato.
 | `Reach` | o endereço do rádio Bluetooth de quem envia, para o par poder discar o outro portador da rota dupla (§2.1). Desde a versão 2 |
 | `NetworkPower` | como está a economia de energia do Wi-Fi de quem envia: desligada, ligada, ou só na bateria. Só vai para um par da versão 3 ([ADR-0013](adr/0013-economia-de-energia-do-wifi.md)) |
 | `DisableNetworkPowerSaving` | peça que o par desligue a economia de energia do Wi-Fi dele — e nada mais sobre a configuração da máquina. Só vai para um par da versão 3 |
+| `SecureAttention` | gere Ctrl+Alt+Del aí. O de verdade o Windows intercepta antes de qualquer gancho; o lado que controla o pede com Ctrl+Alt+End, e quem recebe só obedece se o administrador de lá permitir ([05, §4.3](05-windows.md)). Só vai para um par da versão 4 |
+| `ProtectedDesktop{refused}` | se quem envia está recusando digitação num desktop protegido (tela de bloqueio, UAC) por falta de permissão do administrador — quem digita precisa saber por que o teclado parou ([04, §6](04-seguranca.md)). Só vai para um par da versão 4 |
+| `LockScreen` | bloqueie a tela aí: quem tem o teclado bloqueou a própria, e a máquina que ele controlava não pode ficar aberta. Só com "bloquear juntos" ligado, e só para um par da versão 4 |
 
 ### Canal 1 — Entrada confiável
 
@@ -264,8 +274,9 @@ Este é o mecanismo que garante a meta "zero teclas presas em 10.000 travessias"
 ## 8. Versionamento
 
 `Hello` carrega `protocol_version: u16`. Vale a menor versão entre as duas pontas. A versão
-corrente é a 3 e a mínima aceita é a 2: o que a 3 acrescenta (`NetworkPower`,
-`DisableNetworkPowerSaving`) só é enviado a um par que a fale. Se a
+corrente é a 4 e a mínima aceita é a 2: o que a 3 acrescenta (`NetworkPower`,
+`DisableNetworkPowerSaving`) e o que a 4 acrescenta (`SecureAttention`, `ProtectedDesktop`,
+`LockScreen`) só é enviado a um par que a fale. Se a
 diferença for maior que uma versão maior, a sessão é recusada com mensagem explícita.
 
 Regra deliberadamente estrita: **mensagem desconhecida em canal confiável derruba o

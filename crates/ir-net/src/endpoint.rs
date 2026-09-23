@@ -18,59 +18,13 @@ use tokio::sync::mpsc;
 use crate::error::{NetError, Result};
 use crate::handshake::{self, ConnectMode};
 use crate::link::SecureLink;
+pub use crate::vocabulario::{NetCommand, NetEvent};
+
+mod rechave;
 use crate::wire::{self, Kind, Mode};
 
 /// Buffer de recepção. Cobre o maior datagrama do produto (1200 B de texto claro + folga).
 const BUF: usize = 2048;
-
-/// O que o serviço manda ao endpoint.
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum NetCommand {
-    /// Comece a conectar, como iniciador.
-    Connect {
-        /// O endereço do par.
-        peer: SocketAddr,
-        /// Parear do zero ou reconectar com chave fixada.
-        mode: ConnectMode,
-    },
-    /// Mande este quadro (bytes já codificados de `ir_proto::Frame`) ao par.
-    SendFrame(Vec<u8>),
-    /// O usuário respondeu à comparação de códigos.
-    ConfirmPairing(bool),
-    /// Encerre o enlace atual.
-    Disconnect,
-    /// Encerre a tarefa.
-    Shutdown,
-}
-
-/// O que o endpoint conta ao serviço.
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum NetEvent {
-    /// O handshake de pareamento terminou; aqui está o código para o usuário comparar.
-    PairingCode {
-        /// Os seis dígitos.
-        code: [u8; 6],
-        /// A chave estática que o par apresentou, para gravar após a confirmação.
-        peer_static: PublicKey,
-        /// O endereço do par.
-        peer: SocketAddr,
-    },
-    /// O enlace está pronto: pareamento confirmado dos dois lados, ou reconexão fixada.
-    Established {
-        /// A chave estática do par.
-        peer_static: PublicKey,
-        /// O endereço do par.
-        peer: SocketAddr,
-    },
-    /// Chegou um quadro do par (bytes de `ir_proto::Frame`).
-    Frame(Vec<u8>),
-    /// O enlace caiu.
-    LinkDown(&'static str),
-    /// Um erro de rede que não derruba a tarefa.
-    Error(String),
-}
 
 /// Estado interno do endpoint.
 enum State {
@@ -96,6 +50,10 @@ pub struct Endpoint {
     state: State,
     /// Rodadas de reconexão desde o último enlace, para a regra de [`crate::turno`].
     rodadas: u32,
+    /// Se um pareamento que chega de fora é atendido ([`NetCommand::AcceptPairing`]).
+    aceitar_pareamento: bool,
+    /// Quando saiu a última tentativa de trocar as chaves ([`rechave`]).
+    rechave_tentada: Option<std::time::Instant>,
 }
 
 impl core::fmt::Debug for Endpoint {
@@ -125,6 +83,8 @@ impl Endpoint {
             events: evt_tx,
             state: State::Idle,
             rodadas: 0,
+            aceitar_pareamento: true,
+            rechave_tentada: None,
         };
         tokio::spawn(endpoint.run(cmd_rx));
         EndpointHandle {
@@ -166,6 +126,13 @@ impl Endpoint {
             NetCommand::Connect { peer, mode } => self.connect(peer, mode).await,
             NetCommand::SendFrame(bytes) => self.send_frame(&bytes).await,
             NetCommand::ConfirmPairing(ok) => self.confirm_pairing(ok).await,
+            NetCommand::AcceptPairing(aceitar) => self.aceitar_pareamento = aceitar,
+            #[cfg(test)]
+            NetCommand::ForcarRechave => {
+                if let State::Established { link, .. } = &mut self.state {
+                    link.pedir_rechave();
+                }
+            }
             NetCommand::Disconnect => self.tear_down("pedido local"),
             NetCommand::Shutdown => {}
         }
@@ -196,7 +163,7 @@ impl Endpoint {
                 self.on_data_datagram(datagram);
             }
             State::Established { .. } => {
-                if !self.on_data_datagram(datagram) {
+                if !self.on_data_datagram(datagram) && !self.atender_rechave(from, datagram).await {
                     self.maybe_restart(from, datagram).await;
                 }
             }
@@ -239,8 +206,13 @@ impl Endpoint {
 
     /// Sem enlace: um datagrama de handshake vira uma resposta de respondedor.
     async fn maybe_respond(&mut self, from: SocketAddr, datagram: &[u8]) {
-        if wire::parse_handshake(datagram).is_none() {
+        let Some((mode, _)) = wire::parse_handshake(datagram) else {
             return; // não é início de handshake; ignorado em silêncio
+        };
+        if mode == Mode::Pair && !self.aceitar_pareamento {
+            // Antes de qualquer criptografia: recusar custa um byte lido.
+            tracing::debug!(%from, "pedido de pareamento ignorado: a janela de pareamento não está aberta");
+            return;
         }
         match handshake::drive_responder(&self.socket, from, &self.identity, datagram).await {
             Ok(established) => self.on_established(from, established),
@@ -367,6 +339,7 @@ impl Endpoint {
         {
             let _ = self.events.send(NetEvent::Error(error.to_string()));
         }
+        self.rechavear_se_preciso().await;
     }
 
     fn tear_down(&mut self, reason: &'static str) {

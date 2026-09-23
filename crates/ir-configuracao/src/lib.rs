@@ -56,6 +56,27 @@ pub struct Config {
     /// 5 GB não deve ser obrigada a caber junto com a configuração.
     #[serde(default)]
     pub recebidos: Option<String>,
+    /// O valor de `SoftwareSASGeneration` antes de o produto o mudar, no Windows.
+    ///
+    /// Ligar a digitação na tela de bloqueio liga também o Ctrl+Alt+Del gerado pelo serviço, que é
+    /// uma política da máquina. Desligar devolve o que estava — e só se foi o produto quem mudou.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub politica_de_atencao_anterior: Option<u32>,
+    /// O meio de conexão fixado nas preferências: `bluetooth` ou `rede`. Ausente é automático.
+    ///
+    /// Gravado, e não só na memória: fixar o Bluetooth para testar e ver a escolha voltar a
+    /// "automático" depois de reiniciar parecia a preferência sendo ignorada.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub portador_fixado: Option<String>,
+    /// Se o outro computador bloqueia junto quando este bloquear a tela. Ligado por padrão: o
+    /// computador que era controlado não pode ficar aberto para quem passar por ele.
+    #[serde(default = "sim")]
+    pub bloquear_juntos: bool,
+}
+
+/// O padrão das opções que nascem ligadas.
+const fn sim() -> bool {
+    true
 }
 
 /// Um par pareado, com a chave estática fixada.
@@ -69,6 +90,16 @@ pub struct PinnedPeer {
     /// Bluetooth (ADR-0012). Opcional, e arquivos gravados antes continuam valendo.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub radio: Option<String>,
+    /// O nome que o par deu a si mesmo, para a tela dizer "notebook-da-ana" mesmo desconectado.
+    /// Antes a tela dizia "computador pareado", que parecia defeito.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nome: Option<String>,
+    /// Se este par pode digitar na tela de bloqueio e nos pedidos de permissão daqui.
+    ///
+    /// Por par e desligado por padrão ([04, §6](../../../docs/04-seguranca.md)): quem liga é um
+    /// administrador desta máquina, pela janela.
+    #[serde(default)]
+    pub tela_de_bloqueio: bool,
 }
 
 impl Default for Config {
@@ -82,6 +113,9 @@ impl Default for Config {
             peer_addr: None,
             peers: Vec::new(),
             recebidos: None,
+            politica_de_atencao_anterior: None,
+            portador_fixado: None,
+            bloquear_juntos: true,
         }
     }
 }
@@ -176,28 +210,62 @@ pub fn load_config(dir: &Path) -> Result<Config> {
 pub fn load_identity(dir: &Path) -> Result<Identity> {
     let path = dir.join("identity.key");
     if path.exists() {
+        // Uma chave gravada por uma versão antiga, ou mexida à mão, volta a ser só do dono.
+        restrict(&path)?;
         let bytes = std::fs::read(&path).context("lendo identidade")?;
         return Identity::from_secret_bytes(&bytes).context("identidade inválida");
     }
     let identity = Identity::generate();
     let tmp = dir.join("identity.key.tmp");
-    std::fs::write(&tmp, identity.secret_bytes().as_bytes()).context("gravando identidade")?;
-    restrict(&tmp);
+    let _ = std::fs::remove_file(&tmp);
+    write_private(&tmp, identity.secret_bytes().as_bytes()).context("gravando identidade")?;
     std::fs::rename(&tmp, &path).context("trocando identidade")?;
     Ok(identity)
 }
 
-/// Restringe a permissão do arquivo de chave ao dono, onde a plataforma permite.
-fn restrict(path: &Path) {
+/// Grava um arquivo que **nasce** legível só pelo dono.
+///
+/// Gravar e depois restringir deixava um instante em que a chave era legível por todos — e o erro
+/// da restrição era ignorado. No Windows quem fecha é o DACL da pasta de estado, aplicado pelo
+/// serviço a cada subida (`ir-acesso`).
+fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    file.write_all(bytes)?;
+    file.sync_all()
+}
+
+/// Restringe ao dono a permissão de um arquivo de chave que já existe.
+///
+/// # Errors
+///
+/// Erro de E/S se a permissão não puder ser trocada: seguir com a chave aberta seria pior.
+#[cfg_attr(not(unix), allow(clippy::unnecessary_wraps))]
+fn restrict(path: &Path) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+        let atual = std::fs::metadata(path)
+            .context("lendo a permissão da identidade")?
+            .permissions()
+            .mode();
+        if atual & 0o077 != 0 {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+                .context("restringindo a identidade ao dono")?;
+        }
     }
     #[cfg(not(unix))]
     {
         let _ = path;
     }
+    Ok(())
 }
 
 /// Grava a chave pública de um par em hexadecimal.
@@ -226,4 +294,56 @@ pub fn decode_key(text: &str) -> Option<PublicKey> {
         *slot = (hi << 4) | lo;
     }
     Some(PublicKey(bytes))
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    fn pasta(rotulo: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("ir-config-{rotulo}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_identidade_gerada_volta_igual_na_proxima_subida() {
+        let dir = pasta("identidade");
+        let primeira = load_identity(&dir).unwrap();
+        let segunda = load_identity(&dir).unwrap();
+        assert_eq!(primeira.public(), segunda.public());
+        assert!(!dir.join("identity.key.tmp").exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_chave_nasce_so_do_dono_e_uma_aberta_e_fechada() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = pasta("modo");
+        let _ = load_identity(&dir).unwrap();
+        let chave = dir.join("identity.key");
+        let modo = |c: &Path| std::fs::metadata(c).unwrap().permissions().mode() & 0o777;
+        assert_eq!(modo(&chave), 0o600);
+
+        std::fs::set_permissions(&chave, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let _ = load_identity(&dir).unwrap();
+        assert_eq!(
+            modo(&chave),
+            0o600,
+            "uma chave aberta por versão antiga é fechada"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_configuracao_padrao_e_criada_e_relida() {
+        let dir = pasta("config");
+        let criada = load_config(&dir).unwrap();
+        let relida = load_config(&dir).unwrap();
+        assert_eq!(criada.role, relida.role);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

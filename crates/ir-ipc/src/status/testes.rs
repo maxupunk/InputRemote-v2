@@ -36,7 +36,16 @@ fn o_agente_ausente_e_o_impedimento_mais_grave() {
 }
 
 #[test]
-fn nao_conseguir_e_nao_ter_deixado_sao_impedimentos_distintos() {
+fn a_tela_de_bloqueio_desligada_nao_pinta_o_cliente_de_laranja() {
+    // Opcional e desligada por padrão: tratá-la como impedimento deixava o controlado sempre em
+    // laranja, com tudo funcionando.
+    let mut sem_permissao = cliente_pronto();
+    sem_permissao.bloqueio_permitido = false;
+    assert_eq!(sem_permissao.impedimento(), None);
+}
+
+#[test]
+fn nao_conseguir_e_nao_ter_deixado_sao_explicados_de_jeitos_diferentes() {
     let mut sem_capacidade = cliente_pronto();
     sem_capacidade.nivel_privilegiado = Nivel::SoDesbloqueado;
 
@@ -44,16 +53,51 @@ fn nao_conseguir_e_nao_ter_deixado_sao_impedimentos_distintos() {
     sem_permissao.bloqueio_permitido = false;
 
     assert_ne!(
-        sem_capacidade.impedimento(),
-        sem_permissao.impedimento(),
+        sem_capacidade.sobre_a_tela_de_bloqueio(),
+        sem_permissao.sobre_a_tela_de_bloqueio(),
         "as duas causas pedem ações diferentes do usuário"
     );
+    assert!(sem_permissao.sobre_a_tela_de_bloqueio().contains("Ligue"));
+    for estado in [&sem_capacidade, &sem_permissao] {
+        assert!(!estado.sobre_a_tela_de_bloqueio().contains("  "));
+    }
     assert!(
-        sem_permissao
-            .impedimento()
-            .expect("há impedimento")
-            .contains("Preferências")
+        cliente_pronto()
+            .sobre_a_tela_de_bloqueio()
+            .starts_with("Ligada")
     );
+}
+
+#[test]
+fn a_pausa_aparece_no_resumo_de_cada_lado() {
+    let mut estado = cliente_pronto();
+    estado.par = Some(ParConhecido {
+        maquina: Maquina([1; 16]),
+        nome: Nome::coagido("notebook"),
+        recursos: Recursos::default(),
+        conectado: false,
+    });
+    estado.pausa = Some(Pausa::Aqui);
+    assert!(estado.resumo().contains("retomar"), "{}", estado.resumo());
+    estado.pausa = Some(Pausa::NoPar);
+    assert_eq!(estado.resumo(), "notebook pausou o compartilhamento.");
+}
+
+#[test]
+fn quem_e_controlado_nao_le_que_esta_controlando() {
+    let mut estado = cliente_pronto();
+    estado.enlace = LinkState::EmUso;
+    estado.par = Some(ParConhecido {
+        maquina: Maquina([1; 16]),
+        nome: Nome::coagido("desktop"),
+        recursos: Recursos::default(),
+        conectado: true,
+    });
+    assert_eq!(estado.resumo(), "desktop está usando este computador.");
+    assert_eq!(estado.frase_do_enlace(), "Controlado pelo outro computador");
+    estado.papel = Papel::Servidor;
+    assert_eq!(estado.resumo(), "Controlando desktop.");
+    assert_eq!(estado.frase_do_enlace(), "Controlando o outro computador");
 }
 
 #[test]

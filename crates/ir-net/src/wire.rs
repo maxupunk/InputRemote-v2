@@ -20,6 +20,10 @@ pub enum Mode {
     Pair = 0,
     /// Reconexão — `Noise_IK`, com a chave do par fixada.
     Reconnect = 1,
+    /// Troca de chaves de um enlace de pé — `Noise_IK`, como a reconexão, mas a sessão não cai.
+    ///
+    /// Um par que não conhece este modo ignora o datagrama, e o enlace atual segue valendo.
+    Rekey = 2,
 }
 
 impl Mode {
@@ -29,6 +33,7 @@ impl Mode {
         match byte {
             0 => Some(Self::Pair),
             1 => Some(Self::Reconnect),
+            2 => Some(Self::Rekey),
             _ => None,
         }
     }

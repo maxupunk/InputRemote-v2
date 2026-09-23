@@ -92,6 +92,10 @@ pub async fn montar(id: TransferId, raizes: &[PathBuf], leitor: Leitor) -> Resul
 
 /// Acrescenta uma raiz — arquivo solto ou árvore inteira.
 async fn acrescentar_raiz(plano: &mut Plano, raiz: &Path) -> Result<()> {
+    // Antes de qualquer acesso ao disco: perguntar por um caminho de rede já é o ataque.
+    if !caminho_local(raiz) {
+        return Err(FileError::NaoEnviavel(raiz.to_path_buf()));
+    }
     // `symlink_metadata` e não `metadata`: aqui a pergunta é "o que é esta entrada", e não "o que
     // há no fim do vínculo".
     let dados = tokio::fs::symlink_metadata(raiz)
@@ -186,6 +190,32 @@ fn acrescentar(
     Ok(())
 }
 
+/// Se o caminho é absoluto e desta máquina.
+///
+/// No Windows o serviço roda como SYSTEM, e um caminho de rede (`\\servidor\pasta`) faz o
+/// sistema se autenticar naquele servidor **com a conta da máquina** só por perguntar se o
+/// arquivo existe — quem pediu escolheria o servidor. Só entram as unidades locais (`C:\...`,
+/// também na forma `\\?\C:\...`). Caminho relativo também não: ele seria relativo à pasta de
+/// trabalho do serviço, e não à de quem pediu.
+pub(crate) fn caminho_local(caminho: &Path) -> bool {
+    if !caminho.is_absolute() {
+        return false;
+    }
+    #[cfg(windows)]
+    {
+        use std::path::{Component, Prefix};
+        matches!(
+            caminho.components().next(),
+            Some(Component::Prefix(prefixo))
+                if matches!(prefixo.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
+        )
+    }
+    #[cfg(not(windows))]
+    {
+        true
+    }
+}
+
 /// O último componente de um caminho, como texto.
 fn nome_relativo(caminho: &Path) -> Result<String> {
     caminho
@@ -212,184 +242,4 @@ fn nome_do_destino(raizes: &[PathBuf]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::teste::pasta_temporaria;
-
-    async fn escrever(caminho: &Path, conteudo: &[u8]) {
-        if let Some(pai) = caminho.parent() {
-            tokio::fs::create_dir_all(pai).await.unwrap();
-        }
-        tokio::fs::write(caminho, conteudo).await.unwrap();
-    }
-
-    fn caminhos(plano: &Plano) -> Vec<String> {
-        let mut todos: Vec<String> = plano.itens.iter().map(|i| i.path.clone()).collect();
-        todos.sort();
-        todos
-    }
-
-    #[tokio::test]
-    async fn um_arquivo_solto_vira_um_item() {
-        let temp = pasta_temporaria("manifesto-um");
-        let alvo = temp.caminho().join("nota.txt");
-        escrever(&alvo, b"doze bytes..").await;
-
-        let plano = montar(TransferId(1), &[alvo], Leitor::Proprio)
-            .await
-            .unwrap();
-        assert_eq!(caminhos(&plano), vec!["nota.txt"]);
-        assert_eq!(plano.total, 12);
-        assert_eq!(plano.nome, "nota.txt");
-    }
-
-    #[tokio::test]
-    async fn uma_arvore_vira_pastas_e_arquivos_com_caminho_relativo() {
-        let temp = pasta_temporaria("manifesto-arvore");
-        let raiz = temp.caminho().join("relatorio");
-        escrever(&raiz.join("a.pdf"), b"12345").await;
-        escrever(&raiz.join("anexos").join("b.bin"), b"123").await;
-
-        let plano = montar(TransferId(2), &[raiz], Leitor::Proprio)
-            .await
-            .unwrap();
-        assert_eq!(
-            caminhos(&plano),
-            vec![
-                "relatorio",
-                "relatorio/a.pdf",
-                "relatorio/anexos",
-                "relatorio/anexos/b.bin",
-            ]
-        );
-        assert_eq!(plano.total, 8, "só arquivo conta para o total");
-        assert_eq!(plano.nome, "relatorio");
-    }
-
-    #[tokio::test]
-    async fn o_total_do_plano_e_aceito_pela_cota_sem_ajuste() {
-        // As duas pontas do mesmo número: quem monta e quem confere. Se `montar` somasse
-        // diretório, ou se `avaliar` não os descontasse, este teste falharia — e o sintoma real
-        // seria uma transferência recusada por total que não bate.
-        let temp = pasta_temporaria("manifesto-cota");
-        let raiz = temp.caminho().join("pasta");
-        escrever(&raiz.join("a").join("x.bin"), b"abcdefghij").await;
-
-        let plano = montar(TransferId(3), &[raiz], Leitor::Proprio)
-            .await
-            .unwrap();
-        assert_eq!(
-            crate::cota::avaliar(
-                &plano.itens,
-                plano.total,
-                crate::cota::Cota::default(),
-                None
-            )
-            .unwrap(),
-            None
-        );
-    }
-
-    #[tokio::test]
-    async fn varias_raizes_entram_lado_a_lado() {
-        let temp = pasta_temporaria("manifesto-varias");
-        let a = temp.caminho().join("a.txt");
-        let b = temp.caminho().join("b.txt");
-        escrever(&a, b"a").await;
-        escrever(&b, b"bb").await;
-
-        let plano = montar(TransferId(4), &[a, b], Leitor::Proprio)
-            .await
-            .unwrap();
-        assert_eq!(caminhos(&plano), vec!["a.txt", "b.txt"]);
-        assert_eq!(plano.total, 3);
-        assert_eq!(plano.nome, "a.txt e outros");
-    }
-
-    #[tokio::test]
-    async fn uma_pasta_vazia_ainda_e_um_item() {
-        // Copiar uma pasta vazia e receber nada seria perda silenciosa.
-        let temp = pasta_temporaria("manifesto-vazia");
-        let raiz = temp.caminho().join("vazia");
-        tokio::fs::create_dir_all(&raiz).await.unwrap();
-
-        let plano = montar(TransferId(5), &[raiz], Leitor::Proprio)
-            .await
-            .unwrap();
-        assert_eq!(caminhos(&plano), vec!["vazia"]);
-        assert_eq!(plano.total, 0);
-    }
-
-    #[tokio::test]
-    async fn o_que_nao_existe_e_erro_e_nao_um_plano_vazio() {
-        let temp = pasta_temporaria("manifesto-ausente");
-        let erro = montar(
-            TransferId(6),
-            &[temp.caminho().join("nao-existe")],
-            Leitor::Proprio,
-        )
-        .await
-        .unwrap_err();
-        assert!(matches!(erro, FileError::NaoEnviavel(_)), "{erro}");
-    }
-
-    #[tokio::test]
-    async fn todo_caminho_do_manifesto_e_seguro_para_o_destino() {
-        // A propriedade que fecha o ciclo: o que este módulo produz é exatamente o que o
-        // `is_safe_path` do destino aceita. Se as duas regras divergirem, a transferência é
-        // recusada por caminho inseguro que nós mesmos montamos.
-        let temp = pasta_temporaria("manifesto-seguro");
-        let raiz = temp.caminho().join("com espaço e acentuação");
-        escrever(&raiz.join("sub pasta").join("arquivo (1).txt"), b"x").await;
-
-        let plano = montar(TransferId(7), &[raiz], Leitor::Proprio)
-            .await
-            .unwrap();
-        assert!(!plano.vazio());
-        for item in &plano.itens {
-            assert!(item.is_safe_path(), "{}", item.path);
-            assert!(!item.path.contains('\\'), "{}", item.path);
-        }
-    }
-
-    #[tokio::test]
-    async fn os_dois_vetores_andam_juntos() {
-        let temp = pasta_temporaria("manifesto-paralelo");
-        let raiz = temp.caminho().join("p");
-        escrever(&raiz.join("a.txt"), b"1").await;
-        escrever(&raiz.join("b.txt"), b"22").await;
-
-        let plano = montar(TransferId(8), &[raiz], Leitor::Proprio)
-            .await
-            .unwrap();
-        assert_eq!(
-            plano.itens.len(),
-            plano.locais.len(),
-            "um item sem caminho local é um bloco que não sabe o que ler"
-        );
-        for (item, local) in plano.itens.iter().zip(&plano.locais) {
-            assert!(
-                local.ends_with(item.path.rsplit('/').next().unwrap_or_default()),
-                "{} não corresponde a {local:?}",
-                item.path
-            );
-        }
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn vinculo_simbolico_e_ignorado_e_contado() {
-        // Um laço faria a varredura não terminar; um vínculo para fora copiaria o que o usuário
-        // não selecionou. Ignorar é a resposta, e dizer quantos foi ignorado é o mínimo.
-        let temp = pasta_temporaria("manifesto-vinculo");
-        let raiz = temp.caminho().join("p");
-        escrever(&raiz.join("real.txt"), b"x").await;
-        std::os::unix::fs::symlink(&raiz, raiz.join("laco")).unwrap();
-
-        let plano = montar(TransferId(9), &[raiz], Leitor::Proprio)
-            .await
-            .unwrap();
-        assert_eq!(caminhos(&plano), vec!["p", "p/real.txt"]);
-        assert_eq!(plano.ignorados, 1);
-    }
-}
+mod testes;

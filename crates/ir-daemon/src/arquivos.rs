@@ -6,8 +6,6 @@
 
 use std::sync::Arc;
 
-use ir_transporte::Endereco;
-
 use crate::config;
 
 /// Sobe o canal de arquivos, na tarefa dele.
@@ -37,9 +35,9 @@ pub(crate) fn abrir(
 ///
 /// O endereço configurado à mão vence; sem ele, vale o endereço por onde o par foi pareado.
 pub(crate) fn destino(cfg: &config::Config) -> ir_transferencia::Destino {
-    let gravado = cfg.peers.first().and_then(|par| par.addr.as_deref());
-    ir_transferencia::Destino {
-        chave: cfg.first_peer_key(),
-        alvo: cfg.peer_addr.as_deref().or(gravado).and_then(Endereco::ler),
-    }
+    ir_transferencia::Destino::da_configuracao(
+        cfg.first_peer_key(),
+        cfg.peer_addr.as_deref(),
+        cfg.peers.first().and_then(|par| par.addr.as_deref()),
+    )
 }

@@ -5,7 +5,6 @@ use ir_proto::frame::Frame;
 use ir_proto::input::{Button, HidUsage, PointerPosition, WheelDelta};
 
 use super::Notice;
-use crate::time::Timestamp;
 
 /// Uma entrada a injetar na máquina local. Só o cliente recebe estes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,22 +31,6 @@ pub enum Injection {
     /// Sempre absoluto, nunca relativo — `docs/05-windows.md` §4.2: injetar movimento
     /// relativo faria o sistema aplicar a própria aceleração a deltas que já vêm acelerados.
     Pointer(PointerPosition),
-}
-
-/// Um prazo que a sessão pediu para ser acordada.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[non_exhaustive]
-pub enum TimerId {
-    /// Hora de mandar `Ping`.
-    Heartbeat,
-    /// Hora de declarar o enlace caído.
-    LinkTimeout,
-    /// Hora de mandar o estado completo.
-    Snapshot,
-    /// Hora de despachar o movimento de ponteiro acumulado.
-    PointerFlush,
-    /// Hora de tentar reconectar.
-    Reconnect,
 }
 
 /// O que a sessão pede.
@@ -82,19 +65,11 @@ pub enum Command {
     /// Usado ao devolver o controle, para o cursor reaparecer na borda por onde voltou.
     WarpPointer(PointerPosition),
 
-    /// Acorde a sessão neste instante.
-    ///
-    /// Absoluto e não relativo: a periferia não precisa saber quando o pedido foi feito, e um
-    /// atraso na fila não desloca o prazo.
-    SetTimer {
-        /// Qual prazo.
-        id: TimerId,
-        /// Quando.
-        at: Timestamp,
-    },
+    /// Gere Ctrl+Alt+Del nesta máquina, se o administrador daqui permitir. Pedido pelo par.
+    SecureAttention,
 
-    /// Cancele este prazo.
-    ClearTimer(TimerId),
+    /// Bloqueie a tela desta máquina. Pedido pelo par, que bloqueou a dele.
+    LockScreen,
 
     /// Conte isto à interface.
     Notify(Notice),
@@ -163,6 +138,11 @@ impl CommandBatch {
     /// Itera os comandos.
     pub fn iter(&self) -> impl Iterator<Item = &Command> {
         self.commands.iter()
+    }
+
+    /// Tira os comandos na ordem, por valor, e deixa o lote vazio com a capacidade que tinha.
+    pub fn drain(&mut self) -> impl Iterator<Item = Command> + '_ {
+        self.commands.drain(..)
     }
 }
 

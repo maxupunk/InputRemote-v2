@@ -54,6 +54,7 @@
 pub mod conteudo;
 pub mod eco;
 pub mod error;
+pub mod imagem;
 pub mod uri;
 
 #[cfg(windows)]

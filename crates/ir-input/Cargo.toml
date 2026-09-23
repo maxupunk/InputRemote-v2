@@ -22,10 +22,16 @@ features = [
     "Win32_System_LibraryLoader",
     "Win32_System_Threading",
     "Win32_Graphics_Gdi",
+    # Uma thread por desktop, para injetar na tela de bloqueio e no UAC (ADR-0008).
+    "Win32_System_StationsAndDesktops",
+    # `LockWorkStation`, para bloquear junto com o par.
+    "Win32_System_Shutdown",
 ]
 
 [target.'cfg(target_os = "linux")'.dependencies]
 evdev = "0.12"
+# `poll` e `eventfd`: a thread de cada dispositivo acorda na hora em que a supressão muda.
+libc = "0.2"
 
 [lints]
 workspace = true

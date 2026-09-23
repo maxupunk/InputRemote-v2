@@ -50,10 +50,26 @@ pub async fn bind(addr: SocketAddr) -> Result<TcpListener> {
 /// [`NetError::Io`](crate::NetError::Io) se não houver ninguém atendendo, o que é o caso normal
 /// enquanto a outra máquina não subiu.
 pub async fn connect(addr: SocketAddr) -> Result<TcpStream> {
-    let stream = TcpStream::connect(addr).await?;
+    // Sem prazo, um SYN para um endereço que ninguém responde espera o do sistema — mais de 20 s
+    // no Windows —, e a busca do par na rede fica parada atrás dele.
+    let stream = tokio::time::timeout(PRAZO_DA_CONEXAO, TcpStream::connect(addr))
+        .await
+        .map_err(|_| std::io::Error::from(std::io::ErrorKind::TimedOut))??;
     prepare(&stream);
     Ok(stream)
 }
+
+/// Quanto se espera o par atender uma conexão do canal de dados.
+pub const PRAZO_DA_CONEXAO: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Depois de quanto tempo parado o TCP de dados começa a sondar se o par ainda está lá.
+///
+/// Depois de uma suspensão ou de o Wi-Fi trocar de ponto de acesso, a conexão continua "aberta"
+/// deste lado e ninguém do outro: sem sondas, uma transferência esperaria para sempre. Com 15 s
+/// parados e sondas a cada 5 s, o canal cai em menos de meio minuto e volta a discar.
+const SONDAR_DEPOIS: std::time::Duration = std::time::Duration::from_secs(15);
+/// O intervalo entre as sondas.
+const SONDAR_A_CADA: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Ajusta um socket recém-aceito ou recém-conectado.
 ///
@@ -65,6 +81,10 @@ pub async fn connect(addr: SocketAddr) -> Result<TcpStream> {
 pub fn prepare(stream: &TcpStream) {
     // Falhar aqui não impede nada de funcionar: é ajuste de desempenho, não de correção.
     let _ = stream.set_nodelay(true);
+    let sondas = socket2::TcpKeepalive::new()
+        .with_time(SONDAR_DEPOIS)
+        .with_interval(SONDAR_A_CADA);
+    let _ = socket2::SockRef::from(stream).set_tcp_keepalive(&sondas);
 }
 
 /// Qual dos dois enlaces sobrevive quando as duas máquinas discam ao mesmo tempo.

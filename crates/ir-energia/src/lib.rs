@@ -94,20 +94,109 @@ pub fn desligar() -> Result<(), ErroDeEnergia> {
     }
 }
 
-/// Roda um comando e devolve a saída padrão, ou o motivo de não ter dado.
+/// Quanto uma ferramenta do sistema pode demorar antes de ser abandonada.
+///
+/// As verificações rodam numa thread de bloqueio do serviço, a cada 30 s e a pedido do par. Uma
+/// ferramenta que trava — um driver que não responde ao `iw` — prenderia essa thread para sempre,
+/// e a próxima verificação prenderia outra.
+#[cfg(any(target_os = "linux", windows))]
+const PRAZO_DA_FERRAMENTA: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Roda um comando e devolve a saída padrão, ou o motivo de não ter dado — no máximo em
+/// [`PRAZO_DA_FERRAMENTA`].
 #[cfg(any(target_os = "linux", windows))]
 fn rodar(programa: &str, argumentos: &[&str]) -> Result<String, ErroDeEnergia> {
-    let saida = std::process::Command::new(programa)
+    rodar_com_prazo(programa, argumentos, PRAZO_DA_FERRAMENTA)
+}
+
+#[cfg(any(target_os = "linux", windows))]
+fn rodar_com_prazo(
+    programa: &str,
+    argumentos: &[&str],
+    prazo: std::time::Duration,
+) -> Result<String, ErroDeEnergia> {
+    use std::io::Read;
+    use std::process::Stdio;
+
+    let falhou = |erro: &dyn std::fmt::Display| ErroDeEnergia(format!("{programa}: {erro}"));
+    let mut filho = std::process::Command::new(programa)
         .args(argumentos)
-        .output()
-        .map_err(|erro| ErroDeEnergia(format!("{programa}: {erro}")))?;
-    if !saida.status.success() {
-        let motivo = String::from_utf8_lossy(&saida.stderr);
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|erro| falhou(&erro))?;
+    // As saídas são lidas em threads próprias: um filho que escreve mais do que cabe no cano
+    // travaria esperando alguém ler, e a espera abaixo nunca terminaria.
+    let ler = |cano: Option<Box<dyn Read + Send>>| {
+        std::thread::spawn(move || {
+            let mut texto = Vec::new();
+            if let Some(mut cano) = cano {
+                let _ = cano.read_to_end(&mut texto);
+            }
+            texto
+        })
+    };
+    let saida = ler(filho
+        .stdout
+        .take()
+        .map(|c| Box::new(c) as Box<dyn Read + Send>));
+    let erros = ler(filho
+        .stderr
+        .take()
+        .map(|c| Box::new(c) as Box<dyn Read + Send>));
+    let limite = std::time::Instant::now() + prazo;
+    let status = loop {
+        if let Some(status) = filho.try_wait().map_err(|erro| falhou(&erro))? {
+            break status;
+        }
+        if std::time::Instant::now() >= limite {
+            let _ = filho.kill();
+            let _ = filho.wait();
+            return Err(ErroDeEnergia(format!(
+                "{programa} não respondeu em {} s",
+                prazo.as_secs()
+            )));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let saida = saida.join().unwrap_or_default();
+    let erros = erros.join().unwrap_or_default();
+    if !status.success() {
+        let motivo = String::from_utf8_lossy(&erros);
         return Err(ErroDeEnergia(format!(
             "{programa} {}: {}",
             argumentos.join(" "),
             motivo.trim()
         )));
     }
-    Ok(String::from_utf8_lossy(&saida.stdout).into_owned())
+    Ok(String::from_utf8_lossy(&saida).into_owned())
+}
+
+#[cfg(all(test, any(target_os = "linux", windows)))]
+mod tests_do_prazo {
+    use super::*;
+
+    #[test]
+    fn a_ferramenta_que_trava_e_abandonada_no_prazo() {
+        #[cfg(windows)]
+        let (programa, argumentos) = ("ping", ["-n", "30", "127.0.0.1"]);
+        #[cfg(target_os = "linux")]
+        let (programa, argumentos) = ("sleep", ["30", ""]);
+        let argumentos: Vec<&str> = argumentos.into_iter().filter(|a| !a.is_empty()).collect();
+        let inicio = std::time::Instant::now();
+        let erro = rodar_com_prazo(programa, &argumentos, std::time::Duration::from_millis(300))
+            .unwrap_err();
+        assert!(erro.0.contains("não respondeu"), "{}", erro.0);
+        assert!(inicio.elapsed() < std::time::Duration::from_secs(5));
+    }
+
+    #[test]
+    fn a_ferramenta_rapida_devolve_a_saida() {
+        #[cfg(windows)]
+        let saida = rodar("cmd", &["/C", "echo", "oi"]).unwrap();
+        #[cfg(target_os = "linux")]
+        let saida = rodar("echo", &["oi"]).unwrap();
+        assert_eq!(saida.trim(), "oi");
+    }
 }

@@ -25,6 +25,8 @@ tracing-subscriber.workspace = true
 # ajudante de clipboard não chega a lugar nenhum, e uma falha deles ficava invisível.
 tracing-appender.workspace = true
 anyhow.workspace = true
+# O nome da imagem de clipboard em trânsito leva parte do resumo dela.
+blake3.workspace = true
 
 [lints]
 workspace = true

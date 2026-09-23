@@ -120,8 +120,7 @@ impl Envio {
             // Aberto primeiro, conferido depois: o que se confere é o descritor que vai ser lido, e
             // não o caminho — que pode ter sido trocado por um vínculo desde o manifesto
             // ([`crate::permissao`]).
-            let aberto =
-                std::fs::File::open(&caminho).map_err(|erro| FileError::io(&caminho, erro))?;
+            let aberto = abrir_para_enviar(&caminho)?;
             crate::permissao::conferir_aberto(&self.plano.leitor, &caminho, &aberto)?;
             let arquivo = tokio::fs::File::from_std(aberto);
             let declarado = item.size;
@@ -193,6 +192,40 @@ impl Envio {
 /// O índice de um item, como ele viaja.
 fn indice_no_fio(indice: usize) -> Result<u32> {
     u32::try_from(indice).map_err(|_| FileError::Violacao("índice de item não cabe no fio"))
+}
+
+/// Abre um arquivo do manifesto para ler, sem deixar o serviço preso nele.
+///
+/// Entre o manifesto e a leitura, quem pediu pode trocar o arquivo por um *pipe* nomeado (FIFO): um
+/// `open` comum de um FIFO espera alguém escrever do outro lado, e o serviço inteiro ficava parado
+/// ali. Aberto sem bloquear, e conferido **depois de aberto** que é arquivo comum — o que se confere
+/// é o descritor que vai ser lido.
+///
+/// # Errors
+///
+/// [`FileError::Io`] se não abrir; [`FileError::NaoEnviavel`] se não for arquivo comum.
+pub(crate) fn abrir_para_enviar(caminho: &std::path::Path) -> Result<std::fs::File> {
+    let mut opcoes = std::fs::OpenOptions::new();
+    opcoes.read(true);
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        /// `O_NONBLOCK`, o mesmo valor em x86-64 e ARM64. Num arquivo comum não muda nada.
+        const SEM_BLOQUEAR: i32 = 0o4000;
+        opcoes.custom_flags(SEM_BLOQUEAR);
+    }
+    let aberto = opcoes
+        .open(caminho)
+        .map_err(|erro| FileError::io(caminho, erro))?;
+    let comum = aberto
+        .metadata()
+        .map_err(|erro| FileError::io(caminho, erro))?
+        .is_file();
+    if comum {
+        Ok(aberto)
+    } else {
+        Err(FileError::NaoEnviavel(caminho.to_path_buf()))
+    }
 }
 
 /// O resumo BLAKE3 de um item do manifesto, lido do disco.

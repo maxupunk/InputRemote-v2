@@ -14,11 +14,17 @@ use crate::actor::Daemon;
 
 impl Daemon {
     /// Executa os comandos acumulados no último passo e esvazia o lote.
+    ///
+    /// O lote sai do ator enquanto os comandos são aplicados — um comando pode alimentar a sessão
+    /// de novo, e o passo novo usa um lote próprio. Antes cada passo clonava todos os comandos, 200
+    /// vezes por segundo; agora eles saem por valor, e a capacidade reservada volta para o próximo.
     pub(crate) fn apply_commands(&mut self) {
-        let commands: Vec<Command> = self.out.iter().cloned().collect();
-        self.out.clear();
-        for command in commands {
+        let mut lote = std::mem::take(&mut self.out);
+        for command in lote.drain() {
             self.apply_one(command);
+        }
+        if self.out.is_empty() {
+            self.out = lote;
         }
     }
 
@@ -29,37 +35,9 @@ impl Daemon {
             Command::ReleaseAll => self.release_all(),
             Command::SuppressLocalInput(on) => self.suppress(on),
             Command::WarpPointer(position) => self.warp(position),
-            Command::Notify(notice) => {
-                log_notice(&notice);
-                // A borda que a sessão passou a usar precisa ir para o arquivo e para a janela.
-                if let Notice::EdgeChanged { edge } = notice {
-                    self.adotar_borda(edge);
-                }
-                // O controle saiu desta máquina: o que está no clipboard daqui vai junto. É o
-                // gatilho que funciona onde o sistema não avisa mudança de clipboard — o GNOME não
-                // avisa (ADR-0011).
-                if let Notice::ControlMoved { remote: true } = notice {
-                    let _ = self.avisos.send(ir_ipc::Aviso::LerClipboard);
-                }
-                // O rádio do par forma a rota dupla quando os dois se conheceram pela rede.
-                if let Notice::PeerRadio(radio) = notice {
-                    self.on_radio_do_par(radio);
-                }
-                // A rota mudou sem a fase mudar, e o aviso de fase não acordaria a janela.
-                match notice {
-                    Notice::PeerNetworkPower(estado) => self.on_economia_do_par(Some(estado)),
-                    Notice::NetworkPowerFixRequested => {
-                        info!("o par pediu para desligar a economia de energia do Wi-Fi daqui");
-                        self.desligar_economia_aqui();
-                    }
-                    // O que o par contou vale para a sessão dele; na próxima, ele conta de novo.
-                    Notice::Disconnected { .. } => self.on_economia_do_par(None),
-                    _ => {}
-                }
-                if let Notice::RouteChanged { .. } = notice {
-                    let _ = self.avisos.send(ir_ipc::Aviso::EstadoMudou(self.estado()));
-                }
-            }
+            Command::SecureAttention => self.gerar_ctrl_alt_del(),
+            Command::LockScreen => self.bloquear_a_tela(),
+            Command::Notify(notice) => self.on_notice(&notice),
             // Chegou texto do par: vai para o ajudante da sessão, que o põe no clipboard. Os dois
             // tipos têm o mesmo limite, o do canal 4.
             Command::ClipboardText(texto) => {
@@ -75,6 +53,49 @@ impl Daemon {
             // confere os próprios prazos pelo relógio injetado); o curinga cobre variantes
             // futuras do enum não exaustivo.
             _ => {}
+        }
+    }
+
+    /// Um aviso da sessão: registrar, e o que ele muda no serviço e na janela.
+    fn on_notice(&mut self, notice: &Notice) {
+        log_notice(notice);
+        // A borda que a sessão passou a usar precisa ir para o arquivo e para a janela.
+        if let Notice::EdgeChanged { edge } = notice {
+            self.adotar_borda(*edge);
+        }
+        // O controle saiu desta máquina: o que está no clipboard daqui vai junto. É o
+        // gatilho que funciona onde o sistema não avisa mudança de clipboard — o GNOME não
+        // avisa (ADR-0011).
+        if let Notice::ControlMoved { remote: true } = notice {
+            let _ = self.avisos.send(ir_ipc::Aviso::LerClipboard);
+        }
+        // O rádio do par forma a rota dupla quando os dois se conheceram pela rede.
+        if let Notice::PeerRadio(radio) = notice {
+            self.on_radio_do_par(*radio);
+        }
+        // A rota mudou sem a fase mudar, e o aviso de fase não acordaria a janela.
+        match notice {
+            Notice::PeerNetworkPower(estado) => self.on_economia_do_par(Some(*estado)),
+            Notice::NetworkPowerFixRequested => {
+                self.on_pedido_de_economia_do_par(std::time::Instant::now());
+            }
+            // O que o par contou vale para a sessão dele; na próxima, ele conta de novo.
+            Notice::Disconnected { reason, .. } => {
+                self.on_economia_do_par(None);
+                self.on_queda(*reason);
+            }
+            Notice::LatencySample(volta) => {
+                self.voltas.anotar(std::time::Instant::now(), volta.get());
+            }
+            Notice::Connected { peer, .. } => self.lembrar_nome_do_par(peer.as_str()),
+            Notice::PeerCannotSecureAttention => self.ctrl_alt_del_nao_saiu(),
+            Notice::PeerProtectedDesktop { refused } => {
+                self.on_par_recusa_protegido(*refused);
+            }
+            _ => {}
+        }
+        if let Notice::RouteChanged { .. } = notice {
+            let _ = self.avisos.send(ir_ipc::Aviso::EstadoMudou(self.estado()));
         }
     }
 
@@ -101,11 +122,19 @@ impl Daemon {
         // Com agente de pé (o caso do Windows), quem toca no teclado é ele: o serviço está na
         // sessão 0 e o `SendInput` dele não chegaria ao desktop de ninguém.
         if let Some(agente) = self.comandos_do_agente() {
-            if let Some(comando) = to_agent_command(injection) {
+            if let Some(comando) = ir_painel::comando_do_agente(injection) {
                 let _ = agente.send(comando);
             }
             return;
         }
+        if self.barrar_no_protegido(injection) {
+            return;
+        }
+        self.injetar_direto(injection);
+    }
+
+    /// Injeta pelo backend local — o `uinput` do Linux —, sem passar pela política.
+    pub(crate) fn injetar_direto(&mut self, injection: Injection) {
         let Some(injector) = self.injector.as_mut() else {
             return; // o servidor não injeta
         };
@@ -123,12 +152,17 @@ impl Daemon {
             let _ = agente.send(ComandoDoAgente::SoltarTudo);
             return;
         }
-        if let Some(injector) = self.injector.as_mut() {
-            let _ = injector.release_all();
+        if let Some(injector) = self.injector.as_mut()
+            && let Err(erro) = injector.release_all()
+        {
+            // Soltar tudo é o comando mais importante do produto: falhar nele é tecla presa, e isso
+            // não pode sumir sem rastro.
+            tracing::error!(%erro, "não foi possível soltar as teclas injetadas");
         }
     }
 
-    fn suppress(&self, on: bool) {
+    fn suppress(&mut self, on: bool) {
+        self.suprimindo = on;
         if let Some(agente) = self.comandos_do_agente() {
             let _ = agente.send(ComandoDoAgente::SuprimirEntradaLocal(on));
             return;
@@ -152,23 +186,6 @@ impl Daemon {
             capturer.warp_pointer(x, y);
         }
     }
-}
-
-/// Converte um comando de injeção da sessão no comando que o agente entende.
-fn to_agent_command(injection: Injection) -> Option<ComandoDoAgente> {
-    Some(match injection {
-        Injection::Key { usage, pressed } => ComandoDoAgente::Tecla {
-            usage,
-            pressionada: pressed,
-        },
-        Injection::Button { button, pressed } => ComandoDoAgente::Botao {
-            botao: button,
-            pressionado: pressed,
-        },
-        Injection::Wheel(delta) => ComandoDoAgente::Roda(delta),
-        Injection::Pointer(position) => ComandoDoAgente::Ponteiro(position),
-        _ => return None,
-    })
 }
 
 /// Converte um comando de injeção da sessão no evento do backend de entrada.

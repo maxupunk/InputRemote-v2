@@ -130,6 +130,36 @@ fn losing_the_agent_while_being_controlled_gives_control_back() {
 }
 
 #[test]
+fn losing_the_agent_while_controlling_releases_the_peer_and_takes_control_back() {
+    let mut pair = connected();
+    cross_to_client(&mut pair);
+    pair.feed(
+        Side::Server,
+        Input::LocalKey {
+            usage: HidUsage(0x04),
+            pressed: true,
+        },
+    );
+    assert!(
+        !pair.client.input_state().is_released(),
+        "a tecla desceu no par"
+    );
+    pair.clear_log();
+
+    pair.feed(Side::Server, Input::AgentLost);
+
+    assert!(
+        pair.client.input_state().is_released(),
+        "a subida nunca viria: o par solta tudo"
+    );
+    assert_eq!(
+        pair.server.phase(),
+        Phase::Ready,
+        "e o controle volta para cá"
+    );
+}
+
+#[test]
 fn the_periodic_snapshot_is_sent_while_the_control_is_remote() {
     let mut pair = connected();
     cross_to_client(&mut pair);

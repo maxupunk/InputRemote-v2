@@ -124,6 +124,24 @@ servidor. A resposta, em ordem:
    Assim ele conhece a posição do cursor porque é ele quem a produz. O custo é
    implementar a curva de aceleração do ponteiro local, e por isso não entra na Fase 1.
 
+### 3.4. O que está implementado: `evdev` sem curva
+
+> **Implementado com a varredura de melhorias ([log 45](logs/45-a-varredura-implementada.md)),
+> antes do portal.** O Linux já pode ser o lado que tem o teclado, por uma forma reduzida do modo
+> `evdev` do item 3 acima (`ir-input/src/linux/captura.rs`):
+
+- com o controle aqui, os dispositivos continuam entregando ao compositor, e o serviço só **ouve**
+  os deltas crus, para o modelo de ponteiro da sessão;
+- ao atravessar, o serviço faz `EVIOCGRAB` em todo teclado e mouse físico, e o compositor para de
+  ver qualquer coisa — é a supressão; ao voltar, solta;
+- os dispositivos virtuais do próprio produto ficam de fora (senão a injeção como cliente voltaria
+  como captura), e um teclado espetado depois entra sozinho, pela releitura a cada 2 s.
+
+O que isto não resolve: sem a posição que o compositor deu ao cursor, o modelo da sessão diverge
+dele pela aceleração, e a travessia pela borda acontece perto do ponto certo, não exatamente nele.
+O atalho Ctrl+Alt+Shift+Espaço atravessa na hora, sem borda. O caminho exato continua sendo o
+portal (§3.1), que segue por fazer.
+
 ## 4. Onde a entrada é roteada
 
 O serviço decide o alvo consultando o `logind` (`org.freedesktop.login1`):
@@ -176,8 +194,9 @@ Wayland é do compositor, e `uinput` está abaixo dela.
 O agente Linux é bem menor que o do Windows. Ele roda como unidade `systemd --user` e
 cuida de:
 
-- captura pelo portal `InputCapture` + `libei` (papel de servidor);
-- clipboard;
+- captura pelo portal `InputCapture` + `libei` (papel de servidor) — por ora a captura é do
+  serviço, por `evdev` (§3.4);
+- clipboard — é o ajudante `inputremote-agent --clipboard` ([ADR-0011](adr/0011-clipboard-na-travessia.md));
 - geometria das telas, para `ir-geometry`;
 - notificações ao usuário.
 
@@ -193,6 +212,13 @@ inclusive na tela de bloqueio — o que é o comportamento desejado.
 | Arquivos | portal `FileTransfer` (`org.freedesktop.portal.FileTransfer`) |
 
 Formatos canônicos do protocolo: texto UTF-8 com LF, imagem PNG, arquivos por manifesto.
+
+> **Como ficou ([ADR-0011](adr/0011-clipboard-na-travessia.md)):** o ajudante usa o
+> `wl-clipboard` (`wl-paste`/`wl-copy`), dentro da sessão. Texto (`text/plain`), arquivos
+> (`text/uri-list`, `x-special/gnome-copied-files`) e imagem (`image/png`, lida depois do texto,
+> porque a planilha oferece uma figura das células junto com elas). A imagem atravessa como um
+> arquivo PNG de nome reconhecível pelo canal de dados, e o ajudante do outro lado a publica como
+> imagem.
 O GNOME não expõe `wlr-data-control`; ali o caminho é o portal. A matriz do que está
 disponível é medida em tempo de execução e mostrada no diagnóstico — nunca presumida.
 

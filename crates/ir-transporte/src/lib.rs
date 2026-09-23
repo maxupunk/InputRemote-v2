@@ -44,14 +44,27 @@ pub use self::dados::{Destinatario, EnlaceDeDados, Porta, Remetente};
 pub use self::descoberta::{Descoberta, Encontrado};
 pub use self::radio::{Pareados, Radio};
 pub use self::rede::Rede;
-pub use self::subida::{Abertos, RadioAberto, abrir, nome_da_maquina};
+pub use self::subida::{Abertos, RadioAberto, Reabridor, abrir, nome_da_maquina};
 
 use std::net::SocketAddr;
 
 use ir_bt::BdAddr;
 use ir_crypto::PublicKey;
 use ir_proto::carrier::Carrier;
-use ir_proto::ids::RadioAddress;
+use ir_proto::ids::{MachineId, RadioAddress};
+
+/// O identificador de máquina de uma chave: os 16 primeiros bytes dela.
+///
+/// Um lugar só: o serviço, a descoberta e o canal de arquivos derivavam cada um o seu, e é por
+/// esse número que a descoberta reconhece o par fixado na rede.
+#[must_use]
+pub fn maquina_da_chave(chave: &PublicKey) -> MachineId {
+    let mut bytes = [0u8; 16];
+    if let Some(inicio) = chave.0.get(..16) {
+        bytes.copy_from_slice(inicio);
+    }
+    MachineId(bytes)
+}
 
 /// Onde um par pode ser alcançado.
 ///
@@ -126,6 +139,9 @@ pub trait Transporte: Send + Sync {
     /// O usuário respondeu à comparação de códigos.
     fn confirmar_pareamento(&self, conferiu: bool);
 
+    /// Se um pedido de pareamento que chega de fora deve ser atendido.
+    fn aceitar_pareamento(&self, aceitar: bool);
+
     /// Encerre o enlace atual.
     fn desconectar(&self);
 }
@@ -180,6 +196,15 @@ pub enum Fato {
         /// A frase que a tela mostra, já com o que a pessoa pode fazer quando há o que fazer.
         mensagem: String,
     },
+    /// O transporte deixou de existir: o rádio foi desligado ou removido.
+    ///
+    /// Quem o abriu ([`Reabridor`]) volta a tentar em segundo plano; o ator o descarta.
+    Perdido {
+        /// Qual.
+        portador: Carrier,
+        /// Por quê.
+        motivo: String,
+    },
 }
 
 impl Fato {
@@ -190,7 +215,8 @@ impl Fato {
             | Self::Estabelecido { portador, .. }
             | Self::Quadro { portador, .. }
             | Self::Caiu { portador, .. }
-            | Self::Erro { portador, .. } => *portador,
+            | Self::Erro { portador, .. }
+            | Self::Perdido { portador, .. } => *portador,
         }
     }
 }

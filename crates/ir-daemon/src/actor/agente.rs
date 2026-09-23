@@ -76,11 +76,14 @@ impl Daemon {
                 return;
             }
             FatoDoAgente::InjecaoRecusada { desktop } => {
-                warn!(desktop, "o sistema recusou a injeção do agente");
+                warn!(desktop, "a injeção do agente foi recusada");
+                if !desktop.eq_ignore_ascii_case("Default") {
+                    self.recusando_protegido(true);
+                }
                 return;
             }
             FatoDoAgente::DesktopMudou { nome } => {
-                info!(nome, "o desktop de entrada mudou");
+                self.on_desktop_mudou(&nome);
                 return;
             }
             _ => return,
@@ -91,7 +94,17 @@ impl Daemon {
     /// O agente conectou e está pronto para capturar e injetar.
     fn on_agente_pronto(&mut self, desktops: &[String]) {
         self.agente_pronto = true;
+        self.desktops_do_agente = desktops.to_vec();
+        // O par fica sabendo na próxima sessão: é no `Hello` que as capacidades viajam.
+        self.identidade_local.capabilities.privileged_input = match self.nivel_daqui() {
+            ir_ipc::Nivel::TelaDeLogin => ir_proto::peer::PrivilegedInputLevel::LoginScreen,
+            ir_ipc::Nivel::TelaDeBloqueio => ir_proto::peer::PrivilegedInputLevel::LockScreen,
+            ir_ipc::Nivel::SoDesbloqueado => ir_proto::peer::PrivilegedInputLevel::UnlockedOnly,
+            ir_ipc::Nivel::Nenhum => ir_proto::peer::PrivilegedInputLevel::None,
+        };
+        self.drive(Input::AgentReady);
         info!(?desktops, "agente pronto");
+        self.contar_ao_agente_a_permissao();
         // O cursor real está onde está, e o modelo da sessão precisa recomeçar no mesmo ponto.
         self.seed_pointer = true;
         let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
@@ -99,16 +112,78 @@ impl Daemon {
 
     /// O agente saiu, ou a conexão com ele caiu.
     ///
-    /// Não há o que soltar por aqui: quem segurava teclas era o agente, e a supressão da entrada
-    /// local morreu junto com os ganchos dele — o teclado do usuário volta sozinho. O que importa
-    /// é parar de contar com ele, e dizer isso à interface em vez de fingir que está tudo bem.
+    /// O agente solta o que ele injetou ao sair, e a supressão da entrada local morre junto com os
+    /// ganchos dele. O que falta é o lado da **sessão**: se esta máquina controlava o par, as
+    /// teclas que desceram lá nunca vão ter a subida; se era controlada, o controle volta a quem
+    /// digita. É o `AgentLost` que faz as duas coisas. Depois, o agente é relançado na hora, sem
+    /// esperar a próxima rodada de reconexão.
     fn on_agente_encerrou(&mut self) {
         if !self.agente_pronto {
             return;
         }
         self.agente_pronto = false;
         warn!("o agente saiu; sem captura nem injeção até ele voltar");
+        self.drive(Input::AgentLost);
         let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
+        self.relancar_agente_ja();
+    }
+
+    /// Relança o agente sem esperar a rodada de reconexão ([02, §8](../../../docs/02-arquitetura.md)
+    /// promete meio segundo). Se ele não conectar, a rodada periódica volta a tentar.
+    /// Nos testes não se lança processo nenhum.
+    #[cfg(all(windows, not(test)))]
+    #[allow(clippy::unused_self)]
+    pub(super) fn relancar_agente_ja(&mut self) {
+        match ir_sessao::lancar_agente() {
+            Ok(pid) => info!(pid, "agente relançado"),
+            Err(erro) => warn!(%erro, "não foi possível relançar o agente"),
+        }
+    }
+
+    #[cfg(any(not(windows), test))]
+    #[allow(clippy::unused_self)]
+    pub(super) fn relancar_agente_ja(&mut self) {}
+
+    /// O desktop de entrada desta máquina mudou: bloqueou, abriu o UAC, voltou à área de trabalho.
+    ///
+    /// Do lado que controla, a tela que bloqueia leva o controle de volta: os ganchos não veem o
+    /// Win+L nem o desktop seguro, e o par ficaria recebendo o que ninguém mais digita
+    /// ([05, §5.1](../../../docs/05-windows.md)). Do lado controlado, voltar à área de trabalho
+    /// encerra a recusa do desktop protegido.
+    fn on_desktop_mudou(&mut self, nome: &str) {
+        info!(nome, "o desktop de entrada mudou");
+        if nome.eq_ignore_ascii_case("Default") {
+            self.recusando_protegido(false);
+        } else if self.session.role() == ir_session::Role::Server
+            && self.session.phase() == ir_session::Phase::Engaged
+        {
+            info!("a tela daqui bloqueou com o controle no par: devolvendo e soltando tudo");
+            self.drive(Input::EmergencyRelease);
+        }
+    }
+
+    /// Conta ao agente se o par pode digitar na tela de bloqueio e no UAC.
+    pub(crate) fn contar_ao_agente_a_permissao(&self) {
+        let permitido = self
+            .config
+            .peers
+            .first()
+            .is_some_and(|par| par.tela_de_bloqueio);
+        if let Some(agente) = self.comandos_do_agente() {
+            let _ = agente.send(ComandoDoAgente::PermitirDesktopProtegido(permitido));
+        }
+    }
+
+    /// Renova a supressão da entrada local no agente enquanto ela vale.
+    ///
+    /// O agente devolve o teclado e o mouse ao usuário se a renovação parar de chegar: é o que
+    /// impede um serviço travado de deixar a máquina sem entrada (`ir-agent`, `vigia`).
+    pub(crate) fn renovar_supressao(&self) {
+        if self.suprimindo
+            && let Some(agente) = self.comandos_do_agente()
+        {
+            let _ = agente.send(ComandoDoAgente::SuprimirEntradaLocal(true));
+        }
     }
 
     /// Garante que há um agente de pé, relançando-o quando não há.
@@ -136,3 +211,6 @@ impl Daemon {
     #[allow(clippy::unused_self)]
     pub(crate) fn garantir_agente(&mut self) {}
 }
+
+#[cfg(test)]
+mod testes;

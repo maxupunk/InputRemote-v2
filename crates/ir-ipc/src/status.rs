@@ -148,46 +148,11 @@ pub struct ParConhecido {
     pub conectado: bool,
 }
 
-/// Por que a última sessão terminou.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
-pub enum MotivoDaQueda {
-    /// O usuário mandou parar.
-    PedidoPeloUsuario,
-    /// O serviço do outro lado está parando.
-    ServicoDoParParando,
-    /// O outro computador foi suspenso.
-    ParSuspenso,
-    /// O outro computador parou de responder.
-    ParNaoRespondeu,
-    /// O meio de conexão falhou: rádio desligado, cabo removido, socket fechado.
-    MeioFalhou,
-    /// Erro de protocolo.
-    ErroDeProtocolo,
-    /// Troca de meio em andamento.
-    TrocandoDeMeio,
-}
-
-impl MotivoDaQueda {
-    /// A frase que a interface mostra.
-    ///
-    /// Cada uma diz **o que aconteceu**, não "erro". No v1, toda queda parecia igual, e
-    /// diagnosticar era impossível ([00, §6](../../../docs/00-licoes-do-v1.md)).
-    #[must_use]
-    pub const fn frase(self) -> &'static str {
-        match self {
-            Self::PedidoPeloUsuario => "Você encerrou a conexão",
-            Self::ServicoDoParParando => "O serviço do outro computador está parando",
-            Self::ParSuspenso => "O outro computador foi suspenso",
-            Self::ParNaoRespondeu => "O outro computador parou de responder",
-            Self::MeioFalhou => "O meio de conexão falhou",
-            Self::ErroDeProtocolo => "Erro de protocolo entre as duas versões",
-            Self::TrocandoDeMeio => "Trocando de meio de conexão",
-        }
-    }
-}
-
 /// Tudo que a interface precisa saber, num só valor.
+///
+/// Os campos lógicos são fatos independentes que a tela mostra lado a lado — conectado, pausado,
+/// borda travada —, e não um estado só disfarçado de vários.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Estado {
     /// Em que ponto a sessão está.
@@ -240,24 +205,17 @@ pub struct Estado {
     pub economia_aqui: Option<EconomiaDoWifi>,
     /// A economia de energia do Wi-Fi do par, quando atrapalha e ele contou.
     pub economia_no_par: Option<EconomiaDoWifi>,
-}
-
-/// Quando a economia de energia do Wi-Fi de uma máquina está ligada.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum EconomiaDoWifi {
-    /// Sempre: a placa cochila entre pacotes agora.
-    Ligada,
-    /// Só na bateria.
-    SoNaBateria,
-}
-
-/// O aviso de rede que a tela mostra, com o botão que resolve.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AvisoDeRede {
-    /// A frase.
-    pub frase: &'static str,
-    /// Se o botão pede ao par (`true`) ou a esta máquina.
-    pub no_par: bool,
+    /// Se o compartilhamento está pausado, e de que lado.
+    pub pausa: Option<Pausa>,
+    /// Se o outro computador está numa tela protegida — bloqueio, login, UAC — e descartando o
+    /// que se digita daqui, por não ter dado a permissão.
+    pub par_recusa_tela_de_bloqueio: bool,
+    /// Onde os arquivos recebidos ficam, para o botão "Abrir a pasta".
+    pub pasta_de_recebidos: String,
+    /// Se a borda está travada: o ponteiro não atravessa, só o atalho leva o controle.
+    pub borda_travada: bool,
+    /// Se o outro computador bloqueia junto quando este bloquear.
+    pub bloquear_juntos: bool,
 }
 
 impl Estado {
@@ -268,6 +226,18 @@ impl Estado {
             Some(_) if self.rota_dupla => "Bluetooth + Rede local",
             Some(portador) => portador.nome(),
             None => "",
+        }
+    }
+
+    /// A frase curta do enlace, do ponto de vista desta máquina.
+    ///
+    /// "Controlando o outro computador" só é verdade de quem tem o teclado; o controlado lia a
+    /// mesma frase, como se fosse ele no comando.
+    #[must_use]
+    pub const fn frase_do_enlace(&self) -> &'static str {
+        match (self.enlace, self.papel) {
+            (LinkState::EmUso, Papel::Cliente) => "Controlado pelo outro computador",
+            _ => self.enlace.frase(),
         }
     }
 
@@ -293,6 +263,11 @@ impl Estado {
             rota_dupla: false,
             economia_aqui: None,
             economia_no_par: None,
+            pausa: None,
+            par_recusa_tela_de_bloqueio: false,
+            pasta_de_recebidos: String::new(),
+            borda_travada: false,
+            bloquear_juntos: true,
         }
     }
 
@@ -302,6 +277,18 @@ impl Estado {
     /// sozinha, o usuário não precisa procurar em mais lugar nenhum.
     #[must_use]
     pub fn resumo(&self) -> String {
+        if let Some(par) = self.par.as_ref() {
+            match self.pausa {
+                Some(Pausa::Aqui) => {
+                    return "Pausado. Teclado, mouse e cópias não atravessam até você retomar."
+                        .to_owned();
+                }
+                Some(Pausa::NoPar) => {
+                    return format!("{} pausou o compartilhamento.", par.nome);
+                }
+                None => {}
+            }
+        }
         match (self.enlace, self.par.as_ref()) {
             (LinkState::Desconectado, None) => {
                 "Nenhum computador pareado. Pareie um para começar.".to_owned()
@@ -315,7 +302,10 @@ impl Estado {
             (LinkState::Pronto, Some(par)) => {
                 format!("Conectado a {}. Leve o ponteiro até a borda.", par.nome)
             }
-            (LinkState::EmUso, Some(par)) => format!("Controlando {}.", par.nome),
+            (LinkState::EmUso, Some(par)) if self.papel == Papel::Servidor => {
+                format!("Controlando {}.", par.nome)
+            }
+            (LinkState::EmUso, Some(par)) => format!("{} está usando este computador.", par.nome),
             (_, None) => self.enlace.frase().to_owned(),
         }
     }
@@ -332,51 +322,45 @@ impl Estado {
                  Teclado e mouse remotos não vão funcionar.",
             );
         }
-        if self.papel == Papel::Cliente && !self.nivel_privilegiado.suficiente() {
-            return Some(
-                "Esta máquina não aceita digitação na tela de bloqueio. \
-                 Ver as instruções em Preferências.",
-            );
-        }
-        // Não conseguir e não ter deixado são problemas diferentes, com soluções também
-        // diferentes. Dizer "não aceita" a quem só precisa ligar uma opção manda a pessoa
-        // investigar instalação e assinatura para nada.
-        if self.papel == Papel::Cliente && !self.bloqueio_permitido {
-            return Some(
-                "A digitação na tela de bloqueio está desligada. Ligue em Preferências \
-                 para poder desbloquear esta máquina do outro computador.",
-            );
-        }
+        // A tela de bloqueio não entra aqui: ela é opcional e vem desligada por padrão
+        // ([04, §6](../../../docs/04-seguranca.md)). Tratá-la como impedimento deixava o
+        // computador controlado sempre em laranja, com tudo funcionando — e o laranja deixa de
+        // querer dizer alguma coisa. A explicação dela mora em Preferências
+        // ([`Self::sobre_a_tela_de_bloqueio`]).
         None
+    }
+
+    /// A situação da digitação na tela de bloqueio, para Preferências.
+    ///
+    /// Não conseguir e não ter deixado são coisas diferentes, com soluções diferentes: dizer "não
+    /// aceita" a quem só precisa ligar uma opção manda a pessoa investigar a instalação à toa.
+    #[must_use]
+    pub fn sobre_a_tela_de_bloqueio(&self) -> &'static str {
+        match (
+            self.nivel_privilegiado.suficiente(),
+            self.bloqueio_permitido,
+        ) {
+            (false, _) => {
+                "Este computador não consegue receber digitação na tela de bloqueio nesta \
+                 instalação. Instale o InputRemote como serviço para liberar."
+            }
+            (true, false) => {
+                "Desligada: o outro computador não digita na tela de bloqueio nem nos pedidos de \
+                 permissão daqui. Ligue para poder desbloquear este computador de lá."
+            }
+            (true, true) => {
+                "Ligada: o outro computador pode digitar a senha na tela de bloqueio e nos pedidos \
+                 de permissão daqui."
+            }
+        }
     }
 }
 
-impl Estado {
-    /// O aviso sobre a economia de energia do Wi-Fi, se alguma das duas máquinas estiver cochilando.
-    ///
-    /// Um aviso só, como o [`Self::impedimento`]. O do par vem primeiro quando os dois estão ligados:
-    /// quem olha esta tela é quem sente o mouse travar do outro lado, e a placa que atrasa o que ele
-    /// manda é a do computador que recebe.
-    #[must_use]
-    pub fn aviso_de_rede(&self) -> Option<AvisoDeRede> {
-        const PAR: &str = "O Wi-Fi do outro computador está economizando energia: a placa cochila \
-                           entre pacotes, e o mouse pela rede trava em rajadas.";
-        const AQUI: &str = "O Wi-Fi deste computador está economizando energia: a placa cochila \
-                            entre pacotes, e o mouse pela rede trava em rajadas.";
-        const PAR_NA_BATERIA: &str = "O Wi-Fi do outro computador economiza energia quando ele \
-                                      está na bateria, e aí o mouse pela rede trava em rajadas.";
-        const AQUI_NA_BATERIA: &str = "O Wi-Fi deste computador economiza energia na bateria, e \
-                                       aí o mouse pela rede trava em rajadas.";
-        let aviso = |frase, no_par| Some(AvisoDeRede { frase, no_par });
-        match (self.economia_no_par, self.economia_aqui) {
-            (Some(EconomiaDoWifi::Ligada), _) => aviso(PAR, true),
-            (_, Some(EconomiaDoWifi::Ligada)) => aviso(AQUI, false),
-            (Some(EconomiaDoWifi::SoNaBateria), _) => aviso(PAR_NA_BATERIA, true),
-            (_, Some(EconomiaDoWifi::SoNaBateria)) => aviso(AQUI_NA_BATERIA, false),
-            (None, None) => None,
-        }
-    }
-}
+mod avisos;
+mod queda;
+
+pub use avisos::{AvisoDeRede, EconomiaDoWifi, Pausa};
+pub use queda::MotivoDaQueda;
 
 #[cfg(test)]
 mod testes;

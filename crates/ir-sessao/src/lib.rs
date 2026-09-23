@@ -15,6 +15,8 @@
 
 mod ajudantes;
 #[cfg(windows)]
+pub mod atencao;
+#[cfg(windows)]
 mod lancador;
 mod zelador;
 

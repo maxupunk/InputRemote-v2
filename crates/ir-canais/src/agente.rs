@@ -94,10 +94,14 @@ async fn atender(
                             break;
                         }
                     }
-                    // Perder um comando de injeção é perder uma tecla. Registrar em nível alto,
-                    // porque muitos destes significam agente incapaz de acompanhar.
+                    // Perder um comando de injeção é perder uma tecla — pode ser justamente a
+                    // subida de uma. Seguir adiante deixaria a tecla presa; derrubar a conexão faz
+                    // o agente soltar tudo ao sair, e a sessão soltar o que for dela
+                    // ([02, §6](../../../docs/02-arquitetura.md): a fila cheia derruba o enlace,
+                    // não perde tecla).
                     Err(broadcast::error::RecvError::Lagged(n)) => {
-                        warn!(perdidos = n, "o agente não acompanhou os comandos");
+                        warn!(perdidos = n, "o agente não acompanhou os comandos; derrubando a conexão para soltar tudo");
+                        break;
                     }
                     Err(broadcast::error::RecvError::Closed) => break,
                 }

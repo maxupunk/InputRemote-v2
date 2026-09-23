@@ -253,3 +253,64 @@ mod tests {
         assert_eq!(historico.trafego(), "1,0 MB");
     }
 }
+
+/// As últimas medianas de atraso, para o gráfico da tela inicial.
+///
+/// Um número sozinho não mostra o que o usuário sente: o mouse que trava de vez em quando aparece
+/// como um pico no meio de barras baixas, e é o pico que explica a queixa.
+#[derive(Debug, Default)]
+pub(crate) struct Atrasos {
+    amostras: std::collections::VecDeque<u32>,
+}
+
+/// Quantas amostras o gráfico mostra: um minuto, uma por segundo.
+const AMOSTRAS: usize = 60;
+
+/// O atraso que enche uma barra inteira: a meta de pior caso da rede (25 ms).
+const TETO_DO_GRAFICO: f32 = 25.0;
+
+impl Atrasos {
+    /// Anota uma mediana; sem medida (desconectado), o gráfico recomeça.
+    pub(crate) fn anotar(&mut self, mediana_ms: Option<u32>) {
+        let Some(mediana) = mediana_ms else {
+            self.amostras.clear();
+            return;
+        };
+        if self.amostras.len() >= AMOSTRAS {
+            self.amostras.pop_front();
+        }
+        self.amostras.push_back(mediana);
+    }
+
+    /// As barras, de 0 a 1 da altura, da mais antiga para a mais nova.
+    pub(crate) fn barras(&self) -> Vec<f32> {
+        self.amostras
+            .iter()
+            .map(|&ms| {
+                #[allow(clippy::cast_precision_loss)]
+                let valor = ms as f32 / TETO_DO_GRAFICO;
+                valor.clamp(0.04, 1.0)
+            })
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests_dos_atrasos {
+    use super::*;
+
+    #[test]
+    fn o_grafico_guarda_um_minuto_e_recomeca_sem_conexao() {
+        let mut atrasos = Atrasos::default();
+        for ms in 0..100 {
+            atrasos.anotar(Some(ms));
+        }
+        assert_eq!(atrasos.barras().len(), AMOSTRAS);
+        assert!(
+            (atrasos.barras()[AMOSTRAS - 1] - 1.0).abs() < f32::EPSILON,
+            "99 ms enche a barra"
+        );
+        atrasos.anotar(None);
+        assert!(atrasos.barras().is_empty());
+    }
+}

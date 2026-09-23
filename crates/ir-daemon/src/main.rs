@@ -8,11 +8,9 @@ mod actor;
 mod arquivos;
 mod commands;
 mod config;
+mod fundo;
 mod ipc;
-#[cfg(windows)]
-mod service;
 
-use std::io::BufRead;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -36,53 +34,83 @@ fn main() -> Result<()> {
     #[cfg(windows)]
     {
         // Bloqueia até o serviço parar quando o SCM nos lançou; devolve `false` fora dele.
-        if service::tentar_como_servico()? {
+        if ir_servico::scm::tentar_como_servico(executar_bloqueante)? {
             return Ok(());
         }
     }
     // Em primeiro plano ninguém pede parada por este canal — o processo acaba com o console —, mas
     // o emissor precisa continuar vivo: um canal sem emissor seria lido como pedido de parada.
     let (_emissor_de_parada, parada) = watch::channel(false);
-    executar_bloqueante(parada)
+    // Em primeiro plano o sistema não avisa nada por este canal; no Linux, os sinais do gancho de
+    // suspensão chegam por dentro de `executar`.
+    let (_emissor_do_sistema, sistema) = mpsc::unbounded_channel();
+    executar_bloqueante(parada, sistema)
 }
 
 /// Monta a runtime `tokio` e roda o serviço até o fim, ou até `parada` pedir. É o caminho de
 /// primeiro plano, e também o que a tarefa do serviço chama por dentro.
-pub(crate) fn executar_bloqueante(parada: watch::Receiver<bool>) -> Result<()> {
+fn executar_bloqueante(
+    parada: watch::Receiver<bool>,
+    sistema: mpsc::UnboundedReceiver<ir_servico::EventoDoSistema>,
+) -> Result<()> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .context("criando a runtime")?;
-    runtime.block_on(executar(parada))
+    runtime.block_on(executar(parada, sistema))
 }
 
 /// O corpo do serviço: carrega estado, sobe transportes, entrada e o canal de controle, e roda o ator.
-async fn executar(parada: watch::Receiver<bool>) -> Result<()> {
+async fn executar(
+    parada: watch::Receiver<bool>,
+    sistema: mpsc::UnboundedReceiver<ir_servico::EventoDoSistema>,
+) -> Result<()> {
     // O guarda esvazia a fila do registro ao sair; soltá-lo antes perderia as últimas linhas.
-    let _registro = init_tracing();
+    let _registro = ir_servico::registro::iniciar(&config::data_dir().join("logs"));
+    #[cfg(windows)]
+    if ir_sessao::como_servico() {
+        ir_servico::scm::fechar_pasta_de_estado(&config::data_dir());
+    }
+    // Como serviço não há console: um erro de subida que não for ao registro some sem rastro.
+    let resultado = subir_e_rodar(parada, sistema).await;
+    if let Err(erro) = &resultado {
+        tracing::error!(erro = format!("{erro:#}"), "o serviço não conseguiu subir");
+    }
+    resultado
+}
 
+/// Carrega o estado, sobe transportes, entrada e canais, e roda o ator até a parada.
+async fn subir_e_rodar(
+    parada: watch::Receiver<bool>,
+    sistema: mpsc::UnboundedReceiver<ir_servico::EventoDoSistema>,
+) -> Result<()> {
     let (dir, cfg, identity, role, edge) = carregar()?;
     let screen = tamanho_da_tela(&cfg);
-    let maquina = machine_id_of(&identity.public());
+    let maquina = ir_transporte::maquina_da_chave(&identity.public());
     let abertos = ir_transporte::abrir(cfg.port, &identity, maquina).await?;
 
-    let (capturer, injector, capture_rx) = build_io(role);
+    let (capturer, injector, capture_rx, captura) = build_io(role);
     let identidade = identidade_local(&identity);
 
     let canais = abrir_canais()?;
     let (de_fundo, de_fundo_rx) = tokio::sync::mpsc::unbounded_channel();
-    repassar_radio_tardio(abertos.radio_tardio, de_fundo.clone());
+    fundo::repassar_radio_tardio(abertos.radio_tardio, de_fundo.clone());
+    fundo::repassar_sistema(sistema, de_fundo.clone());
+    #[cfg(target_os = "linux")]
+    fundo::vigiar_a_tela(de_fundo.clone());
     let arquivos = arquivos::abrir(&cfg, &dir, &identity, &canais.avisos, &abertos.descoberta);
 
     let mut daemon = Daemon::new(Parts {
         session: actor::nova_sessao(role, edge, identidade.clone()),
         rede: abertos.rede,
         radio: abertos.radio,
+        reabridor: Some(abertos.reabridor),
         radio_proprio: abertos.radio_proprio,
         de_fundo,
         descoberta: abertos.descoberta,
         injector,
         capturer,
+        captura,
         screen,
         // `ip:porta` ou endereço de rádio: é o endereço que diz o portador.
         peer: cfg.peer_addr.as_deref().and_then(Endereco::ler),
@@ -90,7 +118,7 @@ async fn executar(parada: watch::Receiver<bool>) -> Result<()> {
         config: cfg,
         avisos: canais.avisos,
         machine: ir_ipc::Maquina(maquina.0),
-        nome: ir_ipc::Nome::coagido(&hostname()),
+        nome: ir_ipc::Nome::coagido(&ir_transporte::nome_da_maquina()),
         edge,
         agente: canais.agente,
         identidade_local: identidade,
@@ -104,7 +132,7 @@ async fn executar(parada: watch::Receiver<bool>) -> Result<()> {
         .run(Entradas {
             transportes: abertos.fatos,
             capture: capture_rx,
-            confirm: spawn_stdin_reader(),
+            confirm: fundo::spawn_stdin_reader(),
             pedidos: canais.pedidos,
             fatos: canais.fatos,
             parada,
@@ -134,18 +162,6 @@ fn carregar() -> Result<(
     Ok((dir, cfg, identity, role, edge))
 }
 
-/// Repassa ao ator o rádio que abrir depois da subida, como mais um resultado de fundo.
-fn repassar_radio_tardio(
-    mut tardio: mpsc::UnboundedReceiver<ir_transporte::RadioAberto>,
-    de_fundo: mpsc::UnboundedSender<actor::DeFundo>,
-) {
-    tokio::spawn(async move {
-        if let Some(aberto) = tardio.recv().await {
-            let _ = de_fundo.send(actor::DeFundo::Radio(aberto));
-        }
-    });
-}
-
 /// Tamanho de tela: da plataforma quando ela sabe, senão da configuração.
 fn tamanho_da_tela(cfg: &config::Config) -> (u32, u32) {
     ir_input::primary_screen_size().unwrap_or((cfg.screen_width, cfg.screen_height))
@@ -155,6 +171,7 @@ fn tamanho_da_tela(cfg: &config::Config) -> (u32, u32) {
 fn dar_partida(daemon: &mut Daemon, screen: (u32, u32)) {
     feed_screens(daemon, screen);
     daemon.anunciar_radio_proprio();
+    daemon.anunciar_abertura();
     daemon.verificar_economia();
     daemon.connect_if_possible();
     // O agente nasce junto com o serviço; o laço periódico só cuida de ressubi-lo se ele cair.
@@ -202,86 +219,12 @@ fn abrir_canais() -> Result<Canais> {
     })
 }
 
-/// Quantos arquivos de registro diários o serviço do Windows guarda.
-#[cfg(windows)]
-const DIAS_DE_REGISTRO: usize = 7;
-
-/// Configura o registro, com nível de `RUST_LOG` ou `info` por padrão, sem bloquear quem registra.
-///
-/// O escritor é de fila: uma linha nunca espera o disco ou o console, porque quem registra pode ser
-/// o laço da sessão, que bate a cada 5 ms. O guarda devolvido esvazia a fila ao sair, e precisa
-/// viver até o fim.
-fn init_tracing() -> tracing_appender::non_blocking::WorkerGuard {
-    let (destino, terminal) = destino_do_registro();
-    let (escritor, guarda) = tracing_appender::non_blocking(destino);
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .with_writer(escritor)
-        // Cor só num terminal de verdade: num arquivo ou no `journald`, os códigos de cor viram
-        // lixo no meio de cada linha.
-        .with_ansi(terminal)
-        .init();
-    guarda
-}
-
-/// Para onde vai o registro, e se o destino é um terminal.
-///
-/// Como serviço do Windows, para `%ProgramData%\InputRemote\logs`: ninguém lê a saída padrão de um
-/// serviço, e um serviço que falha sem deixar rastro não tem como ser diagnosticado. Em primeiro
-/// plano, e no Linux — onde o `journald` já guarda a saída do serviço —, para a saída padrão.
-fn destino_do_registro() -> (Box<dyn std::io::Write + Send>, bool) {
-    #[cfg(windows)]
-    {
-        if ir_sessao::como_servico()
-            && let Some(arquivo) = arquivo_de_registro()
-        {
-            return (Box::new(arquivo), false);
-        }
-    }
-    let terminal = std::io::IsTerminal::is_terminal(&std::io::stdout());
-    (Box::new(std::io::stdout()), terminal)
-}
-
-/// O arquivo de registro do serviço do Windows, com um arquivo por dia e os mais velhos apagados.
-#[cfg(windows)]
-fn arquivo_de_registro() -> Option<tracing_appender::rolling::RollingFileAppender> {
-    use tracing_appender::rolling::{RollingFileAppender, Rotation};
-    RollingFileAppender::builder()
-        .rotation(Rotation::DAILY)
-        .filename_prefix("inputremote")
-        .filename_suffix("log")
-        .max_log_files(DIAS_DE_REGISTRO)
-        .build(config::data_dir().join("logs"))
-        .ok()
-}
-
-/// A ponte da confirmação de pareamento: lê linhas do stdin numa thread própria.
-fn spawn_stdin_reader() -> mpsc::UnboundedReceiver<String> {
-    let (tx, rx) = mpsc::unbounded_channel();
-    std::thread::spawn(move || {
-        let stdin = std::io::stdin();
-        for line in stdin.lock().lines().map_while(Result::ok) {
-            if tx.send(line).is_err() {
-                return;
-            }
-        }
-        // Fim do stdin (redirecionado de um arquivo, por exemplo): segura o emissor para o canal
-        // não fechar, senão o laço do ator giraria recebendo `None` sem parar.
-        loop {
-            std::thread::park();
-        }
-    });
-    rx
-}
-
 /// Captura (servidor) ou injeção (cliente), montadas conforme o papel.
 type Io = (
     Option<Box<dyn ir_input::Capturer>>,
     Option<Box<dyn ir_input::Injector>>,
     CaptureRx,
+    mpsc::UnboundedSender<ir_input::CaptureEvent>,
 );
 
 /// Liga o backend de entrada conforme o papel.
@@ -294,6 +237,8 @@ type Io = (
 /// pior dos mundos — nem sobe, nem diz por quê.
 fn build_io(role: Role) -> Io {
     let (cap_tx, cap_rx) = mpsc::unbounded_channel();
+    // O ator guarda um emissor: é por ele que a captura começa se a máquina virar servidor depois.
+    let para_o_ator = cap_tx.clone();
     #[cfg(windows)]
     {
         // No Windows quem captura e injeta é o **agente**, na sessão do usuário. O serviço não
@@ -301,21 +246,16 @@ fn build_io(role: Role) -> Io {
         // aqui competiria com o do agente e duplicaria cada evento.
         let _ = role;
         segurar_canal(cap_tx);
-        (None, None, cap_rx)
+        (None, None, cap_rx, para_o_ator)
     }
     #[cfg(not(windows))]
     if role == Role::Server {
-        // Ponte da captura (thread std) para o canal do ator (tokio).
-        let (std_tx, std_rx) = std::sync::mpsc::channel();
-        match ir_input::start_capture(std_tx) {
-            Ok(capturer) => {
-                bridge_captura(std_rx, cap_tx);
-                (Some(capturer), None, cap_rx)
-            }
+        match fundo::capturar(&cap_tx) {
+            Ok(capturer) => (Some(capturer), None, cap_rx, para_o_ator),
             Err(error) => {
                 warn!(%error, "captura local indisponível; a passagem de entrada aguarda o agente");
                 segurar_canal(cap_tx);
-                (None, None, cap_rx)
+                (None, None, cap_rx, para_o_ator)
             }
         }
     } else {
@@ -327,23 +267,8 @@ fn build_io(role: Role) -> Io {
             }
         };
         segurar_canal(cap_tx);
-        (None, injector, cap_rx)
+        (None, injector, cap_rx, para_o_ator)
     }
-}
-
-/// Ponte da captura: repassa cada evento da thread `std` da captura para o canal do ator.
-#[cfg(not(windows))]
-fn bridge_captura(
-    std_rx: std::sync::mpsc::Receiver<ir_input::CaptureEvent>,
-    cap_tx: mpsc::UnboundedSender<ir_input::CaptureEvent>,
-) {
-    std::thread::spawn(move || {
-        while let Ok(event) = std_rx.recv() {
-            if cap_tx.send(event).is_err() {
-                break;
-            }
-        }
-    });
 }
 
 /// Segura o emissor de captura numa tarefa, para o canal não fechar quando ninguém captura.
@@ -363,8 +288,8 @@ fn segurar_canal(cap_tx: mpsc::UnboundedSender<ir_input::CaptureEvent>) {
 /// e a nova precisa nascer com a mesma.
 fn identidade_local(identity: &ir_crypto::Identity) -> LocalIdentity {
     LocalIdentity {
-        machine: machine_id_of(&identity.public()),
-        name: MachineName::coagido(&hostname()),
+        machine: ir_transporte::maquina_da_chave(&identity.public()),
+        name: MachineName::coagido(&ir_transporte::nome_da_maquina()),
         capabilities: Capabilities {
             privileged_input: PrivilegedInputLevel::UnlockedOnly,
             ..Capabilities::default()
@@ -372,20 +297,8 @@ fn identidade_local(identity: &ir_crypto::Identity) -> LocalIdentity {
     }
 }
 
-/// Deriva um id de máquina estável dos primeiros bytes da chave pública.
-///
-/// Vale para as duas pontas: é assim que o canal de arquivos reconhece o par fixado entre as
-/// máquinas que a descoberta encontra.
-pub(crate) fn machine_id_of(chave: &ir_crypto::PublicKey) -> ir_proto::ids::MachineId {
-    ir_proto::ids::MachineId(chave.0[..16].try_into().unwrap_or([0u8; 16]))
-}
-
 fn feed_screens(daemon: &mut Daemon, screen: (u32, u32)) {
     if let Ok(layout) = ScreenLayout::single(screen.0, screen.1) {
         daemon.definir_telas(layout);
     }
-}
-
-fn hostname() -> String {
-    ir_transporte::nome_da_maquina()
 }

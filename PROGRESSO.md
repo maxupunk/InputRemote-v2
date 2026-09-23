@@ -321,7 +321,8 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Janela de repetição de 2048 bits (RFC 6479); `should_rekey` por volume
 - [x] Armazenamento com `zeroize` e permissão 0600 na chave
 - [x] Teste de handshake adulterado e de repetição
-- [ ] Rechaveamento automático executado (hoje só sinalizado por `should_rekey`)
+- [x] Rechaveamento automático executado — na rede, por volume ou por dez minutos, sem derrubar a
+      sessão; no Bluetooth, a cada reconexão ([log 45](docs/logs/45-a-varredura-implementada.md))
 
 ## Etapa 4 — Rede
 - [x] `ir-net`: UDP de entrada cifrado, com o endpoint por canais
@@ -408,20 +409,27 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Agente de sessão: o serviço o lança na sessão de console e ele captura e injeta lá, que é
       o que faz o serviço instalado alcançar a área de trabalho do usuário (N1)
       ([log 15](docs/logs/15-agente-de-sessao.md))
-- [ ] Agente com thread por desktop ([ADR-0008](docs/adr/0008-agente-com-thread-por-desktop.md)) — é o que leva de N1 a N2/N3
+- [~] Agente com thread por desktop ([ADR-0008](docs/adr/0008-agente-com-thread-por-desktop.md)) — é o que leva de N1 a N2/N3.
+      Implementado (`Default`, `Winlogon`, protetor de tela) e testado sem o serviço instalado;
+      falta a bancada com o MSI novo ([log 45](docs/logs/45-a-varredura-implementada.md))
 - [ ] Nenhum gancho no desktop `Winlogon`, verificado por teste
-- [ ] `SendSAS` opcional na instalação
+- [~] `SendSAS` opcional — pelo serviço, com a política `SoftwareSASGeneration` ajustada só quando o
+      administrador permite a tela de bloqueio na janela, e não na instalação ([log 45](docs/logs/45-a-varredura-implementada.md))
 - [ ] `[H]` Nível de capacidade confirmado no produto (mínimo N2)
-- [ ] `[H]` 10.000 travessias sem tecla presa
+- [ ] `[H]` 10.000 travessias sem tecla presa — passa no teste da sessão (`ir-session/tests/metas.rs`);
+      falta em hardware ([log 45](docs/logs/45-a-varredura-implementada.md))
 
 ## Etapa 6 — Entrada no Linux
 - [~] Injeção por `uinput` — no notebook de teste com GNOME, os dispositivos `InputRemote Keyboard`
       e `InputRemote Pointer` já aparecem registrados (a especificação fala em três; aparecem dois).
       Falta ver ponteiro e teclado reagirem de verdade, o que só acontece com o par conectado e a
       travessia feita ([log 20](docs/logs/20-atualizar-sem-reiniciar-e-o-balanco.md))
-- [ ] Captura por `InputCapture` + `libei`
-- [ ] Integração com `logind`
-- [ ] Filtro de auto-recaptura por dispositivo de origem
+- [ ] Captura por `InputCapture` + `libei` — por ora a captura é por `evdev` + `EVIOCGRAB`, com a
+      travessia pela borda aproximada ([06, §3.4](docs/06-linux.md), [log 45](docs/logs/45-a-varredura-implementada.md))
+- [~] Integração com `logind` — o bloqueio da sessão chega ao serviço (bloquear juntos, política da
+      tela de bloqueio); falta a bancada ([log 45](docs/logs/45-a-varredura-implementada.md))
+- [~] Filtro de auto-recaptura por dispositivo de origem — os dispositivos virtuais do produto ficam
+      fora da captura por `evdev`; falta a bancada ([log 45](docs/logs/45-a-varredura-implementada.md))
 - [ ] `[H]` Quatro combinações entre plataformas
 - [ ] `[H]` Nível de capacidade confirmado no produto (mínimo N2)
 
@@ -459,14 +467,15 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       ([log 30](docs/logs/30-o-canal-de-dados-em-tcp.md))
 - [~] `ir-clip`: texto e lista de arquivos, com a guarda de eco. Os dois backends exercitados
       contra clipboard de verdade: Windows (`AddClipboardFormatListener`, `CF_HDROP`) e Linux
-      (`wl-clipboard`; no GNOME sem vigia, lido na travessia). Imagem PNG falta
+      (`wl-clipboard`; no GNOME sem vigia, lido na travessia). Imagem PNG implementada, e provada no
+      clipboard do Windows desta máquina; falta a travessia entre as duas ([log 45](docs/logs/45-a-varredura-implementada.md))
       ([log 33](docs/logs/33-o-clipboard-sem-interceptar-atalho.md),
       [log 34](docs/logs/34-copiar-aqui-colar-la.md))
 - [x] `ir-files`: manifesto, blocos, BLAKE3, cotas, staging por RAII — 69 testes, incluindo a
       travessia de uma árvore inteira e treze casos de par hostil
       ([log 31](docs/logs/31-o-motor-de-transferencia.md))
-- [~] Progresso e cancelamento — o motor conta, o serviço anuncia por `Aviso::Transferencia` e a
-      ferramenta de bancada mostra a barra; falta a tela do Slint
+- [x] Progresso e cancelamento — o motor conta, o serviço anuncia por `Aviso::Transferencia`, e o
+      cartão de cópia da janela tem a barra, **Cancelar** e **Abrir pasta** ([log 45](docs/logs/45-a-varredura-implementada.md))
       ([log 32](docs/logs/32-arquivos-atravessando.md))
       ([log 31](docs/logs/31-o-motor-de-transferencia.md))
 - [ ] `[H]` Transferência de 5 GB degrada a entrada em no máximo 10% — exige as duas máquinas
@@ -528,9 +537,11 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       ([log 39](docs/logs/39-parear-sem-configurar-nada.md))
 - [ ] "Parear" com um pareamento automático já em curso não reinicia o *handshake* nem troca o
       código das duas telas ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
-- [ ] Botões acessíveis: `accessible-role` e ação padrão, para leitor de tela e automação
+- [x] Botões acessíveis: `accessible-role` e ação padrão, para leitor de tela e automação, e foco pelo
+      teclado ([log 45](docs/logs/45-a-varredura-implementada.md))
       ([log 21](docs/logs/21-a-janela-que-travava-no-windows.md))
-- [ ] Preferências avançadas: arranjo de telas, atalho de emergência
+- [~] Preferências avançadas: o arranjo de telas vem do sistema e os atalhos são fixos, listados na
+      tela inicial; não há onde trocá-los ([log 45](docs/logs/45-a-varredura-implementada.md))
 - [~] Bandeja do sistema no Windows — ícone, menu, minimizar e fechar escondem, uma interface por
       sessão, sobe com o login já na bandeja; falta o clique de verdade no ícone ([log 37](docs/logs/37-a-bandeja-e-a-rolagem-de-lado.md))
 - [x] Preferências sem rolagem horizontal: a área rolável tem a largura visível, e nenhum texto
@@ -541,5 +552,6 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 ## Etapa 10 — Qualidade e lançamento
 - [ ] Assinatura de todos os binários do Windows
 - [ ] Instaladores e pacotes
-- [ ] Documentação de usuário
+- [~] Documentação de usuário — [USAR.md](USAR.md) reescrito para a janela, a rota dupla e o
+      clipboard ([log 45](docs/logs/45-a-varredura-implementada.md))
 - [ ] `[H]` Roteiro de validação física completo, quatro combinações

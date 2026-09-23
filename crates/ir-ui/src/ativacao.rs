@@ -46,9 +46,36 @@ pub struct Orientacao {
 /// ajudante do pacote instalados.
 #[must_use]
 pub fn disponivel() -> bool {
-    cfg!(target_os = "linux")
-        && std::path::Path::new(PKEXEC).exists()
-        && std::path::Path::new(AJUDANTE).exists()
+    // No Windows o `sc.exe` sempre existe, e quem pede a confirmação é o próprio Windows (UAC).
+    cfg!(windows)
+        || (cfg!(target_os = "linux")
+            && std::path::Path::new(PKEXEC).exists()
+            && std::path::Path::new(AJUDANTE).exists())
+}
+
+/// O comando que pede a autorização e liga o serviço.
+///
+/// No Linux, o `pkexec` com o ajudante do pacote. No Windows, o `sc start` elevado pelo UAC — antes
+/// a janela mandava a pessoa ao console de serviços. Um diálogo recusado sai com 126, como o do
+/// `pkexec`, para as frases de [`resultado`] valerem nos dois.
+fn comando_de_ativacao() -> Command {
+    if cfg!(windows) {
+        let mut comando = Command::new("powershell");
+        comando.args([
+            "-NoProfile",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            "try { $p = Start-Process -FilePath sc.exe -ArgumentList 'start','InputRemote' \
+             -Verb RunAs -WindowStyle Hidden -Wait -PassThru; if ($p.ExitCode -in 0,1056) \
+             { exit 0 } else { exit $p.ExitCode } } catch { exit 126 }",
+        ]);
+        comando
+    } else {
+        let mut comando = Command::new(PKEXEC);
+        comando.arg(AJUDANTE);
+        comando
+    }
 }
 
 /// O que dizer e oferecer. Com a ativação disponível, a saída é um clique; sem ela, a instrução
@@ -56,6 +83,12 @@ pub fn disponivel() -> bool {
 #[must_use]
 pub const fn orientacao(motivo: Desconexao, ativavel: bool) -> Orientacao {
     match (motivo, ativavel) {
+        (Desconexao::ServicoParado, true) if cfg!(windows) => Orientacao {
+            frase: "O serviço do InputRemote está parado.",
+            o_que_fazer: "Iniciar liga de novo o serviço que leva teclado e mouse de um computador \
+                          ao outro. O Windows pede a senha de administrador, ou a confirmação.",
+            botao: "Iniciar o serviço",
+        },
         (Desconexao::ServicoParado, true) => Orientacao {
             frase: "O InputRemote ainda não está ativado neste computador.",
             o_que_fazer: "Ativar liga o serviço que leva teclado e mouse de um computador ao \
@@ -114,7 +147,7 @@ pub fn ligar(janela: &Janela, ao_ativar: impl Fn() + 'static) -> Timer {
             return; // o diálogo já está aberto
         }
         let dados = janela.global::<Dados>();
-        match Command::new(PKEXEC).arg(AJUDANTE).spawn() {
+        match comando_de_ativacao().spawn() {
             Ok(filho) => {
                 *pedido.borrow_mut() = Some(filho);
                 dados.set_ativando(true);
@@ -191,9 +224,16 @@ mod tests {
     }
 
     #[test]
-    fn fora_do_linux_nao_ha_ativacao() {
-        if !cfg!(target_os = "linux") {
-            assert!(!disponivel());
+    fn no_windows_iniciar_o_servico_e_um_clique() {
+        if cfg!(windows) {
+            assert!(disponivel());
+            let orientacao = orientacao(Desconexao::ServicoParado, true);
+            assert_eq!(orientacao.botao, "Iniciar o serviço");
+            assert!(
+                !orientacao.o_que_fazer.contains("Serviços"),
+                "{}",
+                orientacao.o_que_fazer
+            );
         }
     }
 }

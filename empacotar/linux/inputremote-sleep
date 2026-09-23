@@ -1,0 +1,17 @@
+#!/bin/sh
+# Gancho do systemd em system-sleep: avisa o servico antes de dormir e ao acordar.
+#
+# Antes de dormir, SIGUSR1: o servico solta tudo e avisa o par ("o outro computador foi
+# suspenso"). Ao acordar, SIGUSR2: disca de novo na hora, sem esperar a rodada de reconexao.
+# Depois de dormir ninguem mais solta tecla nenhuma -- por isso o aviso vem antes, com um
+# instante para a despedida sair pela rede.
+case "$1" in
+    pre)
+        systemctl kill --signal=SIGUSR1 inputremote.service >/dev/null 2>&1 || :
+        sleep 0.4
+        ;;
+    post)
+        systemctl kill --signal=SIGUSR2 inputremote.service >/dev/null 2>&1 || :
+        ;;
+esac
+exit 0

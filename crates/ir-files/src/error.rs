@@ -91,6 +91,27 @@ impl FileError {
         }
     }
 
+    /// O erro sem o nome de arquivo, para o registro em `info` e acima.
+    ///
+    /// Nomes de arquivo em transferência só vão ao registro em `debug`
+    /// ([04, §7](../../../docs/04-seguranca.md)); quem registra em nível alto usa isto, e o
+    /// [`Display`](core::fmt::Display) completo em `debug`.
+    #[must_use]
+    pub fn sem_caminho(&self) -> String {
+        match self {
+            Self::Io { origem, .. } => format!("erro de E/S: {origem}"),
+            Self::CaminhoImpossivel(_) => "não consigo montar um caminho relativo".to_owned(),
+            Self::NaoEnviavel(_) => "não sei enviar o que foi pedido".to_owned(),
+            Self::SemPermissao(_) => "sem permissão para enviar o que foi pedido".to_owned(),
+            Self::MudouDurante {
+                declarado, lidos, ..
+            } => format!(
+                "um arquivo mudou de tamanho durante o envio: {declarado} B declarados, {lidos} B lidos"
+            ),
+            outro => outro.to_string(),
+        }
+    }
+
     /// Se este erro obriga a derrubar o enlace.
     ///
     /// Só a violação de protocolo obriga. Falha de E/S e resumo divergente cancelam **a
@@ -131,5 +152,23 @@ mod tests {
         );
         let texto = erro.to_string();
         assert!(texto.contains("recebidos"), "{texto}");
+    }
+
+    #[test]
+    fn a_forma_sem_caminho_nao_leva_o_nome_do_arquivo() {
+        let segredo = PathBuf::from("/home/a/relatorio-demissoes.pdf");
+        for erro in [
+            FileError::io(&segredo, std::io::Error::other("x")),
+            FileError::NaoEnviavel(segredo.clone()),
+            FileError::SemPermissao(segredo.clone()),
+            FileError::CaminhoImpossivel(segredo.clone()),
+            FileError::MudouDurante {
+                caminho: segredo.clone(),
+                declarado: 1,
+                lidos: 2,
+            },
+        ] {
+            assert!(!erro.sem_caminho().contains("demissoes"), "{erro:?}");
+        }
     }
 }

@@ -22,7 +22,14 @@ use crate::error::{ProtoError, Result};
 /// Versão 3: `Control::NetworkPower` e `Control::DisableNetworkPowerSaving`, para cada ponta contar
 /// ao par se o Wi-Fi dela está em economia de energia. As duas só vão para um par da versão 3 — um
 /// da versão 2 não as decodificaria —, e por isso a versão 2 continua aceita.
-pub const CURRENT: ProtocolVersion = ProtocolVersion(3);
+///
+/// Versão 4: `Control::SecureAttention`, o Ctrl+Alt+Del pedido pelo lado que controla, e
+/// `Control::ProtectedDesktop`, o controlado dizendo que recusa digitação na tela de bloqueio. Só
+/// vão para um par da versão 4 ([`PROTECTED_DESKTOP`]).
+pub const CURRENT: ProtocolVersion = ProtocolVersion(4);
+
+/// A primeira versão que entende Ctrl+Alt+Del pedido e a recusa no desktop protegido.
+pub const PROTECTED_DESKTOP: ProtocolVersion = ProtocolVersion(4);
 
 /// A primeira versão que entende as mensagens de economia de energia do Wi-Fi.
 pub const NETWORK_POWER: ProtocolVersion = ProtocolVersion(3);

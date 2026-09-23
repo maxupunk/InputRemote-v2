@@ -93,6 +93,13 @@ pub enum Notice {
     /// O par pediu que a economia de energia do Wi-Fi daqui seja desligada. Quem aplica é a
     /// periferia; a sessão só repassa.
     NetworkPowerFixRequested,
+    /// O par não entende o pedido de Ctrl+Alt+Del: é de uma versão anterior à 4, ou não há sessão.
+    PeerCannotSecureAttention,
+    /// O par passou a recusar, ou voltou a aceitar, digitação daqui no desktop protegido dele.
+    PeerProtectedDesktop {
+        /// `true` enquanto recusa.
+        refused: bool,
+    },
     /// O pedido de desligar a economia no par não pôde sair: sem sessão, ou o par não entende.
     PeerCannotFixNetworkPower,
 }

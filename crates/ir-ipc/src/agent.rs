@@ -58,6 +58,14 @@ pub enum ComandoDoAgente {
     SequenciaDeAtencao,
     /// Encerre.
     Encerrar,
+    /// Se o par pode digitar nos desktops protegidos: a tela de bloqueio e o UAC.
+    ///
+    /// Desligado até o serviço dizer o contrário. Com ele desligado, o agente recusa injetar
+    /// fora da área de trabalho e conta a recusa — quem está do outro lado precisa saber por que
+    /// o teclado parou ([04, §6](../../../docs/04-seguranca.md)).
+    PermitirDesktopProtegido(bool),
+    /// Bloqueie a tela desta sessão: o par, que controlava esta máquina, bloqueou a dele.
+    BloquearTela,
 }
 
 /// O que o agente conta ao serviço.

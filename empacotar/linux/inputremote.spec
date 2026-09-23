@@ -120,10 +120,20 @@ fi
 if [ "$1" -eq 0 ]; then
     %{_libexecdir}/%{name}/ajudante-nas-sessoes parar >/dev/null 2>&1 || :
     systemctl disable --now inputremote.service >/dev/null 2>&1 || :
+    # O servico do firewalld sai da zona antes de o arquivo dele sumir; depois nao ha mais como.
+    firewall-cmd --permanent --remove-service=%{name} >/dev/null 2>&1 || :
+    firewall-cmd --reload >/dev/null 2>&1 || :
 fi
 
 %postun
 systemctl daemon-reload >/dev/null 2>&1 || :
+# Remocao (e nao atualizacao): nada do produto fica para tras. A chave da maquina sai junto -- um
+# par que a conhecia nao alcanca mais este computador sem parear de novo. O ajuste do Wi-Fi volta
+# ao padrao do sistema.
+if [ "$1" -eq 0 ]; then
+    rm -rf /var/lib/%{name} >/dev/null 2>&1 || :
+    rm -f /etc/NetworkManager/conf.d/90-%{name}-wifi.conf >/dev/null 2>&1 || :
+fi
 # Atualizacao: o servico volta com o binario novo. So se ja estava rodando -- quem o parou de
 # proposito nao o ve subir sozinho por causa de uma atualizacao.
 if [ "$1" -ge 1 ]; then
@@ -159,6 +169,10 @@ install -Dpm 0644 empacotar/linux/inputremote.desktop \
 install -Dpm 0644 empacotar/linux/inputremote.service \
         %{buildroot}%{_prefix}/lib/systemd/system/%{name}.service
 
+# O gancho de suspensao: o servico solta tudo e avisa o par antes de a maquina dormir.
+install -Dpm 0755 empacotar/linux/inputremote-sleep \
+        %{buildroot}%{_prefix}/lib/systemd/system-sleep/%{name}
+
 # O ajudante que liga o servico e da acesso a quem pediu, e a politica do polkit que explica o
 # pedido de senha. `libexec`, e nao `bin`: nao e um comando para o usuario digitar.
 install -Dpm 0755 empacotar/linux/ativar %{buildroot}%{_libexecdir}/%{name}/ativar
@@ -166,6 +180,7 @@ install -Dpm 0644 empacotar/linux/io.github.inputremote.ativar.policy \
         %{buildroot}%{_datadir}/polkit-1/actions/io.github.inputremote.ativar.policy
 install -Dpm 0644 empacotar/linux/80-inputremote.preset \
         %{buildroot}%{_prefix}/lib/systemd/system-preset/80-%{name}.preset
+%{_prefix}/lib/systemd/system-sleep/%{name}
 # As portas do produto como servico do firewalld; o ajudante de ativacao o liga na zona padrao.
 install -Dpm 0644 empacotar/linux/inputremote-firewalld.xml \
         %{buildroot}%{_prefix}/lib/firewalld/services/%{name}.xml

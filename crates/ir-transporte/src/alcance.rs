@@ -170,6 +170,16 @@ impl Alcance {
         self.via_mut(portador).discando = Some(agora);
     }
 
+    /// Esquece as discagens e a busca em espera, para a próxima rodada discar na hora.
+    ///
+    /// É o que se faz ao acordar: o que estava esperando prazo foi discado antes de a máquina
+    /// dormir, e a rede em volta pode ser outra.
+    pub const fn esquecer_esperas(&mut self) {
+        self.via_rede.discando = None;
+        self.via_radio.discando = None;
+        self.buscou = None;
+    }
+
     /// Se vale procurar o par na rede agora, e anota a busca quando vale.
     pub fn buscar_agora(&mut self, agora: Instant) -> bool {
         let vale = self
@@ -247,6 +257,20 @@ mod tests {
         let alcance = Alcance::novo(Some(ler(RADIO)), []);
         assert_eq!(alcance.endereco(Carrier::Rfcomm), Some(ler(RADIO)));
         assert_eq!(alcance.endereco(Carrier::Udp), None);
+    }
+
+    #[test]
+    fn acordar_libera_a_discagem_e_a_busca_na_hora() {
+        let mut alcance = Alcance::default();
+        let agora = Instant::now();
+        alcance.discou(Carrier::Udp, agora);
+        assert!(alcance.buscar_agora(agora));
+        assert!(!alcance.pode_discar(Carrier::Udp, agora));
+
+        alcance.esquecer_esperas();
+
+        assert!(alcance.pode_discar(Carrier::Udp, agora));
+        assert!(alcance.buscar_agora(agora));
     }
 
     #[test]

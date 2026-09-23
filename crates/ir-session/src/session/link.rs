@@ -11,7 +11,7 @@ use ir_proto::message::{Control, DisconnectReason, ErrorCode, Greeting, Message}
 use ir_proto::version;
 
 use crate::config::Role;
-use crate::event::{CarrierChoice, Command, CommandBatch, LinkDown, Notice, TimerId};
+use crate::event::{CarrierChoice, Command, CommandBatch, LinkDown, Notice};
 use crate::phase::Phase;
 use crate::session::Session;
 use crate::session::state::{Clock, PeerInfo};
@@ -114,7 +114,6 @@ impl Session {
 
         let greeting = self.greeting();
         self.send(now, Message::Control(Control::Hello(greeting)), out);
-        self.arm_link_timeout(now, out);
     }
 
     fn greeting(&self) -> Greeting {
@@ -196,13 +195,10 @@ impl Session {
         }
         // E a borda, que é do servidor: o cliente passa a usar a oposta (`edge`).
         self.announce_edge(now, out);
-
-        self.arm_heartbeat(now, out);
-        self.arm_link_timeout(now, out);
     }
 
     /// Encerra a sessão corrente.
-    pub(super) fn tear_down(&mut self, now: Timestamp, reason: LinkDown, out: &mut CommandBatch) {
+    pub(super) fn tear_down(&mut self, _now: Timestamp, reason: LinkDown, out: &mut CommandBatch) {
         // Avisa o par antes de morrer, quando a decisão é nossa e ainda há por onde falar.
         //
         // Sem isto, quem fica do outro lado só percebe pelo próprio prazo de queda — até um
@@ -247,18 +243,6 @@ impl Session {
         self.reliability.reset();
         self.area.reset();
         self.incarnations.forget_peer();
-
-        for timer in [TimerId::Heartbeat, TimerId::Snapshot, TimerId::PointerFlush] {
-            out.push(Command::ClearTimer(timer));
-        }
-        out.push(Command::ClearTimer(TimerId::LinkTimeout));
-
-        if will_retry {
-            out.push(Command::SetTimer {
-                id: TimerId::Reconnect,
-                at: now.plus(self.config.timings.reconnect_delay),
-            });
-        }
     }
 
     /// Encerra por vontade própria.
@@ -297,7 +281,6 @@ impl Session {
                 }),
                 out,
             );
-            self.arm_heartbeat(now, out);
         }
 
         if self.config.role == Role::Server && self.phase == Phase::Engaged {
@@ -320,19 +303,5 @@ impl Session {
         let rtt = now.since(sent);
         self.last_rtt = Some(rtt);
         out.push(Command::Notify(Notice::LatencySample(rtt)));
-    }
-
-    pub(super) fn arm_heartbeat(&self, now: Timestamp, out: &mut CommandBatch) {
-        out.push(Command::SetTimer {
-            id: TimerId::Heartbeat,
-            at: now.plus(self.config.timings.heartbeat),
-        });
-    }
-
-    pub(super) fn arm_link_timeout(&self, now: Timestamp, out: &mut CommandBatch) {
-        out.push(Command::SetTimer {
-            id: TimerId::LinkTimeout,
-            at: now.plus(self.config.timings.link_timeout),
-        });
     }
 }

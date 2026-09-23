@@ -30,6 +30,7 @@
 //! deixaria o usuário sem explicação — e o registro sem a causa.
 
 mod confirmacao;
+mod entrante;
 mod vocabulario;
 
 #[cfg(test)]
@@ -102,7 +103,21 @@ pub struct Endpoint<R: Radio> {
     rodadas: u32,
     /// Quantos quadros velhos demais foram descartados desde o último registro.
     descartados: u64,
+    /// Se um pareamento que chega de fora é atendido ([`BtCommand::AcceptPairing`]).
+    aceitar_pareamento: bool,
+    /// Quantas vezes seguidas a escuta falhou.
+    falhas_da_escuta: u32,
 }
+
+/// Quantas falhas seguidas da escuta fazem o rádio ser dado como perdido.
+const FALHAS_ATE_PERDER_O_RADIO: u32 = 3;
+
+/// Quanto uma escrita no rádio pode demorar antes de o enlace ser dado como perdido.
+///
+/// Sem prazo, um rádio que parou de escoar travava o endpoint inteiro na escrita: nem comando nem
+/// quadro recebido eram atendidos, e a fila crescia atrás. Derrubar deixa a sessão seguir pela rede
+/// e o rádio voltar na próxima discagem.
+pub const PRAZO_DA_ESCRITA: std::time::Duration = std::time::Duration::from_secs(2);
 
 impl<R: Radio> core::fmt::Debug for Endpoint<R> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -123,6 +138,8 @@ impl<R: Radio> Endpoint<R> {
             estado: Estado::Ocioso,
             rodadas: 0,
             descartados: 0,
+            aceitar_pareamento: true,
+            falhas_da_escuta: 0,
         };
         tokio::spawn(endpoint.rodar(cmd_rx));
         EndpointHandle {
@@ -154,8 +171,7 @@ impl<R: Radio> Endpoint<R> {
         let volta = tokio::select! {
             comando = comandos.recv() => Volta::Comando(comando),
             entrante = radio.aceitar() => {
-                self.receber_entrante(entrante).await;
-                return true;
+                return self.receber_entrante(entrante).await;
             }
         };
         self.agir(volta).await
@@ -204,6 +220,7 @@ impl<R: Radio> Endpoint<R> {
                 }
             }
             BtCommand::ConfirmPairing(ok) => self.confirmar(ok).await,
+            BtCommand::AcceptPairing(aceitar) => self.aceitar_pareamento = aceitar,
             BtCommand::Disconnect => self.derrubar("pedido local"),
             BtCommand::Shutdown => {}
         }
@@ -232,56 +249,11 @@ impl<R: Radio> Endpoint<R> {
         };
         let mut quadros = Quadros::novo(canal);
         match handshake::conduzir_iniciador(&mut quadros, &self.identity, mode).await {
-            Ok(pronto) => self.estabelecer(quadros, peer, pronto),
+            Ok(pronto) => self.estabelecer(quadros, peer, pronto, false),
             Err(erro) => {
                 self.relatar(&erro);
                 self.derrubar("handshake falhou");
             }
-        }
-    }
-
-    /// Alguém ligou para esta máquina: responde ao handshake.
-    async fn receber_entrante(&mut self, entrante: Result<(R::Canal, BdAddr)>) {
-        let (canal, peer) = match entrante {
-            Ok(entrante) => entrante,
-            Err(erro) => return self.relatar(&erro),
-        };
-        let mut quadros = Quadros::novo(canal);
-        match handshake::conduzir_respondedor(&mut quadros, &self.identity).await {
-            Ok(pronto) => self.estabelecer(quadros, peer, pronto),
-            Err(erro) => self.relatar(&erro),
-        }
-    }
-
-    /// Um handshake terminou: ou pede confirmação (pareamento), ou já estabelece (reconexão).
-    fn estabelecer(
-        &mut self,
-        quadros: Quadros<R::Canal>,
-        peer: BdAddr,
-        pronto: handshake::Established,
-    ) {
-        let enlace = EnlaceSeguro::novo(quadros, pronto.transport);
-        let peer_static = pronto.peer_static;
-        self.rodadas = 0;
-        if let Some(code) = pronto.code {
-            // Pareamento: mostra o código e espera as duas confirmações antes de deixar qualquer
-            // quadro de sessão passar.
-            self.contar(BtEvent::PairingCode {
-                code,
-                peer_static,
-                peer,
-            });
-            self.estado = Estado::AguardandoConfirmacao {
-                enlace,
-                peer_static,
-                peer,
-                local_ok: false,
-                peer_ok: false,
-            };
-        } else {
-            // Reconexão: a identidade já está fixada, então o enlace já vale.
-            self.contar(BtEvent::Established { peer_static, peer });
-            self.estado = Estado::Estabelecido { enlace };
         }
     }
 
@@ -328,11 +300,15 @@ impl<R: Radio> Endpoint<R> {
             let Estado::Estabelecido { enlace } = &mut self.estado else {
                 return;
             };
-            enlace.enviar(Kind::SessionFrame, bytes).await
+            tokio::time::timeout(PRAZO_DA_ESCRITA, enlace.enviar(Kind::SessionFrame, bytes)).await
         };
-        if let Err(erro) = enviado {
-            self.relatar(&erro);
-            self.derrubar("falha ao enviar");
+        match enviado {
+            Ok(Ok(())) => {}
+            Ok(Err(erro)) => {
+                self.relatar(&erro);
+                self.derrubar("falha ao enviar");
+            }
+            Err(_) => self.derrubar("o rádio parou de escoar"),
         }
     }
 

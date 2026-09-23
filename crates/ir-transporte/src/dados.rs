@@ -121,6 +121,12 @@ pub struct EnlaceDeDados {
     pub par: PublicKey,
 }
 
+/// Quanto o handshake do canal de dados pode levar.
+///
+/// Sem prazo, quem conectasse e ficasse calado prendia a porta: o laço que atende esperava o
+/// handshake dele, e o par de verdade não era atendido.
+const PRAZO_DO_HANDSHAKE: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// A porta TCP do canal de dados: escuta, e disca quando pedido.
 #[derive(Debug)]
 pub struct Porta {
@@ -166,9 +172,13 @@ impl Porta {
     pub async fn aceitar(&self, esperado: PublicKey) -> Result<EnlaceDeDados> {
         let (socket, _) = self.escuta.accept().await.context("aceitando conexão")?;
         bulk::prepare(&socket);
-        let enlace = bulk::accept(Frames::new(socket), &self.identidade, esperado)
-            .await
-            .context("handshake do canal de dados")?;
+        let enlace = tokio::time::timeout(
+            PRAZO_DO_HANDSHAKE,
+            bulk::accept(Frames::new(socket), &self.identidade, esperado),
+        )
+        .await
+        .context("o handshake do canal de dados não terminou no prazo")?
+        .context("handshake do canal de dados")?;
         Ok(partir(enlace, esperado))
     }
 
@@ -182,9 +192,13 @@ impl Porta {
         let socket = bulk::connect(alvo)
             .await
             .with_context(|| format!("conectando o TCP de dados em {alvo}"))?;
-        let enlace = bulk::dial(Frames::new(socket), &self.identidade, esperado)
-            .await
-            .context("handshake do canal de dados")?;
+        let enlace = tokio::time::timeout(
+            PRAZO_DO_HANDSHAKE,
+            bulk::dial(Frames::new(socket), &self.identidade, esperado),
+        )
+        .await
+        .context("o handshake do canal de dados não terminou no prazo")?
+        .context("handshake do canal de dados")?;
         Ok(partir(enlace, esperado))
     }
 }

@@ -131,6 +131,14 @@ pub fn hid_to_key(usage: HidUsage) -> Option<Key> {
         .map(|(_, key)| *key)
 }
 
+/// O HID Usage de um código de tecla do Linux — o caminho da captura, o inverso da injeção.
+#[must_use]
+pub fn key_to_hid(key: Key) -> Option<HidUsage> {
+    MAP.iter()
+        .find(|(_, tecla)| *tecla == key)
+        .map(|(hid, _)| HidUsage(*hid))
+}
+
 /// Todas as teclas que o dispositivo virtual precisa declarar como capazes de emitir.
 ///
 /// O `uinput` só emite uma tecla que o dispositivo declarou na criação; declarar a faixa toda de
@@ -147,6 +155,14 @@ mod tests {
     /// A lista de `ir-proto` é o contrato entre os dois backends: uma tecla que só um deles saiba
     /// traduzir some na travessia naquele sentido, calada. Foi o caso do `PrintScreen` e do teclado
     /// numérico, que o Windows não sabia capturar.
+    #[test]
+    fn o_linux_captura_o_que_injeta_e_volta_ao_mesmo_hid() {
+        for usage in ir_proto::input::teclado_completo() {
+            let tecla = hid_to_key(usage).expect("mapeada");
+            assert_eq!(key_to_hid(tecla), Some(usage), "{:#04x}", usage.get());
+        }
+    }
+
     #[test]
     fn o_linux_injeta_todas_as_teclas_do_contrato() {
         for usage in ir_proto::input::teclado_completo() {

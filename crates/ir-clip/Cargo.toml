@@ -13,6 +13,8 @@ ir-proto.workspace = true
 # Para o resumo que sustenta a guarda de eco. O mesmo BLAKE3 do `ir-files`, e não um `Hash` do
 # `std`: aquele não promete estabilidade entre execuções, e esta comparação precisa valer.
 blake3.workspace = true
+# A imagem canônica é PNG, e o Windows a quer em DIB: codificar e decodificar é daqui.
+png.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
 

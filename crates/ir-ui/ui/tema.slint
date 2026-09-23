@@ -32,6 +32,12 @@ export global Tema {
     out property <color> ruim: escuro ? #f87171 : #c02626;
     out property <color> acao: escuro ? #5b8dfa : #2563eb;
     out property <color> acao-sobre: escuro ? #7aa3fc : #1d4ed8;
+    // O fundo dos botões preenchidos, com texto branco por cima. No escuro o azul de `acao` dava
+    // 3,2:1 contra o branco, abaixo dos 4,5:1 de leitura confortável; este passa de 4,5:1.
+    out property <color> acao-fundo: escuro ? #3a6ce0 : #2563eb;
+    out property <color> acao-fundo-sobre: escuro ? #2f5fd0 : #1d4ed8;
+    // O anel de quem tem o foco do teclado.
+    out property <color> foco: escuro ? #9dbbff : #1d4ed8;
 
     // Fundos suaves das mesmas cores, para blocos inteiros sem virar cartaz.
     out property <color> bom-suave: escuro ? #14301f : #e8f6ec;

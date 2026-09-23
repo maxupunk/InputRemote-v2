@@ -10,6 +10,7 @@ repository.workspace = true
 
 [dependencies]
 blake3.workspace = true
+ir-area.workspace = true
 ir-confiabilidade.workspace = true
 ir-geometry.workspace = true
 ir-proto.workspace = true

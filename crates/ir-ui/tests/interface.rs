@@ -192,7 +192,7 @@ fn fixar_o_bluetooth_muda_o_motivo_que_a_tela_explica() {
 }
 
 #[test]
-fn desligar_a_tela_de_bloqueio_no_cliente_gera_um_impedimento_acionavel() {
+fn desligar_a_tela_de_bloqueio_no_cliente_explica_em_preferencias_sem_pintar_de_laranja() {
     let servico = ServicoSimulado::new();
     conectar(&servico);
     let par = estado(&servico).par.expect("par").maquina;
@@ -208,16 +208,15 @@ fn desligar_a_tela_de_bloqueio_no_cliente_gera_um_impedimento_acionavel() {
     assert!(matches!(servico.pedir(desligar), Resposta::Feito));
 
     let tela = ponte::estado_ui(&estado(&servico));
+    // Opcional e desligada por padrão: não é impedimento, e o controlado fica verde.
+    assert!(tela.impedimento.is_empty(), "{}", tela.impedimento);
+    assert_eq!(tela.saude, ponte::SAUDE_BOA);
+    // A explicação, com o que fazer, mora em Preferências.
     assert!(
-        !tela.impedimento.is_empty(),
-        "o usuário precisa saber que não vai funcionar"
-    );
-    assert!(
-        tela.impedimento.contains("Preferências"),
+        tela.sobre_o_bloqueio.starts_with("Desligada"),
         "{}",
-        tela.impedimento
+        tela.sobre_o_bloqueio
     );
-    assert_eq!(tela.saude, ponte::SAUDE_ATENCAO);
 }
 
 #[test]

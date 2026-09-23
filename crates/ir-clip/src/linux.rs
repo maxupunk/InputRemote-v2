@@ -2,7 +2,7 @@
 //!
 //! | Operação | GNOME 50 | Como |
 //! |---|---|---|
-//! | publicar texto ou lista de arquivos | funciona | `wl-copy`, que fica vivo como dono da seleção |
+//! | publicar texto, imagem PNG ou lista de arquivos | funciona | `wl-copy`, que fica vivo como dono da seleção |
 //! | ler | funciona | `wl-paste`, com prazo |
 //! | ser avisado de mudança | **não existe** | `wl-paste --watch` exige `data-control`, e o GNOME não o expõe |
 //!
@@ -94,6 +94,12 @@ impl Clipboard for ClipboardDoWayland {
             let bytes = colar(&["--no-newline"])?.unwrap_or_default();
             return Ok(Some(Conteudo::texto(&String::from_utf8_lossy(&bytes))));
         }
+        // Imagem depois de texto, como no Windows: a planilha oferece uma figura das células junto
+        // com o texto delas. E só PNG, a forma canônica — que é a que todo compositor oferece.
+        if tem("image/png") {
+            let bytes = colar(&["--type", "image/png"])?.unwrap_or_default();
+            return Ok((!bytes.is_empty()).then_some(Conteudo::Imagem(bytes)));
+        }
         // Formato de algum aplicativo que o protocolo não transporta. Não é erro.
         Ok(None)
     }
@@ -108,8 +114,8 @@ impl Clipboard for ClipboardDoWayland {
                     .collect();
                 ("text/uri-list", uri::montar_lista(&textos).into_bytes())
             }
-            // PNG no protocolo e PNG no Wayland; a leitura é que falta. Recusar é honesto.
-            Conteudo::Imagem(_) => return Err(ClipError::FormatoNaoSuportado),
+            // PNG no protocolo e PNG no Wayland: nada a converter.
+            Conteudo::Imagem(png) => ("image/png", png.clone()),
         };
         self.recolher();
         let mut filho = Command::new("wl-copy")

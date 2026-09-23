@@ -19,7 +19,8 @@
 //!
 //! ```text
 //! o sistema avisa mudança (Windows)  ┐                          ┌► Pedido::EnviarArquivos
-//! Aviso::LerClipboard (travessia)    ┴─► lê ─► Eco::oferecer ─┴► Pedido::OferecerTexto
+//! Aviso::LerClipboard (travessia)    ┴─► lê ─► Eco::oferecer ─┼► Pedido::OferecerTexto
+//!                                                             └► imagem: PNG em arquivo, e envio
 //!
 //! Aviso::Transferencia(recebendo, concluída) ┐
 //! Aviso::TextoRecebido                       ┴─► Eco::publicamos ─► publica o que chegou
@@ -27,6 +28,7 @@
 //!
 //! Nada de política aqui: quando ler, quem decide é o serviço; o que é eco, quem decide é o [`Eco`].
 //! Arquivos vão pelo canal de dados (TCP); texto, pelo canal 4 da sessão, em qualquer portador.
+//! Imagem vai como arquivo PNG de nome reconhecível, e do outro lado volta a ser imagem.
 //! Texto acima do limite do canal 4 não atravessa, e fica só no registro, sem o conteúdo.
 
 use std::io::{Read, Write};
@@ -42,6 +44,7 @@ use ir_ipc::transferencia::{Fase, Sentido, Transferencia};
 use ir_ipc::{Aviso, Falha, ParaInterface, Pedido, Resposta, TextoDoClipboard};
 use tracing::{debug, info, warn};
 
+mod imagem;
 mod instancia;
 mod notificacao;
 
@@ -253,7 +256,18 @@ fn pedido_para(conteudo: &Conteudo) -> Option<Pedido> {
                 .collect(),
         }),
         Conteudo::Texto(texto) => TextoDoClipboard::novo(texto.clone()).map(Pedido::OferecerTexto),
-        // Imagem ainda não tem caminho.
+        // A imagem vai como arquivo PNG, pelo canal de dados; o outro lado a reconhece pelo nome.
+        Conteudo::Imagem(png) => {
+            match imagem::gravar_para_enviar(png, &imagem::pasta_temporaria()) {
+                Ok(caminho) => Some(Pedido::EnviarArquivos {
+                    caminhos: vec![caminho.to_string_lossy().into_owned()],
+                }),
+                Err(erro) => {
+                    warn!(%erro, "não consegui guardar a imagem copiada para enviar");
+                    None
+                }
+            }
+        }
         _ => None,
     }
 }
@@ -262,7 +276,15 @@ fn pedido_para(conteudo: &Conteudo) -> Option<Pedido> {
 fn reagir(transferencia: &Transferencia, clip: &mut dyn Clipboard, eco: &mut Eco) {
     match (&transferencia.sentido, &transferencia.fase) {
         (Sentido::Recebendo, Fase::Concluida { destino }) if !destino.is_empty() => {
-            publicar(&Conteudo::Arquivos(vec![PathBuf::from(destino)]), clip, eco);
+            let destino = PathBuf::from(destino);
+            if imagem::e_imagem_do_clipboard(&destino) {
+                match imagem::ler_recebida(&destino) {
+                    Ok(chegou) => publicar(&chegou, clip, eco),
+                    Err(erro) => warn!(%erro, "não consegui ler a imagem que chegou"),
+                }
+            } else {
+                publicar(&Conteudo::Arquivos(vec![destino]), clip, eco);
+            }
         }
         // Não chegou do outro lado: a próxima cópia igual tem de ir de novo.
         (Sentido::Enviando, Fase::Parada(_)) => eco.oferta_falhou(),
@@ -315,5 +337,4 @@ fn pedir(escrita: &mut dyn Write, pedido: &Pedido) -> Result<()> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod testes;

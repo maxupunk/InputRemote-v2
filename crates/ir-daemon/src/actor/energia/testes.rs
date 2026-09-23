@@ -1,5 +1,7 @@
 //! O fluxo da economia de energia visto de fora: o que a janela vê e o que o botão faz.
 
+#![allow(clippy::expect_used)]
+
 use ir_energia::Economia;
 use ir_ipc::{EconomiaDoWifi, Falha, Resposta};
 use ir_proto::message::NetworkPowerSaving;
@@ -46,6 +48,28 @@ fn sem_sessao_pedir_ao_par_e_recusado_com_motivo() {
     let mut bancada = Bancada::nova(Role::Server);
     assert_eq!(
         bancada.daemon.desligar_economia(true),
-        Resposta::Falha(Falha::ForaDeContexto)
+        Resposta::Falha(Falha::SemConexao)
     );
+}
+
+#[test]
+fn o_pedido_do_par_vale_uma_vez_por_minuto() {
+    let mut bancada = Bancada::nova(Role::Server);
+    bancada.daemon.on_economia(Economia::Ligada);
+    let agora = std::time::Instant::now();
+
+    bancada.daemon.on_pedido_de_economia_do_par(agora);
+    assert_eq!(bancada.daemon.economia_pedida_em, Some(agora));
+
+    let logo = agora + std::time::Duration::from_secs(5);
+    bancada.daemon.on_pedido_de_economia_do_par(logo);
+    assert_eq!(
+        bancada.daemon.economia_pedida_em,
+        Some(agora),
+        "o segundo pedido em cinco segundos é ignorado"
+    );
+
+    let depois = agora + std::time::Duration::from_secs(61);
+    bancada.daemon.on_pedido_de_economia_do_par(depois);
+    assert_eq!(bancada.daemon.economia_pedida_em, Some(depois));
 }

@@ -41,6 +41,11 @@ pub enum BtCommand {
     },
     /// O usuário respondeu à comparação de códigos.
     ConfirmPairing(bool),
+    /// Se um pedido de pareamento que chega de fora é atendido.
+    ///
+    /// O serviço desliga isto quando já há par e a janela de pareamento não está aberta: sem a
+    /// chave, qualquer um por perto punha um código na tela e ocupava o endpoint (log 45).
+    AcceptPairing(bool),
     /// Encerre o enlace atual.
     Disconnect,
     /// Encerre a tarefa.
@@ -88,4 +93,10 @@ pub enum BtEvent {
     /// configurações do sistema" é acionável; "mensagem malformada" não é, e inventar conselho
     /// para falha interna treina o usuário a ignorar a mensagem.
     Error(String),
+    /// O rádio parou de escutar: o adaptador foi desligado ou removido.
+    ///
+    /// O endpoint termina depois deste evento. Antes ele ficava esperando uma ligação que nunca
+    /// viria — no Windows — ou girava em erro de `accept` — no Linux —, e o Bluetooth só voltava
+    /// reiniciando o serviço.
+    RadioLost(String),
 }

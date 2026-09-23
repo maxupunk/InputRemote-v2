@@ -33,28 +33,65 @@ pub struct ManifestItem {
 impl ManifestItem {
     /// Se o caminho é seguro para materializar.
     ///
-    /// Recusa: caminho vazio, absoluto, com componente `..`, com raiz de unidade do Windows,
-    /// com byte nulo, ou acima do tamanho máximo. É a defesa contra travessia de diretório,
-    /// e ela é feita aqui, no crate puro, onde pode ser testada exaustivamente.
+    /// Recusa: caminho vazio, absoluto, com componente `..`, com byte nulo, ou acima do tamanho
+    /// máximo; e, em **qualquer** componente, o que o Windows interpreta em vez de gravar (ver
+    /// [`is_safe_component`]). É a defesa contra travessia de diretório, e ela é feita aqui, no
+    /// crate puro, onde pode ser testada exaustivamente.
     #[must_use]
     pub fn is_safe_path(&self) -> bool {
         let path = self.path.as_str();
         if path.is_empty() || path.len() > limits::MAX_RELATIVE_PATH {
             return false;
         }
-        if path.contains('\0') || path.contains('\\') {
-            return false;
-        }
         if path.starts_with('/') {
             return false;
         }
-        // Raiz de unidade do Windows, como "C:algo".
-        if path.as_bytes().get(1) == Some(&b':') {
-            return false;
-        }
-        path.split('/')
-            .all(|component| !component.is_empty() && component != ".." && component != ".")
+        path.split('/').all(is_safe_component)
     }
+}
+
+/// Se um componente de caminho vira exatamente um nome de arquivo, nos dois sistemas.
+///
+/// O destino pode ser Windows, e lá o serviço grava como SYSTEM. Um `:` em qualquer componente,
+/// e não só no começo, é raiz de unidade (`x/C:payload.dll` vira `C:payload.dll`, relativo à
+/// pasta de trabalho do serviço, que é `System32`) ou fluxo alternativo (`a:fluxo`). Nomes de
+/// dispositivo (`CON`, `NUL`, `COM1`…) abrem o dispositivo, e o Windows apaga ponto e espaço do
+/// fim, o que faz dois nomes diferentes caírem no mesmo arquivo. Os caracteres proibidos pelo
+/// Windows e os de controle também ficam de fora: o que não pode ser gravado lá não viaja.
+#[must_use]
+pub fn is_safe_component(component: &str) -> bool {
+    if component.is_empty() || component == "." || component == ".." {
+        return false;
+    }
+    if component.ends_with('.') || component.ends_with(' ') {
+        return false;
+    }
+    let proibido =
+        |c: char| c.is_control() || matches!(c, '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|');
+    if component.chars().any(proibido) {
+        return false;
+    }
+    !is_windows_device_name(component)
+}
+
+/// Se o nome, ignorando a extensão, é um dispositivo do Windows (`nul.txt` também abre `NUL`).
+fn is_windows_device_name(component: &str) -> bool {
+    let stem = component.split('.').next().unwrap_or(component).trim_end();
+    let upper = stem.to_ascii_uppercase();
+    if matches!(
+        upper.as_str(),
+        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
+    ) {
+        return true;
+    }
+    let mut chars = upper.chars();
+    let prefix: String = chars.by_ref().take(3).collect();
+    let rest: String = chars.collect();
+    matches!(prefix.as_str(), "COM" | "LPT")
+        && matches!(
+            rest.as_str(),
+            "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+        )
 }
 
 /// Mensagem do canal de dados.
@@ -208,129 +245,4 @@ pub fn validate_manifest(items: &[ManifestItem], total_bytes: u64) -> Result<()>
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn file(path: &str, size: u64) -> ManifestItem {
-        ManifestItem {
-            path: path.to_owned(),
-            size,
-            is_dir: false,
-        }
-    }
-
-    fn dir(path: &str) -> ManifestItem {
-        ManifestItem {
-            path: path.to_owned(),
-            size: 0,
-            is_dir: true,
-        }
-    }
-
-    #[test]
-    fn ordinary_relative_paths_are_safe() {
-        for path in [
-            "a.txt",
-            "pasta/a.txt",
-            "a/b/c/d.bin",
-            "com espaço.txt",
-            "acentuação.md",
-        ] {
-            assert!(file(path, 1).is_safe_path(), "{path:?} deveria ser seguro");
-        }
-    }
-
-    #[test]
-    fn directory_traversal_is_refused() {
-        for path in [
-            "../fora.txt",
-            "a/../../fora.txt",
-            "..",
-            "a/..",
-            "./a.txt",
-            "a/./b",
-        ] {
-            assert!(
-                !file(path, 1).is_safe_path(),
-                "{path:?} deveria ser recusado"
-            );
-        }
-    }
-
-    #[test]
-    fn absolute_and_windows_paths_are_refused() {
-        for path in [
-            "/etc/passwd",
-            "C:/Windows/System32/x.dll",
-            "c:x",
-            "a\\b",
-            "\\\\servidor\\x",
-        ] {
-            assert!(
-                !file(path, 1).is_safe_path(),
-                "{path:?} deveria ser recusado"
-            );
-        }
-    }
-
-    #[test]
-    fn empty_null_and_oversized_paths_are_refused() {
-        assert!(!file("", 1).is_safe_path());
-        assert!(!file("a\0b", 1).is_safe_path());
-        assert!(!file("a//b", 1).is_safe_path(), "componente vazio");
-        let long = "a".repeat(limits::MAX_RELATIVE_PATH + 1);
-        assert!(!file(&long, 1).is_safe_path());
-    }
-
-    #[test]
-    fn a_consistent_manifest_validates() {
-        let items = vec![dir("pasta"), file("pasta/a.txt", 10), file("b.bin", 32)];
-        assert!(validate_manifest(&items, 42).is_ok());
-    }
-
-    #[test]
-    fn directories_do_not_count_towards_the_total() {
-        let items = vec![dir("pasta"), dir("pasta/sub")];
-        assert!(validate_manifest(&items, 0).is_ok());
-    }
-
-    #[test]
-    fn a_lying_total_is_refused() {
-        let items = vec![file("a.txt", 10)];
-        assert_eq!(
-            validate_manifest(&items, 999).unwrap_err(),
-            ProtoError::Malformed
-        );
-    }
-
-    #[test]
-    fn an_overflowing_total_is_refused_without_panicking() {
-        let items = vec![file("a.txt", u64::MAX), file("b.txt", 2)];
-        assert_eq!(
-            validate_manifest(&items, 1).unwrap_err(),
-            ProtoError::Malformed
-        );
-    }
-
-    #[test]
-    fn one_unsafe_path_rejects_the_whole_manifest() {
-        let items = vec![file("bom.txt", 1), file("../mau.txt", 1)];
-        assert_eq!(
-            validate_manifest(&items, 2).unwrap_err(),
-            ProtoError::Malformed
-        );
-    }
-
-    #[test]
-    fn item_count_is_checked_before_walking_the_list() {
-        let items = vec![file("../mau.txt", 0); limits::MAX_MANIFEST_ITEMS + 1];
-        let err = validate_manifest(&items, 0).unwrap_err();
-        assert!(matches!(
-            err,
-            ProtoError::CountTooLarge {
-                what: "itens do manifesto",
-                ..
-            }
-        ));
-    }
-}
+mod tests;

@@ -2653,6 +2653,7 @@ name = "ir-agent"
 version = "0.1.0-dev"
 dependencies = [
  "anyhow",
+ "blake3",
  "ir-clip",
  "ir-input",
  "ir-ipc",
@@ -2661,6 +2662,14 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "ir-area"
+version = "0.1.0-dev"
+dependencies = [
+ "blake3",
+ "ir-proto",
 ]
 
 [[package]]
@@ -2696,6 +2705,7 @@ version = "0.1.0-dev"
 dependencies = [
  "blake3",
  "ir-proto",
+ "png 0.18.1",
  "thiserror 2.0.20",
  "tracing",
  "windows 0.62.2",
@@ -2746,7 +2756,9 @@ dependencies = [
  "ir-energia",
  "ir-input",
  "ir-ipc",
+ "ir-painel",
  "ir-proto",
+ "ir-servico",
  "ir-sessao",
  "ir-session",
  "ir-transferencia",
@@ -2757,10 +2769,7 @@ dependencies = [
  "tokio",
  "toml 0.9.12+spec-1.1.0",
  "tracing",
- "tracing-appender",
- "tracing-subscriber",
  "windows 0.62.2",
- "windows-service",
 ]
 
 [[package]]
@@ -2791,6 +2800,7 @@ version = "0.1.0-dev"
 dependencies = [
  "evdev",
  "ir-proto",
+ "libc",
  "thiserror 2.0.20",
  "tracing",
  "windows 0.62.2",
@@ -2814,9 +2824,19 @@ dependencies = [
  "if-addrs",
  "ir-crypto",
  "ir-proto",
+ "socket2",
  "thiserror 2.0.20",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "ir-painel"
+version = "0.1.0-dev"
+dependencies = [
+ "ir-ipc",
+ "ir-proto",
+ "ir-session",
 ]
 
 [[package]]
@@ -2826,6 +2846,20 @@ dependencies = [
  "postcard",
  "serde",
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "ir-servico"
+version = "0.1.0-dev"
+dependencies = [
+ "anyhow",
+ "ir-acesso",
+ "ir-sessao",
+ "tokio",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "windows-service",
 ]
 
 [[package]]
@@ -2843,6 +2877,7 @@ name = "ir-session"
 version = "0.1.0-dev"
 dependencies = [
  "blake3",
+ "ir-area",
  "ir-confiabilidade",
  "ir-geometry",
  "ir-proto",
@@ -5609,6 +5644,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "tokio-macros",
  "windows-sys 0.61.2",

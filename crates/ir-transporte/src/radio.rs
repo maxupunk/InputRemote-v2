@@ -99,6 +99,10 @@ impl Transporte for Radio {
         let _ = self.comandos.send(BtCommand::ConfirmPairing(conferiu));
     }
 
+    fn aceitar_pareamento(&self, aceitar: bool) {
+        let _ = self.comandos.send(BtCommand::AcceptPairing(aceitar));
+    }
+
     fn desconectar(&self) {
         let _ = self.comandos.send(BtCommand::Disconnect);
     }
@@ -149,6 +153,10 @@ fn fato_de(evento: BtEvent) -> Option<Fato> {
         BtEvent::Error(mensagem) => Fato::Erro {
             portador: PORTADOR,
             mensagem,
+        },
+        BtEvent::RadioLost(motivo) => Fato::Perdido {
+            portador: PORTADOR,
+            motivo,
         },
         // O enum é não exaustivo: uma variante nova do `ir-bt` não pode derrubar o serviço.
         _ => return None,

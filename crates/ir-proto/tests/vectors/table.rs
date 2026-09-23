@@ -97,6 +97,7 @@ fn feedback(message: Feedback, seq: u32) -> Frame {
 /// por canal é onde se procura quando um canal muda.
 pub fn vectors() -> Vec<Vector> {
     let mut all = control_vectors();
+    all.extend(control_vectors_v4());
     all.extend(session_vectors());
     all.extend(input_vectors());
     all.extend(pointer_vectors());
@@ -114,7 +115,7 @@ fn control_vectors() -> Vec<Vector> {
         v(
             "hello",
             control(Control::Hello(greeting()), 1),
-            "0000030102030405060708090a0b0c0d0e0f100762616e63616461010101010200010000",
+            "0000040102030405060708090a0b0c0d0e0f100762616e63616461010101010200010000",
         ),
         v(
             "screens",
@@ -155,6 +156,28 @@ fn control_vectors() -> Vec<Vector> {
             "disable_network_power_saving",
             control(Control::DisableNetworkPowerSaving, 20),
             "000e140000",
+        ),
+    ]
+}
+
+/// Canal 0 — o que entrou na versão 4: Ctrl+Alt+Del, desktop protegido e bloquear junto.
+fn control_vectors_v4() -> Vec<Vector> {
+    vec![
+        v(
+            "secure_attention",
+            // Versão 4: o Ctrl+Alt+Del pedido pelo lado que controla.
+            control(Control::SecureAttention, 21),
+            "000f150000",
+        ),
+        v(
+            "protected_desktop",
+            control(Control::ProtectedDesktop { refused: true }, 22),
+            "001001160000",
+        ),
+        v(
+            "lock_screen",
+            control(Control::LockScreen, 23),
+            "0011170000",
         ),
     ]
 }

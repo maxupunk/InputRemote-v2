@@ -149,3 +149,25 @@ fn a_tela_recebe_a_impressao_agrupada_e_o_nivel_por_extenso() {
         ui.esta_impressao
     );
 }
+
+#[test]
+fn a_dica_da_bandeja_diz_o_estado_e_cabe_no_limite_do_windows() {
+    let dica = dica_da_bandeja(
+        "Pronto",
+        "Conectado a notebook. Leve o ponteiro até a borda.",
+    );
+    assert!(dica.starts_with("InputRemote — Pronto"));
+    let longa = dica_da_bandeja("Desconectado", &"palavra ".repeat(40));
+    assert!(longa.chars().count() <= 120, "{}", longa.chars().count());
+    assert!(longa.ends_with('…'));
+}
+
+#[test]
+fn nenhuma_frase_nova_tem_buraco_de_espacos() {
+    // A continuação de linha das frases longas já se perdeu em edições por script; o sintoma é
+    // um buraco de espaços no meio da frase.
+    assert!(
+        !AVISO_DO_BLOQUEIO_DO_PAR.contains("  "),
+        "buraco em: {AVISO_DO_BLOQUEIO_DO_PAR}"
+    );
+}

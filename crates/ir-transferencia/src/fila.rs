@@ -100,6 +100,17 @@ impl Fila {
         self.travar().pendente.take()
     }
 
+    /// A pessoa pediu para parar: o que espera sai, e o que está indo para. `false` se não havia
+    /// nada a parar.
+    pub(crate) fn cancelar_tudo(&self) -> bool {
+        let mut estado = self.travar();
+        let havia = estado.pendente.take().is_some() || estado.em_curso.is_some();
+        if estado.em_curso.is_some() {
+            estado.cancelar = true;
+        }
+        havia
+    }
+
     /// Se a cópia em curso deve parar para dar lugar a outra.
     pub(crate) fn cancelando(&self) -> bool {
         self.travar().cancelar
@@ -169,6 +180,19 @@ mod tests {
         assert!(!fila.cancelando());
         let proxima = fila.tomar().expect("a nova assume");
         assert_eq!(proxima.caminhos, caminhos(&["/casa/ffmpeg"]));
+    }
+
+    #[test]
+    fn cancelar_para_o_que_esta_indo_e_esquece_o_que_espera() {
+        let fila = Fila::default();
+        assert!(!fila.cancelar_tudo(), "sem cópia, nada a cancelar");
+        pedir(&fila, &["/casa/a"]);
+        fila.tomar().expect("começou");
+        pedir(&fila, &["/casa/b"]);
+        assert!(fila.cancelar_tudo());
+        assert!(fila.cancelando(), "a que está indo para");
+        fila.terminou();
+        assert!(fila.tomar().is_none(), "a que esperava não começa depois");
     }
 
     #[test]

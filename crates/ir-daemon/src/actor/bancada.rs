@@ -46,6 +46,8 @@ pub(super) enum Feito {
     Confirmou(bool),
     /// Derrubou o enlace.
     Desconectou,
+    /// Passou a atender, ou não, pedidos de pareamento de fora.
+    AceitaPareamento(bool),
 }
 
 /// Um transporte que não fala com ninguém e anota tudo.
@@ -97,6 +99,10 @@ impl Transporte for TransporteDeMentira {
         self.anotar(Feito::Confirmou(conferiu));
     }
 
+    fn aceitar_pareamento(&self, aceitar: bool) {
+        self.anotar(Feito::AceitaPareamento(aceitar));
+    }
+
     fn desconectar(&self) {
         self.anotar(Feito::Desconectou);
     }
@@ -137,8 +143,10 @@ impl Bancada {
             session: nova_sessao(papel, Edge::Right, identidade()),
             rede: Arc::clone(&rede) as Arc<dyn Transporte>,
             radio: Some(Arc::clone(&radio) as Arc<dyn Transporte>),
+            reabridor: None,
             injector: None,
             capturer: None,
+            captura: tokio::sync::mpsc::unbounded_channel().0,
             screen: (1920, 1080),
             peer: None,
             data_dir: dir.clone(),

@@ -21,6 +21,7 @@ use tracing::info;
 use crate::config::Config;
 use ir_transporte::{Endereco, Transporte};
 
+mod abertura;
 mod agente;
 mod alcance;
 #[cfg(test)]
@@ -28,20 +29,30 @@ mod bancada;
 mod discagem;
 mod energia;
 mod enlace;
+mod estado;
+mod gravador;
 mod papel;
 mod parada;
 mod pareamento;
 mod partes;
+mod pausa;
 mod pedidos;
+mod protegido;
+mod sistema;
 
 pub(crate) use papel::{nova_sessao, papel_na_subida};
 use pareamento::Pareamento;
 pub(crate) use partes::{DeFundo, Entradas, Parts};
+pub(crate) use sistema::EventoDoSistema;
 
 /// A entrada de captura, já convertida para o canal do ator.
 pub(crate) type CaptureRx = UnboundedReceiver<CaptureEvent>;
 
 /// O ator do serviço.
+///
+/// Os campos lógicos são estados independentes do mundo lá fora — o agente está de pé, a máquina
+/// vai dormir, a supressão vale —, e não um estado só disfarçado de vários.
+#[allow(clippy::struct_excessive_bools)]
 pub(crate) struct Daemon {
     pub(crate) session: Session,
     pub(crate) out: CommandBatch,
@@ -50,14 +61,20 @@ pub(crate) struct Daemon {
     pub(crate) rede: Arc<dyn Transporte>,
     /// O transporte de rádio, quando há rádio nesta máquina.
     pub(crate) radio: Option<Arc<dyn Transporte>>,
+    /// Quem abre o rádio de novo quando ele é perdido.
+    pub(crate) reabridor: Option<ir_transporte::Reabridor>,
     pub(crate) injector: Option<Box<dyn Injector>>,
     pub(crate) capturer: Option<Box<dyn Capturer>>,
+    /// Por onde a captura chega a este ator, para começá-la numa troca de papel.
+    #[cfg_attr(windows, allow(dead_code))]
+    pub(crate) captura: tokio::sync::mpsc::UnboundedSender<CaptureEvent>,
     pub(crate) screen: (u32, u32),
     /// Onde o par foi visto pela última vez. O endereço diz por qual portador se fala com ele.
     pub(crate) peer: Option<Endereco>,
     pub(crate) data_dir: std::path::PathBuf,
     pub(crate) config: Config,
-    pub(crate) pending_peer: Option<ir_crypto::PublicKey>,
+    /// Grava a configuração fora do laço, em ordem ([`gravador`]).
+    pub(crate) gravador: gravador::Gravador,
     /// O pareamento em andamento, do código na tela até o fim ([`pareamento`]).
     ///
     /// Vai além do clique em "São iguais": até o outro lado responder, a reconexão não disca por
@@ -77,6 +94,8 @@ pub(crate) struct Daemon {
     pub(crate) economia_aqui: ir_energia::Economia,
     /// A do par, pelo que ele contou.
     pub(crate) economia_no_par: Option<ir_proto::message::NetworkPowerSaving>,
+    /// Quando o par pediu pela última vez para desligar a economia daqui ([`energia`]).
+    pub(crate) economia_pedida_em: Option<Instant>,
     /// Por onde as tarefas de fundo devolvem o resultado ([`DeFundo`]).
     pub(crate) de_fundo: tokio::sync::mpsc::UnboundedSender<DeFundo>,
     /// Contador de batidas, para espaçar as tentativas de reconexão.
@@ -100,6 +119,30 @@ pub(crate) struct Daemon {
     agente: broadcast::Sender<ComandoDoAgente>,
     /// Se há agente conectado e pronto para capturar e injetar.
     agente_pronto: bool,
+    /// Se a sessão pediu a supressão da entrada local, que o agente precisa ver renovada.
+    pub(crate) suprimindo: bool,
+    /// Se a máquina está indo dormir: aí não se disca, até ela acordar ([`sistema`]).
+    pub(crate) dormindo: bool,
+    /// Até quando a janela de pareamento aberta deixa um pedido de fora entrar ([`abertura`]).
+    pub(crate) pareamento_aberto_ate: Option<Instant>,
+    /// A última decisão contada aos transportes sobre pedidos de fora.
+    pub(crate) abertura_anunciada: Option<bool>,
+    /// As voltas medidas na última janela, para a latência da tela.
+    pub(crate) voltas: ir_painel::Voltas,
+    /// Por que a última sessão caiu, para a tela.
+    pub(crate) ultima_queda: Option<ir_ipc::MotivoDaQueda>,
+    /// Se o compartilhamento está pausado, e de que lado ([`pausa`]).
+    pub(crate) pausa: Option<ir_ipc::Pausa>,
+    /// Os desktops em que o agente consegue injetar — `Winlogon` é a tela de bloqueio.
+    pub(crate) desktops_do_agente: Vec<String>,
+    /// Se esta máquina está recusando digitação do par no desktop protegido ([`protegido`]).
+    pub(crate) recusa_protegido: bool,
+    /// Se o par disse que recusa digitação daqui no desktop protegido dele.
+    pub(crate) par_recusa_protegido: bool,
+    /// Se a tela desta máquina está bloqueada ou no login, pelo `logind` (Linux).
+    pub(crate) tela_protegida: bool,
+    /// Se a borda está travada, pela janela: a sessão recriada nasce sabendo.
+    pub(crate) borda_travada: bool,
     /// Quem esta máquina é, para recriar a sessão numa troca de papel ou de borda.
     identidade_local: LocalIdentity,
     /// O último arranjo de telas conhecido, para a sessão recriada nascer sabendo onde ficam.
@@ -114,6 +157,9 @@ pub(crate) struct Daemon {
 
 /// A cada quantas batidas de 5 ms se tenta reconectar. 600 × 5 ms = 3 s.
 const RECONNECT_TICKS: u32 = 600;
+
+/// A cada quantas batidas se renova a supressão no agente. 200 × 5 ms = 1 s.
+const SUPRESSAO_TICKS: u32 = 200;
 
 /// A cada quantas batidas se verifica a economia de energia do Wi-Fi. 6 000 × 5 ms = 30 s.
 const ENERGIA_TICKS: u32 = 6_000;
@@ -157,9 +203,13 @@ impl Daemon {
             self.vencer_discagem_se_preciso();
             self.reconnect_if_needed();
             self.garantir_agente();
+            self.anunciar_abertura();
         }
         self.drive(Input::Tick);
         self.notar_estado();
+        if self.ticks.is_multiple_of(SUPRESSAO_TICKS) {
+            self.renovar_supressao();
+        }
         if self.ticks.is_multiple_of(PLACAR_TICKS) {
             self.registrar_placar();
         }
@@ -175,6 +225,8 @@ impl Daemon {
             DeFundo::ParAchado(endereco) => self.on_par_achado(endereco),
             DeFundo::Economia(economia) => self.on_economia(economia),
             DeFundo::Radio(aberto) => self.on_radio_tardio(aberto),
+            DeFundo::Sistema(evento) => self.on_sistema(evento),
+            DeFundo::TelaProtegida(protegida) => self.on_tela_protegida(protegida),
         }
     }
 
@@ -248,62 +300,6 @@ impl Daemon {
                 }
             }
         }
-    }
-
-    pub(crate) fn on_pairing_code(&mut self, code: [u8; 6], peer_static: ir_crypto::PublicKey) {
-        self.discagem_atendida();
-        self.pending_peer = Some(peer_static);
-        self.pareamento = Some(Pareamento {
-            desde: Instant::now(),
-            conferido: false,
-            digitos: code,
-        });
-        let digits: String = code.iter().map(|d| char::from(b'0' + d)).collect();
-        info!("código de pareamento: {digits}");
-        println!("\n=== CÓDIGO DE PAREAMENTO: {digits} ===");
-        println!("Confere com o outro computador? [s/n] e Enter:");
-        // A interface mostra os seis dígitos em caixas para a comparação em voz alta; vão
-        // separados, não como texto, exatamente por isso.
-        let _ = self
-            .avisos
-            .send(Aviso::CodigoDePareamento { digitos: code });
-    }
-
-    fn on_confirm(&mut self, line: &str) {
-        let trimmed = line.trim();
-        if !self.aguardando_confirmacao() || trimmed.is_empty() {
-            // Uma linha vazia (Enter solto) não é resposta: ignorar, não recusar.
-            return;
-        }
-        let yes = matches!(trimmed.to_lowercase().as_str(), "s" | "sim" | "y" | "yes");
-        let _ = self.confirmar(yes);
-    }
-
-    /// A resposta à comparação do código, venha do terminal ou da interface.
-    ///
-    /// Devolve se havia código esperando a resposta. Um clique num código que já não vale precisa
-    /// virar explicação na janela, e não um "feito" que não muda nada (log 25).
-    pub(crate) fn confirmar(&mut self, yes: bool) -> bool {
-        if !self.aguardando_confirmacao() {
-            return false;
-        }
-        info!("confirmação recebida: {}", if yes { "sim" } else { "não" });
-        if let Some(transporte) = self.transporte_do_par() {
-            transporte.confirmar_pareamento(yes);
-        }
-        if yes {
-            // Deste lado confere, mas o pareamento só termina quando o outro lado também
-            // confirmar. Até lá ele segue em andamento: com prazo, sem rediscagem por cima, e com
-            // a janela avisada se não chegar ao fim.
-            if let Some(pareamento) = self.pareamento.as_mut() {
-                pareamento.conferido = true;
-            }
-        } else {
-            // Códigos diferentes ou recusa: não há par, e a interface precisa saber que o
-            // pareamento terminou sem sucesso para sair da tela de comparação.
-            self.encerrar_pareamento_sem_sucesso();
-        }
-        true
     }
 
     /// Um evento de entrada capturado localmente (papel de servidor).

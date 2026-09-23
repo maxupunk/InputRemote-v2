@@ -33,24 +33,18 @@ ir-canais.workspace = true
 # A economia de energia do Wi-Fi: o aviso e o botão que a desliga.
 ir-energia.workspace = true
 ir-ipc.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["signal"] }
 tracing.workspace = true
-tracing-subscriber.workspace = true
-# O registro por fila: uma linha de log nunca espera disco nem console, e como serviço do Windows
-# vai para arquivo — a saída padrão de um serviço não chega a lugar nenhum.
-tracing-appender.workspace = true
+# O processo visto pelo sistema: SCM, registro, suspensão e tela bloqueada.
+ir-servico.workspace = true
+# O que a janela vê: o retrato do serviço traduzido no estado publicado.
+ir-painel.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 toml.workspace = true
 # A semente das épocas de sessão. O núcleo não sorteia nada; o serviço sorteia uma por sessão
 # criada, para uma sessão nova nunca ser confundida com a anterior pelo par (log 22).
 rand.workspace = true
-
-# O despachante do Gerenciador de Serviços (SCM). Só no Windows: é ele quem faz o serviço
-# responder ao "iniciar" do instalador, em vez de o `StartService` estourar o tempo — que é
-# exatamente a falha "Service failed to start" da instalação.
-[target.'cfg(windows)'.dependencies]
-windows-service = "0.7"
 
 # Só o que o lançamento do agente na sessão do usuário exige: token, sessão de console e
 # criação de processo. Nada de entrada — quem captura e injeta é o agente.

@@ -24,6 +24,10 @@ pub fn copia_ui(copia: &Transferencia, velocidade: String) -> CopiaUi {
         progresso: copia.progresso(),
         estado: estado(copia),
         velocidade: velocidade.into(),
+        cancelavel: copia.sentido == ir_ipc::transferencia::Sentido::Enviando && !copia.terminou(),
+        recebida: copia.sentido == ir_ipc::transferencia::Sentido::Recebendo
+            && copia.terminou()
+            && !copia.falhou(),
     }
 }
 

@@ -106,7 +106,8 @@ pub enum Pedido {
         /// Ligar ou desligar.
         permitir: bool,
     },
-    /// Encerre a sessão agora.
+    /// Pause o compartilhamento: a sessão cai, o par é avisado, e ninguém disca até
+    /// [`Pedido::Retomar`].
     Encerrar,
     /// Monte o relatório de diagnóstico.
     Diagnostico,
@@ -151,6 +152,19 @@ pub enum Pedido {
         /// `true` para pedir ao outro computador, pela sessão; `false` para esta máquina.
         no_par: bool,
     },
+    /// Volte a compartilhar depois de uma pausa ([`Pedido::Encerrar`] pausa).
+    ///
+    /// Encerrar só derrubava os enlaces, e a reconexão discava de novo em 3 s: o botão parecia não
+    /// funcionar. Agora encerrar é pausar de verdade — o par é avisado e ninguém disca — até isto.
+    Retomar,
+    /// Pare a cópia de arquivos em curso. O que já chegou do outro lado é descartado inteiro.
+    CancelarCopia,
+    /// Mande Ctrl+Alt+Del ao outro computador — o botão, além do atalho Ctrl+Alt+End.
+    CtrlAltDel,
+    /// Trave, ou destrave, a borda: travada, o ponteiro não atravessa — só o atalho leva o controle.
+    TravarBorda(bool),
+    /// Bloquear, ou não, o outro computador quando este bloquear.
+    BloquearJuntos(bool),
 }
 
 impl Pedido {
@@ -168,6 +182,11 @@ impl Pedido {
             | Self::FixarPortador(_)
             | Self::Procurar
             | Self::Encerrar
+            | Self::Retomar
+            | Self::CancelarCopia
+            | Self::CtrlAltDel
+            | Self::TravarBorda(_)
+            | Self::BloquearJuntos(_)
             // Mandar arquivo é ação com consequência: o conteúdo sai desta máquina. Mas exigir
             // elevação aqui seria exigir elevação **a cada colagem**, já que é este o caminho que
             // o Ctrl+C vai usar — e uma permissão que atrapalha o uso normal acaba desligada. O
@@ -287,98 +306,13 @@ pub enum Aviso {
         /// Quantas foram pressionadas.
         pressionadas: u8,
     },
+    /// Uma ação que o serviço terminou em segundo plano não deu certo.
+    ///
+    /// O pedido já tinha respondido "feito" — desligar a economia do Wi-Fi roda uma ferramenta do
+    /// sistema, fora do laço —, e sem isto a falha só ia para o registro: o botão parecia
+    /// funcionar e nada mudava.
+    Falhou(crate::Falha),
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::vocabulario::Nome;
-
-    fn todos_os_pedidos() -> Vec<Pedido> {
-        vec![
-            Pedido::Estado,
-            Pedido::Acompanhar,
-            Pedido::DefinirPapel(crate::status::Papel::Cliente),
-            Pedido::DefinirBorda(Borda::Esquerda),
-            Pedido::FixarPortador(Some(Portador::Bluetooth)),
-            Pedido::Procurar,
-            Pedido::IniciarPareamento {
-                candidato: "192.168.0.10".to_owned(),
-            },
-            Pedido::ConfirmarPareamento { conferiu: true },
-            Pedido::EsquecerPar {
-                maquina: Maquina([0; 16]),
-            },
-            Pedido::PermitirTelaDeBloqueio {
-                maquina: Maquina([0; 16]),
-                permitir: true,
-            },
-            Pedido::Encerrar,
-            Pedido::Diagnostico,
-            Pedido::AcompanharClipboard,
-            Pedido::LimparRecebidos,
-            Pedido::DesligarEconomiaDeEnergia { no_par: true },
-        ]
-    }
-
-    #[test]
-    fn todo_pedido_declara_autoridade() {
-        // Um pedido que esqueça de declarar o próprio nível é escalada de privilégio, não
-        // descuido de estilo. Este teste falha se alguém acrescentar variante sem classificá-la.
-        for pedido in todos_os_pedidos() {
-            let _ = pedido.autoridade();
-        }
-    }
-
-    #[test]
-    fn ler_nunca_exige_elevacao() {
-        for pedido in [
-            Pedido::Estado,
-            Pedido::Acompanhar,
-            Pedido::AcompanharClipboard,
-            Pedido::Diagnostico,
-        ] {
-            assert_eq!(pedido.autoridade(), Autoridade::Ler, "{pedido:?}");
-        }
-    }
-
-    #[test]
-    fn tudo_que_decide_quem_digita_exige_elevacao() {
-        let sensíveis = [
-            Pedido::IniciarPareamento {
-                candidato: "x".to_owned(),
-            },
-            Pedido::ConfirmarPareamento { conferiu: true },
-            Pedido::EsquecerPar {
-                maquina: Maquina([1; 16]),
-            },
-            Pedido::PermitirTelaDeBloqueio {
-                maquina: Maquina([1; 16]),
-                permitir: true,
-            },
-        ];
-        for pedido in sensíveis {
-            assert_eq!(
-                pedido.autoridade(),
-                Autoridade::Elevado,
-                "{pedido:?} decide quem pode digitar na tela de bloqueio"
-            );
-        }
-    }
-
-    #[test]
-    fn as_autoridades_sao_ordenadas_por_poder() {
-        assert!(Autoridade::Elevado > Autoridade::Configurar);
-        assert!(Autoridade::Configurar > Autoridade::Ler);
-    }
-
-    #[test]
-    fn o_estado_recem_instalado_diz_o_que_fazer_primeiro() {
-        let estado = Estado::recem_instalado(Maquina([7; 16]), Nome::coagido("bancada"));
-        let resumo = estado.resumo();
-        assert!(
-            resumo.contains("Pareie"),
-            "a primeira tela precisa dizer o primeiro passo"
-        );
-    }
-}
+mod tests;
