@@ -62,6 +62,18 @@ impl Daemon {
         }
     }
 
+    /// A sessão com o par subiu: se ele estava marcado como pausado, não está mais.
+    ///
+    /// Sem isto, a marca só saía quando um enlace **novo** subia — e uma sessão refeita sobre o
+    /// enlace que já existia (a troca de papel) deixava "pausou o compartilhamento" na tela com a
+    /// conexão pronta.
+    pub(crate) fn par_retomou(&mut self) {
+        if self.pausa == Some(Pausa::NoPar) {
+            info!("o outro computador voltou a compartilhar");
+            self.pausa = None;
+        }
+    }
+
     /// A sessão caiu: guarda o motivo para a tela, e entende a pausa do outro lado.
     pub(crate) fn on_queda(&mut self, motivo: LinkDown) {
         self.voltas.esquecer();
@@ -124,6 +136,34 @@ mod tests {
         assert_eq!(estado.ultima_queda, Some(MotivoDaQueda::ParPausou));
 
         assert!(!bancada.daemon.recusar_pela_pausa(), "ele retomou e ligou");
+        assert_eq!(bancada.daemon.estado().pausa, None);
+    }
+
+    #[test]
+    fn a_sessao_refeita_no_mesmo_enlace_tira_a_pausa_do_par() {
+        // A troca de papel refaz a sessão sem enlace novo: "pausou" ficava na tela, com a conexão
+        // pronta.
+        let mut bancada = Bancada::nova(Role::Server);
+        bancada
+            .daemon
+            .on_queda(LinkDown::PeerClosed(DisconnectReason::UserRequested));
+        bancada
+            .daemon
+            .out
+            .push(ir_session::Command::Notify(ir_session::Notice::Connected {
+                peer: ir_proto::peer::MachineName::new("fedora").expect("nome"),
+                carrier: Carrier::Rfcomm,
+            }));
+        bancada.daemon.apply_commands();
+        assert_eq!(bancada.daemon.estado().pausa, None);
+    }
+
+    #[test]
+    fn trocar_de_papel_nao_parece_pausa_ao_par() {
+        let mut bancada = Bancada::nova(Role::Server);
+        bancada
+            .daemon
+            .on_queda(LinkDown::PeerClosed(DisconnectReason::Reconfiguring));
         assert_eq!(bancada.daemon.estado().pausa, None);
     }
 

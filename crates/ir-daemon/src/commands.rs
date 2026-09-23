@@ -87,7 +87,12 @@ impl Daemon {
             Notice::LatencySample(volta) => {
                 self.voltas.anotar(std::time::Instant::now(), volta.get());
             }
-            Notice::Connected { peer, .. } => self.lembrar_nome_do_par(peer.as_str()),
+            Notice::Connected { peer, .. } => {
+                // A sessão de pé é o par compartilhando: uma pausa dele que ficou marcada acabou.
+                self.par_retomou();
+                self.lembrar_nome_do_par(peer.as_str());
+            }
+            Notice::AdoptRole { role, chosen_at } => self.adotar_papel(*role, *chosen_at),
             Notice::PeerCannotSecureAttention => self.ctrl_alt_del_nao_saiu(),
             Notice::PeerProtectedDesktop { refused } => {
                 self.on_par_recusa_protegido(*refused);

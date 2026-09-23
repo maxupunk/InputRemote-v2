@@ -47,6 +47,7 @@ use tracing::{debug, info, warn};
 mod imagem;
 mod instancia;
 mod notificacao;
+mod rede;
 
 /// Quanto esperar para tentar o serviço de novo.
 ///
@@ -235,6 +236,9 @@ fn oferecer(escrita: &mut dyn Write, clip: &mut dyn Clipboard, eco: &mut Eco) {
     if !eco.oferecer(&conteudo) {
         return;
     }
+    // Só depois da guarda de eco: trazer uma pasta de rede para perto pode ser demorado, e não pode
+    // se repetir a cada aviso de mudança do mesmo clipboard.
+    let pedido = trazer_da_rede(pedido);
     // Tipo e tamanho, nunca o conteúdo nem nomes ([04, §7](../../../docs/04-seguranca.md)).
     info!(
         tipo = conteudo.tipo().name(),
@@ -243,6 +247,23 @@ fn oferecer(escrita: &mut dyn Write, clip: &mut dyn Clipboard, eco: &mut Eco) {
     );
     if pedir(escrita, &pedido).is_err() {
         eco.oferta_falhou();
+    }
+}
+
+/// Troca o que está numa pasta de rede por uma cópia local, que o serviço consegue ler.
+fn trazer_da_rede(pedido: Pedido) -> Pedido {
+    match pedido {
+        Pedido::EnviarArquivos { caminhos } => {
+            let originais: Vec<PathBuf> = caminhos.iter().map(PathBuf::from).collect();
+            let perto = rede::trazer_para_perto(&originais, &imagem::pasta_temporaria());
+            Pedido::EnviarArquivos {
+                caminhos: perto
+                    .iter()
+                    .map(|caminho| caminho.to_string_lossy().into_owned())
+                    .collect(),
+            }
+        }
+        outro => outro,
     }
 }
 

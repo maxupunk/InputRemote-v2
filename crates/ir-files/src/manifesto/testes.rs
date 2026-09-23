@@ -207,6 +207,9 @@ async fn um_caminho_de_rede_e_recusado_antes_de_tocar_o_disco() {
     let erro = montar(TransferId(8), &[rede], Leitor::Proprio)
         .await
         .unwrap_err();
+    #[cfg(windows)]
+    assert!(matches!(erro, FileError::PastaDeRede(_)), "{erro}");
+    #[cfg(not(windows))]
     assert!(matches!(erro, FileError::NaoEnviavel(_)), "{erro}");
 }
 

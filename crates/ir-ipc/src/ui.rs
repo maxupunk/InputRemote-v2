@@ -312,6 +312,11 @@ pub enum Aviso {
     /// sistema, fora do laço —, e sem isto a falha só ia para o registro: o botão parecia
     /// funcionar e nada mudava.
     Falhou(crate::Falha),
+    /// O outro computador escolheu o mesmo papel, depois, e este passou ao complementar sozinho.
+    ///
+    /// O papel já muda no [`Estado`]; isto é para a tela **contar** — um botão que muda de lugar
+    /// sem explicação parece defeito.
+    PapelAjustado(crate::Papel),
 }
 
 #[cfg(test)]

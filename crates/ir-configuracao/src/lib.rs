@@ -72,6 +72,13 @@ pub struct Config {
     /// computador que era controlado não pode ficar aberto para quem passar por ele.
     #[serde(default = "sim")]
     pub bloquear_juntos: bool,
+    /// Quando o papel foi escolhido na tela, em milissegundos desde 1970.
+    ///
+    /// Os dois computadores anunciam o papel um ao outro; se colidirem, vale a escolha mais
+    /// recente, e o outro passa ao papel complementar sozinho. Sem isto gravado, a escolha de antes
+    /// de reiniciar perderia para qualquer outra.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub papel_escolhido_em: Option<u64>,
 }
 
 /// O padrão das opções que nascem ligadas.
@@ -116,6 +123,7 @@ impl Default for Config {
             politica_de_atencao_anterior: None,
             portador_fixado: None,
             bloquear_juntos: true,
+            papel_escolhido_em: None,
         }
     }
 }

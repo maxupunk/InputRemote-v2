@@ -49,6 +49,9 @@ Depois disso a conexão é automática: quem liga primeiro espera, e as quedas s
 Encoste o ponteiro na borda onde o outro computador está (escolhida em **Preferências**). Ele
 atravessa, e o teclado e o mouse passam a controlar o outro lado. Para voltar, a borda oposta.
 
+Quem tem o teclado se escolhe em **Preferências**, numa máquina só: a outra passa sozinha ao papel
+que combina e conta isso na tela. Se as duas forem trocadas, vale a última escolha.
+
 | Atalho (no teclado que controla) | O que faz |
 |---|---|
 | **Ctrl+Alt+Shift+Espaço** | leva o controle ao outro computador, ou o traz de volta |
@@ -70,7 +73,8 @@ Copie de um lado e cole do outro, com o Ctrl+C e o Ctrl+V de sempre. Atravessam:
 
 - **texto**, pelo mesmo caminho da entrada (Bluetooth ou rede);
 - **arquivos e pastas**, pelo canal de dados na rede, com o andamento no cartão de cópia (que tem
-  **Cancelar** e **Abrir pasta**);
+  **Cancelar** e **Abrir pasta**) — também de uma pasta de rede ou unidade mapeada, que é copiada
+  antes para este computador (até 8 GB);
 - **imagens** — uma captura de tela, uma figura copiada do navegador —, que chegam como imagem, e
   não como arquivo.
 

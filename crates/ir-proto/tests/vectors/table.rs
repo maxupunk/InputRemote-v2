@@ -14,7 +14,8 @@ use ir_proto::input::{
     Button, HidUsage, InputState, Modifiers, PointerDelta, PointerPosition, WheelDelta,
 };
 use ir_proto::message::{
-    Control, Feedback, Greeting, InputMessage, Message, NetworkPowerSaving, PointerMessage,
+    Control, Feedback, Greeting, InputMessage, Message, NetworkPowerSaving, PeerRole,
+    PointerMessage,
 };
 use ir_proto::peer::{Capabilities, ClipboardCapabilities, MachineName, PrivilegedInputLevel};
 use ir_proto::screens::{Edge, ScreenLayout};
@@ -115,7 +116,7 @@ fn control_vectors() -> Vec<Vector> {
         v(
             "hello",
             control(Control::Hello(greeting()), 1),
-            "0000040102030405060708090a0b0c0d0e0f100762616e63616461010101010200010000",
+            "0000050102030405060708090a0b0c0d0e0f100762616e63616461010101010200010000",
         ),
         v(
             "screens",
@@ -160,7 +161,8 @@ fn control_vectors() -> Vec<Vector> {
     ]
 }
 
-/// Canal 0 — o que entrou na versão 4: Ctrl+Alt+Del, desktop protegido e bloquear junto.
+/// Canal 0 — o que entrou nas versões 4 e 5: Ctrl+Alt+Del, desktop protegido, bloquear junto e o
+/// papel anunciado.
 fn control_vectors_v4() -> Vec<Vector> {
     vec![
         v(
@@ -178,6 +180,18 @@ fn control_vectors_v4() -> Vec<Vector> {
             "lock_screen",
             control(Control::LockScreen, 23),
             "0011170000",
+        ),
+        v(
+            "role",
+            // Versão 5: o papel de quem envia, e quando foi escolhido.
+            control(
+                Control::Role {
+                    role: PeerRole::Client,
+                    chosen_at: 1_790_000_000_000,
+                },
+                24,
+            ),
+            "00120180d8c1a28c34180000",
         ),
     ]
 }

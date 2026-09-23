@@ -146,6 +146,9 @@ pub struct SessionConfig {
     /// serviço sorteia uma a cada sessão criada. Repetir a semente entre duas execuções do
     /// serviço faria o par tomar a sessão nova pela antiga — o laço que ela existe para impedir.
     pub incarnation_seed: u32,
+    /// Quando o papel desta máquina foi escolhido na tela, em milissegundos desde 1970; `0` se
+    /// nunca foi. Numa colisão de papéis com o par, vale a escolha mais recente (`session/role.rs`).
+    pub role_chosen_at: u64,
 }
 
 impl SessionConfig {
@@ -157,6 +160,7 @@ impl SessionConfig {
             peer_edge,
             timings: Timings::DEFAULT,
             incarnation_seed: 0,
+            role_chosen_at: 0,
         }
     }
 
@@ -172,6 +176,7 @@ impl SessionConfig {
             peer_edge,
             timings: Timings::DEFAULT,
             incarnation_seed: 0,
+            role_chosen_at: 0,
         }
     }
 }

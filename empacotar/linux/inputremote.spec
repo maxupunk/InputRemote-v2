@@ -180,7 +180,6 @@ install -Dpm 0644 empacotar/linux/io.github.inputremote.ativar.policy \
         %{buildroot}%{_datadir}/polkit-1/actions/io.github.inputremote.ativar.policy
 install -Dpm 0644 empacotar/linux/80-inputremote.preset \
         %{buildroot}%{_prefix}/lib/systemd/system-preset/80-%{name}.preset
-%{_prefix}/lib/systemd/system-sleep/%{name}
 # As portas do produto como servico do firewalld; o ajudante de ativacao o liga na zona padrao.
 install -Dpm 0644 empacotar/linux/inputremote-firewalld.xml \
         %{buildroot}%{_prefix}/lib/firewalld/services/%{name}.xml
@@ -203,6 +202,7 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %{_bindir}/inputremote-agent
 %{_prefix}/lib/systemd/system/%{name}.service
 %{_prefix}/lib/systemd/system-preset/80-%{name}.preset
+%{_prefix}/lib/systemd/system-sleep/%{name}
 %dir %{_libexecdir}/%{name}
 %{_libexecdir}/%{name}/ativar
 %{_libexecdir}/%{name}/ajudante-nas-sessoes

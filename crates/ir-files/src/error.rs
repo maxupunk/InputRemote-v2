@@ -57,6 +57,16 @@ pub enum FileError {
     #[error("não sei enviar {0}")]
     NaoEnviavel(PathBuf),
 
+    /// O que se pediu para enviar está numa pasta de rede, que o serviço não abre.
+    ///
+    /// O ajudante de clipboard traz essas cópias para perto antes de pedir; chega aqui o que ele
+    /// não trouxe — grande demais, ou a pasta de rede recusou.
+    #[error(
+        "{0} está numa pasta de rede e não pôde ser copiado antes; copie para uma pasta deste \
+         computador e copie de novo"
+    )]
+    PastaDeRede(PathBuf),
+
     /// Quem pediu o envio não poderia ler isto sozinho.
     ///
     /// O serviço tem mais autoridade que quem pede; mandar o que o pedinte não leria seria usar o
@@ -102,6 +112,7 @@ impl FileError {
             Self::Io { origem, .. } => format!("erro de E/S: {origem}"),
             Self::CaminhoImpossivel(_) => "não consigo montar um caminho relativo".to_owned(),
             Self::NaoEnviavel(_) => "não sei enviar o que foi pedido".to_owned(),
+            Self::PastaDeRede(_) => "o que foi pedido está numa pasta de rede".to_owned(),
             Self::SemPermissao(_) => "sem permissão para enviar o que foi pedido".to_owned(),
             Self::MudouDurante {
                 declarado, lidos, ..

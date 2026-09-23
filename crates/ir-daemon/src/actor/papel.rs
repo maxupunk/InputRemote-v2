@@ -63,7 +63,12 @@ const fn edge_para_texto(edge: Edge) -> &'static str {
 ///
 /// O mesmo ponto para a subida do serviço e para a sessão recriada numa troca: duas maneiras de
 /// montar a sessão acabariam montando duas sessões diferentes.
-pub(crate) fn nova_sessao(papel: Role, edge: Edge, identidade: LocalIdentity) -> Session {
+pub(crate) fn nova_sessao(
+    papel: Role,
+    edge: Edge,
+    identidade: LocalIdentity,
+    escolhido_em: Option<u64>,
+) -> Session {
     let mut config = match papel {
         Role::Server => SessionConfig::server(edge),
         Role::Client => SessionConfig::client(edge),
@@ -71,7 +76,16 @@ pub(crate) fn nova_sessao(papel: Role, edge: Edge, identidade: LocalIdentity) ->
     // Uma semente nova a cada sessão criada — também na recriada por troca de papel.
     // Repetir a anterior faria o par tomar a sessão nova pela antiga (log 22).
     config.incarnation_seed = rand::random();
+    config.role_chosen_at = escolhido_em.unwrap_or(0);
     Session::new(config, identidade)
+}
+
+/// O relógio de parede, em milissegundos desde 1970, para comparar escolhas de papel entre as duas
+/// máquinas. Um relógio antes de 1970 vira `0`, que perde para qualquer escolha.
+fn agora_em_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
 
 /// O papel com que o serviço sobe, corrigindo um gravado que a plataforma não sustenta.
@@ -118,12 +132,45 @@ impl Daemon {
         }
         let mut nova = self.config.clone();
         texto.clone_into(&mut nova.role);
+        nova.papel_escolhido_em = Some(agora_em_ms());
         let resposta = self.persistir(nova);
         if resposta == Resposta::Feito {
             info!(papel = texto, "papel trocado pela interface; já valendo");
             self.recriar_sessao(papel, self.edge);
         }
         resposta
+    }
+
+    /// O outro computador escolheu o mesmo papel, depois: este passa ao complementar.
+    ///
+    /// É o que deixa trocar o papel numa tela só — a outra se ajusta sozinha. Grava o horário da
+    /// escolha do par, e não o de agora: gravar o de agora faria esta ponta vencer a próxima
+    /// comparação e ceder de volta.
+    pub(crate) fn adotar_papel(&mut self, papel: Role, escolhido_em: u64) {
+        if papel == self.session.role() {
+            return;
+        }
+        let texto = texto_do_papel(papel);
+        if !papel_sustentado(papel, ir_input::capture_supported()) {
+            warn!(
+                papel = texto,
+                "o outro computador tem o mesmo papel, mas esta plataforma não sustenta o outro"
+            );
+            return;
+        }
+        let mut nova = self.config.clone();
+        texto.clone_into(&mut nova.role);
+        nova.papel_escolhido_em = Some(escolhido_em);
+        if self.persistir(nova) == Resposta::Feito {
+            info!(
+                papel = texto,
+                "o outro computador trocou de papel; este se ajustou"
+            );
+            self.recriar_sessao(papel, self.edge);
+            let _ = self
+                .avisos
+                .send(Aviso::PapelAjustado(ir_painel::papel_de(papel)));
+        }
     }
 
     /// Troca a borda de travessia, e a troca já vale — sem derrubar a sessão.
@@ -178,12 +225,18 @@ impl Daemon {
         // soltura escrita de novo aqui, onde poderia divergir.
         if self.session.phase() != Phase::Offline {
             let agora = self.now();
+            // Não "pedido pelo usuário": o par entenderia pausa. A sessão nova vem em seguida.
             self.session
-                .stop(agora, LinkDown::UserStopped, &mut self.out);
+                .stop(agora, LinkDown::Reconfiguring, &mut self.out);
             self.apply_commands();
         }
 
-        self.session = nova_sessao(papel, edge, self.identidade_local.clone());
+        self.session = nova_sessao(
+            papel,
+            edge,
+            self.identidade_local.clone(),
+            self.config.papel_escolhido_em,
+        );
         self.edge = edge;
         if let Some(arranjo) = self.ultimo_arranjo.clone() {
             self.drive(Input::LocalScreens(arranjo));
@@ -245,140 +298,4 @@ impl Daemon {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-mod tests {
-    use ir_session::{Command, Notice};
-
-    use super::*;
-    use crate::actor::bancada::{Bancada, Diretorio, diretorio};
-
-    fn daemon(papel: Role) -> (Daemon, Diretorio) {
-        let bancada = Bancada::nova(papel);
-        (bancada.daemon, bancada.dir)
-    }
-
-    fn gravado(dir: &Path) -> String {
-        std::fs::read_to_string(dir.join("config.toml")).unwrap_or_default()
-    }
-
-    #[test]
-    fn servidor_so_onde_ha_captura() {
-        assert!(!papel_sustentado(Role::Server, false));
-        assert!(papel_sustentado(Role::Server, true));
-        assert!(papel_sustentado(Role::Client, false));
-        assert!(papel_sustentado(Role::Client, true));
-    }
-
-    #[test]
-    fn a_borda_nova_ja_vale_na_sessao_em_uso() {
-        // O defeito era a janela mostrar a borda nova e a travessia usar a velha.
-        let (mut daemon, dir) = daemon(Role::Server);
-        assert_eq!(daemon.trocar_borda(Edge::Left), Resposta::Feito);
-        assert_eq!(daemon.session.peer_edge(), Edge::Left);
-        assert!(
-            gravado(&dir).contains(r#"peer_edge = "left""#),
-            "{}",
-            gravado(&dir)
-        );
-    }
-
-    #[test]
-    fn trocar_a_borda_nao_refaz_a_sessao() {
-        // Refazer mandava ao par um adeus de "encerrada pelo usuário", que ele não reconecta. Aqui
-        // não há enlace: uma sessão refeita voltaria desligada, e a em uso continua no aperto de mão.
-        let (mut daemon, _dir) = daemon(Role::Server);
-        daemon.drive(Input::CarrierUp(Carrier::Udp));
-        assert_eq!(daemon.session.phase(), Phase::Handshaking);
-
-        assert_eq!(daemon.trocar_borda(Edge::Left), Resposta::Feito);
-
-        assert_eq!(
-            daemon.session.phase(),
-            Phase::Handshaking,
-            "a sessão é a mesma"
-        );
-        assert_eq!(daemon.session.peer_edge(), Edge::Left);
-    }
-
-    #[test]
-    fn no_cliente_a_borda_e_do_servidor_e_nada_e_gravado() {
-        let (mut daemon, dir) = daemon(Role::Client);
-        assert_eq!(
-            daemon.trocar_borda(Edge::Left),
-            Resposta::Falha(Falha::BordaDoServidor)
-        );
-        assert_eq!(daemon.session.peer_edge(), Edge::Right, "a sessão não muda");
-        assert!(
-            !dir.join("config.toml").exists(),
-            "uma recusa não pode gravar nada"
-        );
-    }
-
-    #[test]
-    fn o_cliente_grava_a_borda_que_o_servidor_anunciou() {
-        // Sem gravar, o cliente subiria com a borda velha e atravessaria errado até reconectar.
-        let (mut daemon, dir) = daemon(Role::Client);
-        daemon
-            .out
-            .push(Command::Notify(Notice::EdgeChanged { edge: Edge::Left }));
-        daemon.apply_commands();
-        daemon.gravador.esperar();
-
-        assert!(
-            gravado(&dir).contains(r#"peer_edge = "left""#),
-            "{}",
-            gravado(&dir)
-        );
-        assert_eq!(daemon.estado().borda_do_par, ir_ipc::Borda::Esquerda);
-    }
-
-    #[test]
-    fn o_papel_novo_ja_vale_na_sessao_em_uso() {
-        // Voltar a cliente é sempre possível — é o caminho de quem ficou servidor por engano.
-        let (mut daemon, dir) = daemon(Role::Server);
-        assert_eq!(daemon.trocar_papel(Role::Client), Resposta::Feito);
-        assert_eq!(daemon.session.role(), Role::Client);
-        assert!(
-            gravado(&dir).contains(r#"role = "client""#),
-            "{}",
-            gravado(&dir)
-        );
-    }
-
-    #[test]
-    fn servidor_sem_captura_e_recusado_sem_gravar_nada() {
-        if ir_input::capture_supported() {
-            return; // aqui o servidor é legítimo
-        }
-        let (mut daemon, dir) = daemon(Role::Client);
-        assert_eq!(
-            daemon.trocar_papel(Role::Server),
-            Resposta::Falha(Falha::PapelIndisponivel)
-        );
-        assert_eq!(daemon.session.role(), Role::Client, "a sessão não muda");
-        assert!(
-            !dir.join("config.toml").exists(),
-            "uma recusa não pode gravar nada"
-        );
-    }
-
-    #[test]
-    fn na_subida_um_servidor_sem_captura_vira_cliente_e_o_arquivo_e_corrigido() {
-        let dir = diretorio();
-        let mut config = Config {
-            role: texto_do_papel(Role::Server).to_owned(),
-            ..Config::default()
-        };
-        let papel = papel_na_subida(&mut config, &dir).expect("papel reconhecido");
-        if ir_input::capture_supported() {
-            assert_eq!(papel, Role::Server, "onde há captura, o gravado vale");
-        } else {
-            assert_eq!(papel, Role::Client);
-            assert!(
-                gravado(&dir).contains(r#"role = "client""#),
-                "{}",
-                gravado(&dir)
-            );
-        }
-    }
-}
+mod tests;

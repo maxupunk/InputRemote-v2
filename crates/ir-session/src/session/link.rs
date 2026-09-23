@@ -187,6 +187,7 @@ impl Session {
         self.widen_route_to_available(out);
         self.announce_reach(now, out);
         self.announce_network_power(now, out);
+        self.announce_role(now, out);
 
         // O par precisa do nosso arranjo para saber onde o ponteiro entra.
         if let Some(desktop) = self.local_screens.as_ref() {

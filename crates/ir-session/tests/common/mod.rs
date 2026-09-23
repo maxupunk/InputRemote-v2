@@ -110,30 +110,38 @@ fn identity(name: &str, byte: u8) -> LocalIdentity {
 impl Pair {
     /// Servidor com o par à direita, cliente com o servidor à esquerda.
     pub fn new(server_screens: ScreenLayout, client_screens: ScreenLayout) -> Self {
-        Self::build(Edge::Right, Edge::Left, server_screens, client_screens)
+        Self::with_configs(
+            SessionConfig::server(Edge::Right),
+            SessionConfig::client(Edge::Left),
+            server_screens,
+            client_screens,
+        )
     }
 
     /// Duas telas 1920×1080, com a borda que cada lado tem gravada.
     ///
     /// Para os cenários em que as duas máquinas discordam de onde fica a outra.
     pub fn with_edges(server_edge: Edge, client_edge: Edge) -> Self {
-        Self::build(
-            server_edge,
-            client_edge,
+        Self::with_configs(
+            SessionConfig::server(server_edge),
+            SessionConfig::client(client_edge),
             layout(1920, 1080),
             layout(1920, 1080),
         )
     }
 
-    fn build(
-        server_edge: Edge,
-        client_edge: Edge,
+    /// Duas sessões com a configuração dada a cada uma — inclusive papéis que não combinam.
+    ///
+    /// Os nomes `server` e `client` são das posições na bancada, não do papel que cada uma tem.
+    pub fn with_configs(
+        server: SessionConfig,
+        client: SessionConfig,
         server_screens: ScreenLayout,
         client_screens: ScreenLayout,
     ) -> Self {
         let mut pair = Self {
-            server: Session::new(SessionConfig::server(server_edge), identity("servidor", 1)),
-            client: Session::new(SessionConfig::client(client_edge), identity("cliente", 2)),
+            server: Session::new(server, identity("servidor", 1)),
+            client: Session::new(client, identity("cliente", 2)),
             now: Timestamp::from_millis(10_000),
             log: Vec::new(),
             delivering: true,

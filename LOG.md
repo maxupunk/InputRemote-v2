@@ -70,3 +70,4 @@ quê. Um registro que se reescreve não é registro.
 | 43 | 2026-09-22 | [A rota dupla: Bluetooth e rede ao mesmo tempo, e o ponteiro que andava o dobro](docs/logs/43-a-rota-dupla.md) |
 | 44 | 2026-09-22 | [O Wi-Fi que cochilava, o botão que o acorda, e o rádio que não reabria depois de atualizar](docs/logs/44-o-wifi-que-cochilava.md) |
 | 45 | 2026-09-23 | [A varredura implementada: o caminho de arquivo que saía da pasta, a chave que todos liam, e a tela de bloqueio que faltava](docs/logs/45-a-varredura-implementada.md) |
+| 46 | 2026-09-23 | [Os papéis que combinam sozinhos, a pausa que não era pausa, e a pasta de rede que não atravessava](docs/logs/46-os-papeis-que-combinam-sozinhos.md) |

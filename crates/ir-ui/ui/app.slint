@@ -142,9 +142,10 @@ export component Janela inherits Window {
                 spacing: Tema.e2;
 
                 Faixa {
-                    texto: Dados.recado + " " + Dados.recado-o-que-fazer;
-                    cor: Tema.ruim;
-                    cor-de-fundo: Tema.ruim-suave;
+                    texto: Dados.recado-o-que-fazer == "" ? Dados.recado
+                        : Dados.recado + " " + Dados.recado-o-que-fazer;
+                    cor: Dados.recado-informativo ? Tema.acao : Tema.ruim;
+                    cor-de-fundo: Dados.recado-informativo ? Tema.superficie-suave : Tema.ruim-suave;
                 }
 
                 HorizontalLayout {

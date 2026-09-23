@@ -101,7 +101,7 @@ async fn subir_e_rodar(
     let arquivos = arquivos::abrir(&cfg, &dir, &identity, &canais.avisos, &abertos.descoberta);
 
     let mut daemon = Daemon::new(Parts {
-        session: actor::nova_sessao(role, edge, identidade.clone()),
+        session: actor::nova_sessao(role, edge, identidade.clone(), cfg.papel_escolhido_em),
         rede: abertos.rede,
         radio: abertos.radio,
         reabridor: Some(abertos.reabridor),

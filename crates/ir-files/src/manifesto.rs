@@ -94,7 +94,11 @@ pub async fn montar(id: TransferId, raizes: &[PathBuf], leitor: Leitor) -> Resul
 async fn acrescentar_raiz(plano: &mut Plano, raiz: &Path) -> Result<()> {
     // Antes de qualquer acesso ao disco: perguntar por um caminho de rede já é o ataque.
     if !caminho_local(raiz) {
-        return Err(FileError::NaoEnviavel(raiz.to_path_buf()));
+        return Err(if raiz.is_absolute() {
+            FileError::PastaDeRede(raiz.to_path_buf())
+        } else {
+            FileError::NaoEnviavel(raiz.to_path_buf())
+        });
     }
     // `symlink_metadata` e não `metadata`: aqui a pergunta é "o que é esta entrada", e não "o que
     // há no fim do vínculo".

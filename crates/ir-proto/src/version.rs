@@ -26,7 +26,13 @@ use crate::error::{ProtoError, Result};
 /// Versão 4: `Control::SecureAttention`, o Ctrl+Alt+Del pedido pelo lado que controla, e
 /// `Control::ProtectedDesktop`, o controlado dizendo que recusa digitação na tela de bloqueio. Só
 /// vão para um par da versão 4 ([`PROTECTED_DESKTOP`]).
-pub const CURRENT: ProtocolVersion = ProtocolVersion(4);
+///
+/// Versão 5: `Control::Role`, cada ponta anunciando o próprio papel para os dois combinarem
+/// sozinhos. Só vai para um par da versão 5 ([`ROLE_CLAIM`]).
+pub const CURRENT: ProtocolVersion = ProtocolVersion(5);
+
+/// A primeira versão que anuncia o papel ao par.
+pub const ROLE_CLAIM: ProtocolVersion = ProtocolVersion(5);
 
 /// A primeira versão que entende Ctrl+Alt+Del pedido e a recusa no desktop protegido.
 pub const PROTECTED_DESKTOP: ProtocolVersion = ProtocolVersion(4);

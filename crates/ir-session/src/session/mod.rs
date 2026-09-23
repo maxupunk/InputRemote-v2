@@ -13,6 +13,7 @@ mod incarnation;
 mod link;
 mod power;
 mod reach;
+mod role;
 mod route;
 mod secure;
 mod server;

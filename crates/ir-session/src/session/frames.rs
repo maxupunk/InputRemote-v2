@@ -169,6 +169,7 @@ impl Session {
             Control::Reach { radio } => Self::on_reach(radio, out),
             Control::NetworkPower(state) => Self::on_peer_network_power(state, out),
             Control::DisableNetworkPowerSaving => Self::on_network_power_fix_requested(out),
+            Control::Role { role, chosen_at } => self.on_peer_role(role, chosen_at, out),
             // Só o controlado gera Ctrl+Alt+Del; pedido ao contrário é engano do par, e ignorado.
             // Quem gera o Ctrl+Alt+Del, e decide se pode, é a periferia do controlado.
             Control::SecureAttention if self.config.role == crate::config::Role::Client => {

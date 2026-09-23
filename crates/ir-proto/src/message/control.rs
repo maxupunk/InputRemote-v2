@@ -134,6 +134,39 @@ pub enum Control {
     /// Quem tem o teclado bloqueou a própria tela: o outro computador, que ele controlava, não pode
     /// ficar aberto para quem passar por ele.
     LockScreen,
+    /// O papel de quem envia, e quando ele foi escolhido. Desde a versão 5.
+    ///
+    /// Os dois computadores escolhem o papel cada um na sua tela, e nada garantia que combinassem:
+    /// dois com o teclado brigavam pela borda, dois controlados ficavam parados. Cada ponta anuncia
+    /// o seu ao estabelecer; se colidirem, vale a escolha mais recente, e a outra ponta passa ao
+    /// papel complementar sozinha.
+    Role {
+        /// O papel de quem envia.
+        role: PeerRole,
+        /// Quando ele foi escolhido, em milissegundos desde 1970 no relógio de quem envia; `0`
+        /// quando nunca foi escolhido pela tela.
+        chosen_at: u64,
+    },
+}
+
+/// O papel de uma máquina na sessão.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PeerRole {
+    /// Tem o teclado e o mouse, e controla o par.
+    Server,
+    /// É controlada pelo par.
+    Client,
+}
+
+impl PeerRole {
+    /// O papel que combina com este.
+    #[must_use]
+    pub const fn complement(self) -> Self {
+        match self {
+            Self::Server => Self::Client,
+            Self::Client => Self::Server,
+        }
+    }
 }
 
 /// A economia de energia do Wi-Fi de uma máquina.

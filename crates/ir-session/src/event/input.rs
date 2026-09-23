@@ -139,6 +139,11 @@ pub enum LinkDown {
     /// Distinto de [`Self::UserStopped`]: o par entende "pedido pelo usuário" como pausa e para
     /// de discar; um serviço que para para atualizar volta em segundos, e o par deve esperá-lo.
     ServiceStopping,
+    /// Esta máquina trocou de papel e recomeça a sessão sobre o mesmo enlace.
+    ///
+    /// Distinto de [`Self::UserStopped`] pelo mesmo motivo de [`Self::ServiceStopping`]: o par que
+    /// ouvisse "pedido pelo usuário" mostraria que foi pausado, e a sessão nova chega em seguida.
+    Reconfiguring,
 }
 
 impl LinkDown {
@@ -151,7 +156,8 @@ impl LinkDown {
             | Self::TransportFailed
             | Self::Suspending
             | Self::PeerRestarted
-            | Self::ServiceStopping => true,
+            | Self::ServiceStopping
+            | Self::Reconfiguring => true,
             Self::UserStopped => false,
         }
     }
@@ -166,8 +172,8 @@ impl LinkDown {
             Self::Suspending => DisconnectReason::Suspending,
             Self::UserStopped => DisconnectReason::UserRequested,
             Self::ServiceStopping => DisconnectReason::ServiceStopping,
-            // Nunca vai ao par; o mais próximo do que aconteceu é uma reconfiguração.
-            Self::PeerRestarted => DisconnectReason::Reconfiguring,
+            // `PeerRestarted` nunca vai ao par; o mais próximo do que aconteceu é uma reconfiguração.
+            Self::Reconfiguring | Self::PeerRestarted => DisconnectReason::Reconfiguring,
         }
     }
 }

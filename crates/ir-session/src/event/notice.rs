@@ -102,6 +102,16 @@ pub enum Notice {
     },
     /// O pedido de desligar a economia no par não pôde sair: sem sessão, ou o par não entende.
     PeerCannotFixNetworkPower,
+    /// O par tem o mesmo papel, escolhido depois: esta ponta passa ao papel complementar.
+    ///
+    /// Quem troca é a periferia — grava, recria a sessão com o papel novo e conta à tela. A sessão
+    /// só decide quem cede (`session/role.rs`).
+    AdoptRole {
+        /// O papel a adotar aqui.
+        role: crate::config::Role,
+        /// Quando o par escolheu o dele, para esta ponta gravar o mesmo e não ceder de volta.
+        chosen_at: u64,
+    },
 }
 
 /// Por que um portador foi escolhido.
