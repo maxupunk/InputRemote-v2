@@ -46,6 +46,16 @@ impl Daemon {
                     self.on_radio_do_par(radio);
                 }
                 // A rota mudou sem a fase mudar, e o aviso de fase não acordaria a janela.
+                match notice {
+                    Notice::PeerNetworkPower(estado) => self.on_economia_do_par(Some(estado)),
+                    Notice::NetworkPowerFixRequested => {
+                        info!("o par pediu para desligar a economia de energia do Wi-Fi daqui");
+                        self.desligar_economia_aqui();
+                    }
+                    // O que o par contou vale para a sessão dele; na próxima, ele conta de novo.
+                    Notice::Disconnected { .. } => self.on_economia_do_par(None),
+                    _ => {}
+                }
                 if let Notice::RouteChanged { .. } = notice {
                     let _ = self.avisos.send(ir_ipc::Aviso::EstadoMudou(self.estado()));
                 }

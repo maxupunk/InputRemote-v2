@@ -1,0 +1,14 @@
+[package]
+name = "ir-energia"
+description = "A economia de energia do Wi-Fi desta máquina: ver se a placa cochila entre pacotes, e desligar."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

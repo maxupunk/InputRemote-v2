@@ -66,7 +66,8 @@ pub use agent::{ComandoDoAgente, FatoDoAgente};
 pub use codec::{ErroDeCodec, MAX_MENSAGEM, PREFIXO};
 pub use falha::Falha;
 pub use status::{
-    Estado, Latencia, LinkState, MotivoDaQueda, MotivoDoPortador, Papel, ParConhecido,
+    AvisoDeRede, EconomiaDoWifi, Estado, Latencia, LinkState, MotivoDaQueda, MotivoDoPortador,
+    Papel, ParConhecido,
 };
 pub use texto::TextoDoClipboard;
 pub use transferencia::{Fase, Motivo, Sentido, Transferencia};

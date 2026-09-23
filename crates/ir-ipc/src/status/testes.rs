@@ -95,3 +95,40 @@ fn a_meta_de_latencia_e_mais_folgada_no_bluetooth() {
         "na rede 15 ms de mediana já é ruim"
     );
 }
+
+#[test]
+fn o_aviso_de_rede_prefere_o_par_e_some_sem_economia() {
+    let mut estado = cliente_pronto();
+    assert_eq!(estado.aviso_de_rede(), None);
+
+    estado.economia_aqui = Some(EconomiaDoWifi::SoNaBateria);
+    let aqui = estado.aviso_de_rede().expect("há aviso");
+    assert!(!aqui.no_par);
+    assert!(aqui.frase.contains("na bateria"), "{}", aqui.frase);
+
+    estado.economia_no_par = Some(EconomiaDoWifi::Ligada);
+    let par = estado.aviso_de_rede().expect("há aviso");
+    assert!(
+        par.no_par,
+        "quem trava o mouse de quem olha esta tela é a placa do outro"
+    );
+    assert!(par.frase.contains("outro computador"), "{}", par.frase);
+}
+
+#[test]
+fn nenhuma_frase_do_aviso_de_rede_tem_espaco_sobrando() {
+    // A continuação de linha das frases (`\` no fim) já se perdeu uma vez numa edição, e a janela
+    // mostrou "cochila                entre pacotes".
+    let mut estado = cliente_pronto();
+    for (par, aqui) in [
+        (Some(EconomiaDoWifi::Ligada), None),
+        (None, Some(EconomiaDoWifi::Ligada)),
+        (Some(EconomiaDoWifi::SoNaBateria), None),
+        (None, Some(EconomiaDoWifi::SoNaBateria)),
+    ] {
+        estado.economia_no_par = par;
+        estado.economia_aqui = aqui;
+        let frase = estado.aviso_de_rede().expect("há aviso").frase;
+        assert!(!frase.contains("  "), "{frase}");
+    }
+}

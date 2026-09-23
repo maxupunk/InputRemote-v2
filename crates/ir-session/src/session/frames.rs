@@ -168,6 +168,8 @@ impl Session {
             Control::Pong { stamp_micros } => self.on_pong(now, stamp_micros, out),
             Control::Bye { reason } => self.on_bye(now, reason, out),
             Control::Reach { radio } => Self::on_reach(radio, out),
+            Control::NetworkPower(state) => Self::on_peer_network_power(state, out),
+            Control::DisableNetworkPowerSaving => Self::on_network_power_fix_requested(out),
             Control::Error { code, fatal } => {
                 out.push(Command::Notify(Notice::ProtocolError { code, fatal }));
                 if fatal || code.is_always_fatal() {

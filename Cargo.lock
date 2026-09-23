@@ -2677,6 +2677,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ir-canais"
+version = "0.1.0-dev"
+dependencies = [
+ "anyhow",
+ "ir-acesso",
+ "ir-ipc",
+ "ir-sessao",
+ "ir-transferencia",
+ "serde",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "ir-clip"
 version = "0.1.0-dev"
 dependencies = [
@@ -2726,8 +2740,10 @@ version = "0.1.0-dev"
 dependencies = [
  "anyhow",
  "ir-acesso",
+ "ir-canais",
  "ir-configuracao",
  "ir-crypto",
+ "ir-energia",
  "ir-input",
  "ir-ipc",
  "ir-proto",
@@ -2746,6 +2762,10 @@ dependencies = [
  "windows 0.62.2",
  "windows-service",
 ]
+
+[[package]]
+name = "ir-energia"
+version = "0.1.0-dev"
 
 [[package]]
 name = "ir-files"

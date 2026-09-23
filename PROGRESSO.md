@@ -447,6 +447,11 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       cobertos pelo Bluetooth, placar ~50/50 ([log 43](docs/logs/43-a-rota-dupla.md))
 - [x] `[H]` Tecla segura à mão enquanto o rádio cai: a repetição no editor do Fedora não parou
       durante 20 s de rádio desligado ([log 43](docs/logs/43-a-rota-dupla.md))
+- [x] `[H]` Economia de energia do Wi-Fi: aviso na janela, com botão que desliga aqui ou no par;
+      o pior ping para o Fedora foi de 176 ms para 6 ms
+      ([ADR-0013](docs/adr/0013-economia-de-energia-do-wifi.md), [log 44](docs/logs/44-o-wifi-que-cochilava.md))
+- [x] O rádio que não abre na subida por canal ocupado (atualização) é tentado de novo em segundo
+      plano ([log 44](docs/logs/44-o-wifi-que-cochilava.md))
 
 ## Etapa 8 — Clipboard e arquivos
 - [x] Transporte do canal 5: `ir-net::bulk` — `u32` + corpo, `IK` sem pareamento, contador

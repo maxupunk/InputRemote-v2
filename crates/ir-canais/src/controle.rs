@@ -82,7 +82,7 @@ async fn atender(
     let mut proximo = Some(primeiro);
     // Por que esta conexão terminou. Sem isto, "ajudante de clipboard desligado" não distinguia o
     // cliente que fecha do aviso que não pôde ser escrito — e são defeitos diferentes.
-    let mut motivo = "o laço terminou";
+    let motivo;
     loop {
         if let Some(pedido) = proximo.take() {
             acompanhando |= matches!(pedido, Pedido::Acompanhar | Pedido::AcompanharClipboard);
@@ -184,8 +184,8 @@ async fn responder(
 mod tests {
     use tokio::sync::mpsc;
 
-    use super::super::escuta::{Acesso, Escuta};
     use super::*;
+    use crate::escuta::{Acesso, Escuta};
 
     /// Um endereço de teste único para esta execução, para dois testes não colidirem.
     fn endereco_de_teste(rotulo: &str) -> String {

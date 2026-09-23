@@ -143,6 +143,14 @@ pub enum Pedido {
     /// Sem o ajudante a cópia não atravessa, e nada na tela diria por quê. É por este pedido que o
     /// serviço sabe que há um — para relançá-lo quando não há, e para dizer no diagnóstico.
     AcompanharClipboard,
+    /// Desligue a economia de energia do Wi-Fi — desta máquina, ou do par.
+    ///
+    /// É o botão do aviso de rede: com a economia ligada a placa cochila entre pacotes, e o mouse
+    /// pela rede trava em rajadas. No fim do enum, porque o `postcard` grava a variante pelo índice.
+    DesligarEconomiaDeEnergia {
+        /// `true` para pedir ao outro computador, pela sessão; `false` para esta máquina.
+        no_par: bool,
+    },
 }
 
 impl Pedido {
@@ -169,7 +177,10 @@ impl Pedido {
             | Self::EnviarArquivos { .. }
             | Self::SincronizarClipboard
             | Self::LimparRecebidos
-            | Self::OferecerTexto(_) => Autoridade::Configurar,
+            | Self::OferecerTexto(_)
+            // Muda a configuração de energia da máquina, e mais nada: o mesmo nível de esvaziar
+            // os recebidos, e não o de decidir quem digita.
+            | Self::DesligarEconomiaDeEnergia { .. } => Autoridade::Configurar,
             // Tudo que decide **quem pode digitar** nesta máquina exige elevação.
             Self::IniciarPareamento { .. }
             | Self::ConfirmarPareamento { .. }
@@ -306,6 +317,7 @@ mod tests {
             Pedido::Diagnostico,
             Pedido::AcompanharClipboard,
             Pedido::LimparRecebidos,
+            Pedido::DesligarEconomiaDeEnergia { no_par: true },
         ]
     }
 

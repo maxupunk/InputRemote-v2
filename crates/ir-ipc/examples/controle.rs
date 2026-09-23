@@ -46,7 +46,7 @@ fn main() {
     let mut args = std::env::args().skip(1);
     let (Some(endereco), Some(acao)) = (args.next(), args.next()) else {
         return println!(
-            "uso: controle <endereco> estado|diagnostico|aguardar|confirmar|sincronizar|limpar|parear <par>|enviar <caminho>"
+            "uso: controle <endereco> estado|diagnostico|aguardar|confirmar|sincronizar|limpar|economia|economia-par|parear <par>|enviar <caminho>"
         );
     };
 
@@ -74,6 +74,24 @@ fn main() {
     escutar(&mut leitor, &mut escritor, roteiro.confirmar_sozinho);
 }
 
+/// As ações que são um pedido só, sem argumento.
+fn pedido_simples(acao: &str) -> Option<Pedido> {
+    Some(match acao {
+        "estado" => Pedido::Estado,
+        // O gatilho da travessia, à mão: o ajudante da sessão lê o clipboard e oferece ao par.
+        "sincronizar" => Pedido::SincronizarClipboard,
+        "diagnostico" => Pedido::Diagnostico,
+        "limpar" => Pedido::LimparRecebidos,
+        // O botão "Resolver" do aviso de rede: a economia do Wi-Fi daqui, ou a do outro computador.
+        "economia" => Pedido::DesligarEconomiaDeEnergia { no_par: false },
+        "economia-par" => Pedido::DesligarEconomiaDeEnergia { no_par: true },
+        // A mesma busca do botão "Procurar": rede (mDNS) e Bluetooth pareado. A lista chega por aviso.
+        "procurar" => Pedido::Procurar,
+        "confirmar" => Pedido::ConfirmarPareamento { conferiu: true },
+        _ => return None,
+    })
+}
+
 /// Traduz a ação da linha de comando no roteiro correspondente.
 fn montar(acao: &str, argumento: Option<String>) -> Result<Roteiro, String> {
     let simples = |pedido| {
@@ -82,14 +100,10 @@ fn montar(acao: &str, argumento: Option<String>) -> Result<Roteiro, String> {
             confirmar_sozinho: false,
         })
     };
+    if let Some(pedido) = pedido_simples(acao) {
+        return simples(pedido);
+    }
     match acao {
-        "estado" => simples(Pedido::Estado),
-        // O gatilho da travessia, à mão: o ajudante da sessão lê o clipboard e oferece ao par.
-        "sincronizar" => simples(Pedido::SincronizarClipboard),
-        "diagnostico" => simples(Pedido::Diagnostico),
-        "limpar" => simples(Pedido::LimparRecebidos),
-        // A mesma busca do botão "Procurar": rede (mDNS) e Bluetooth pareado. A lista chega por aviso.
-        "procurar" => simples(Pedido::Procurar),
         // O que o ajudante faz quando há texto no clipboard, sem precisar de clipboard.
         "texto" => argumento
             .and_then(ir_ipc::TextoDoClipboard::novo)
@@ -97,7 +111,6 @@ fn montar(acao: &str, argumento: Option<String>) -> Result<Roteiro, String> {
                 || Err("texto: diga o texto, até 256 KiB".to_owned()),
                 |texto| simples(Pedido::OferecerTexto(texto)),
             ),
-        "confirmar" => simples(Pedido::ConfirmarPareamento { conferiu: true }),
         "aguardar" => Ok(Roteiro {
             pedido: None,
             confirmar_sozinho: true,
@@ -205,6 +218,18 @@ fn mostrar_resposta(resposta: &Resposta) -> bool {
             println!("  agente:   pronto={}", estado.agente_pronto);
             println!("  nivel:    {:?}", estado.nivel_privilegiado);
             println!("  recebidos: {} B", estado.recebidos_bytes);
+            println!("  rota:     {}", estado.nome_da_rota());
+            println!(
+                "  economia do Wi-Fi: aqui {:?}, no par {:?}",
+                estado.economia_aqui, estado.economia_no_par
+            );
+            if let Some(aviso) = estado.aviso_de_rede() {
+                println!(
+                    "  AVISO ({}): {}",
+                    if aviso.no_par { "no par" } else { "aqui" },
+                    aviso.frase
+                );
+            }
             // Consultar o estado é pergunta, não assinatura: quem quer acompanhar usa
             // `aguardar`. Continuar escutando aqui prendia a bancada num `read_exact` à espera
             // de mensagens que só chegam quando algo muda.
@@ -284,8 +309,11 @@ fn mostrar_aviso(
         }
         ir_ipc::Aviso::EstadoMudou(estado) => {
             println!(
-                "estado mudou: enlace={:?} portador={:?} motivo={:?}",
-                estado.enlace, estado.portador, estado.motivo_do_portador
+                "estado mudou: enlace={:?} rota={} economia aqui={:?} no par={:?}",
+                estado.enlace,
+                estado.nome_da_rota(),
+                estado.economia_aqui,
+                estado.economia_no_par
             );
             false
         }

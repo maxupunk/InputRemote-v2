@@ -68,3 +68,4 @@ quê. Um registro que se reescreve não é registro.
 | 41 | 2026-09-20 | [A cópia que se repetia, o 0% que não andava, e a janela que não contava nada](docs/logs/41-a-copia-que-se-repetia.md) |
 | 42 | 2026-09-21 | [Recebidos que não enchem o disco, e o arquivo que chega com o nome que saiu](docs/logs/42-recebidos-que-nao-enchem-o-disco.md) |
 | 43 | 2026-09-22 | [A rota dupla: Bluetooth e rede ao mesmo tempo, e o ponteiro que andava o dobro](docs/logs/43-a-rota-dupla.md) |
+| 44 | 2026-09-22 | [O Wi-Fi que cochilava, o botão que o acorda, e o rádio que não reabria depois de atualizar](docs/logs/44-o-wifi-que-cochilava.md) |

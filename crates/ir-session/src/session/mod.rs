@@ -10,6 +10,7 @@ mod edge;
 mod frames;
 mod incarnation;
 mod link;
+mod power;
 mod reach;
 mod route;
 mod server;
@@ -112,6 +113,9 @@ pub struct Session {
 
     /// Por qual portador cada quadro novo chegou primeiro — o placar da rota dupla.
     pub(super) wins: CarrierWins,
+
+    /// A economia de energia do Wi-Fi daqui, para contar ao par ([`power`]).
+    pub(super) local_power: Option<ir_proto::message::NetworkPowerSaving>,
 }
 
 impl Session {
@@ -141,6 +145,7 @@ impl Session {
             local_radio: None,
             last_pointer_rx: None,
             wins: CarrierWins::default(),
+            local_power: None,
         }
     }
 
@@ -196,6 +201,12 @@ impl Session {
             Input::AgentLost => self.on_agent_lost(now, out),
             Input::ClipboardText(texto) => self.on_clipboard_text(now, texto, out),
             Input::LocalRadio(radio) => self.on_local_radio(now, radio, out),
+            Input::LocalNetworkPower(state) => self.on_local_network_power(now, state, out),
+            Input::DisablePeerNetworkPowerSaving => {
+                if !self.on_disable_peer_network_power(now, out) {
+                    out.push(Command::Notify(Notice::PeerCannotFixNetworkPower));
+                }
+            }
         }
     }
 

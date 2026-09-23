@@ -22,6 +22,8 @@ pub struct Abertos {
     pub radio: Option<Arc<dyn Transporte>>,
     /// O endereço do rádio desta máquina, quando há rádio e ele diz.
     pub radio_proprio: Option<ir_proto::ids::RadioAddress>,
+    /// O rádio que abrir depois, se o canal estava ocupado na subida ([`abrir_radio`]).
+    pub radio_tardio: UnboundedReceiver<RadioAberto>,
     /// Os fatos dos dois transportes, num canal só.
     pub fatos: UnboundedReceiver<Fato>,
     /// A descoberta, já anunciando esta máquina na rede.
@@ -55,8 +57,9 @@ pub async fn abrir(
     let (emissor, fatos) = mpsc::unbounded_channel();
     let rede: Arc<dyn Transporte> =
         Arc::new(Rede::abrir(porta, Arc::clone(identidade), emissor.clone()).await?);
-    let (radio, pareados, radio_proprio) = abrir_radio(Arc::clone(identidade), emissor);
-    let descoberta = Descoberta::nova(maquina, pareados);
+    let (tardio, radio_tardio) = mpsc::unbounded_channel();
+    let aberto = abrir_radio(Arc::clone(identidade), emissor, tardio);
+    let descoberta = Descoberta::nova(maquina, aberto.as_ref().map(|a| a.pareados.clone()));
     match descoberta.anunciar(&nome_da_maquina(), porta).await {
         Ok(()) => info!(
             porta,
@@ -68,52 +71,95 @@ pub async fn abrir(
     }
     Ok(Abertos {
         rede,
-        radio,
-        radio_proprio,
+        radio_proprio: aberto.as_ref().and_then(|a| a.proprio),
+        radio: aberto.map(|a| a.transporte),
+        radio_tardio,
         fatos,
         descoberta,
     })
 }
 
-/// Abre o rádio Bluetooth, se houver um, e a alça para listar os pareados do sistema.
+/// Um rádio aberto: o transporte, a alça dos pareados do sistema e o endereço dele.
+pub struct RadioAberto {
+    /// O transporte de rádio.
+    pub transporte: Arc<dyn Transporte>,
+    /// Para a busca listar os pareados do sistema.
+    pub pareados: Pareados,
+    /// O endereço deste rádio, quando ele diz.
+    pub proprio: Option<ir_proto::ids::RadioAddress>,
+}
+
+impl core::fmt::Debug for RadioAberto {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("RadioAberto")
+            .field("proprio", &self.proprio)
+            .finish_non_exhaustive()
+    }
+}
+
+/// De quanto em quanto tempo se tenta de novo um rádio cujo canal estava ocupado.
+const REABRIR_A_CADA: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// Quantas vezes se tenta, antes de desistir: 40 × 3 s = 2 min.
+const TENTATIVAS: u32 = 40;
+
+/// Abre o rádio Bluetooth, se houver um — agora, ou em segundo plano.
 ///
-/// **Não abrir não é falha do serviço.** Sem adaptador, com ele desligado, ou com o canal do
-/// produto ocupado, o que resta é a rede — e é exatamente essa ausência que a política única do
-/// `ir-session` transforma em "Bluetooth indisponível; usando a rede local", com o motivo
-/// aparecendo na tela em vez de ficar escondido.
+/// **Não abrir não é falha do serviço.** Sem adaptador ou com ele desligado, o que resta é a rede,
+/// e a política única do `ir-session` diz isso na tela. Mas **canal ocupado não é falta de rádio**:
+/// numa atualização o serviço novo sobe segundos depois de o antigo parar, e o Windows ainda não
+/// liberou o canal 23 (`os error 10048`, na bancada — log 44). Antes o serviço desistia do rádio até
+/// a próxima reinicialização; agora tenta de novo em segundo plano, e o rádio que abrir chega ao ator
+/// por `tardio`.
 fn abrir_radio(
     identidade: Arc<ir_crypto::Identity>,
     fatos: UnboundedSender<Fato>,
-) -> (
-    Option<Arc<dyn Transporte>>,
-    Option<Pareados>,
-    Option<ir_proto::ids::RadioAddress>,
-) {
-    match Radio::abrir(identidade, fatos) {
-        Ok(radio) => {
-            let proprio = radio.endereco_proprio();
-            if let Some(endereco) = proprio {
-                info!(%endereco, "rádio Bluetooth aberto; junto com a rede, forma a rota dupla");
-            } else {
-                info!(
-                    "rádio Bluetooth aberto, sem endereço conhecido; o par só o alcança se já                      souber para onde discar"
-                );
-            }
-            let pareados = radio.pareados();
-            (
-                Some(Arc::new(radio) as Arc<dyn Transporte>),
-                Some(pareados),
-                proprio,
-            )
+    tardio: UnboundedSender<RadioAberto>,
+) -> Option<RadioAberto> {
+    match tentar_radio(&identidade, &fatos) {
+        Ok(aberto) => Some(aberto),
+        Err(ir_bt::BtError::SemRadio(motivo)) => {
+            info!(%motivo, "Bluetooth indisponível; a sessão vai usar a rede local");
+            None
         }
         Err(erro) => {
-            info!(%erro, "Bluetooth indisponível; a sessão vai usar a rede local");
-            if let Some(o_que_fazer) = erro.o_que_fazer() {
-                info!("{o_que_fazer}");
-            }
-            (None, None, None)
+            info!(%erro, "o canal do Bluetooth ainda não abriu; tentando de novo em segundo plano");
+            tokio::spawn(async move {
+                for _ in 0..TENTATIVAS {
+                    tokio::time::sleep(REABRIR_A_CADA).await;
+                    if let Ok(aberto) = tentar_radio(&identidade, &fatos) {
+                        let _ = tardio.send(aberto);
+                        return;
+                    }
+                }
+                warn!("o canal do Bluetooth não abriu; a sessão segue pela rede local");
+            });
+            None
         }
     }
+}
+
+/// Uma tentativa de abrir o rádio.
+fn tentar_radio(
+    identidade: &Arc<ir_crypto::Identity>,
+    fatos: &UnboundedSender<Fato>,
+) -> ir_bt::Result<RadioAberto> {
+    let radio = Radio::abrir(Arc::clone(identidade), fatos.clone())?;
+    let proprio = radio.endereco_proprio();
+    if let Some(endereco) = proprio {
+        info!(%endereco, "rádio Bluetooth aberto; junto com a rede, forma a rota dupla");
+    } else {
+        info!(
+            "rádio Bluetooth aberto, sem endereço conhecido; o par só o alcança se já souber \
+             para onde discar"
+        );
+    }
+    let pareados = radio.pareados();
+    Ok(RadioAberto {
+        transporte: Arc::new(radio),
+        pareados,
+        proprio,
+    })
 }
 
 /// O nome desta máquina, como o sistema a chama.

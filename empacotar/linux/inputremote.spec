@@ -54,6 +54,10 @@ Requires:       coreutils
 # comeco, o fim, e o motivo quando ela nao atravessa. Sem isso copiar e colar era mudo, e colar do
 # outro lado trazia a copia anterior sem nenhum sinal de que aquilo era um resto.
 Requires:       libnotify
+# A economia de energia do Wi-Fi: `iw` le se a placa cochila entre pacotes e a desliga quando o
+# usuario clica em Resolver. Sem ele o aviso nao aparece, e o mouse pela rede trava sem motivo
+# visivel (docs/logs/44).
+Requires:       iw
 
 # O grupo `inputremote` e criado na instalacao: e ele que alcanca o canal de controle do servico,
 # e sem ele a janela do usuario nao conversa com o servico (docs/02-arquitetura.md, secao 7).

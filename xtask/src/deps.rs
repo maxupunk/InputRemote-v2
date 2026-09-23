@@ -52,6 +52,13 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ("ir-clip", &["ir-proto"]),
     // Lançar e zelar por processo na sessão do usuário: não conhece protocolo nem estado.
     ("ir-sessao", &[]),
+    // Os canais locais do serviço: controle (interface) e agente.
+    (
+        "ir-canais",
+        &["ir-ipc", "ir-acesso", "ir-sessao", "ir-transferencia"],
+    ),
+    // A economia de energia do Wi-Fi: ler e desligar. Não conhece nada do produto.
+    ("ir-energia", &[]),
     // O que a máquina guarda em disco: configuração e identidade.
     ("ir-configuracao", &["ir-proto", "ir-crypto", "ir-session"]),
     (
@@ -69,6 +76,8 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "ir-acesso",
             "ir-sessao",
             "ir-configuracao",
+            "ir-canais",
+            "ir-energia",
         ],
     ),
     ("ir-agent", &["ir-proto", "ir-ipc", "ir-input", "ir-clip"]),

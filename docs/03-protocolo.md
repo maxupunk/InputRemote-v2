@@ -218,6 +218,8 @@ Nomes definitivos vivem em `ir-proto`. Este é o contrato.
 | `Bye` | motivo legível de encerramento |
 | `Error` | código, contexto, se é fatal |
 | `Reach` | o endereço do rádio Bluetooth de quem envia, para o par poder discar o outro portador da rota dupla (§2.1). Desde a versão 2 |
+| `NetworkPower` | como está a economia de energia do Wi-Fi de quem envia: desligada, ligada, ou só na bateria. Só vai para um par da versão 3 ([ADR-0013](adr/0013-economia-de-energia-do-wifi.md)) |
+| `DisableNetworkPowerSaving` | peça que o par desligue a economia de energia do Wi-Fi dele — e nada mais sobre a configuração da máquina. Só vai para um par da versão 3 |
 
 ### Canal 1 — Entrada confiável
 
@@ -261,7 +263,9 @@ Este é o mecanismo que garante a meta "zero teclas presas em 10.000 travessias"
 
 ## 8. Versionamento
 
-`Hello` carrega `protocol_version: u16`. Vale a menor versão entre as duas pontas. Se a
+`Hello` carrega `protocol_version: u16`. Vale a menor versão entre as duas pontas. A versão
+corrente é a 3 e a mínima aceita é a 2: o que a 3 acrescenta (`NetworkPower`,
+`DisableNetworkPowerSaving`) só é enviado a um par que a fale. Se a
 diferença for maior que uma versão maior, a sessão é recusada com mensagem explícita.
 
 Regra deliberadamente estrita: **mensagem desconhecida em canal confiável derruba o

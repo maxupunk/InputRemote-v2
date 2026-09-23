@@ -52,6 +52,10 @@ export struct EstadoUi {
     bloqueio-permitido: bool,
     /// O único impedimento que importa agora, ou vazio.
     impedimento: string,
+    /// O aviso de que um Wi-Fi está economizando energia e fazendo o mouse travar, ou vazio.
+    aviso-de-rede: string,
+    /// Se o botão do aviso pede ao outro computador (`true`) ou a este.
+    aviso-de-rede-no-par: bool,
 }
 
 /// Em que ponto o pareamento está.
@@ -194,6 +198,8 @@ export global Acoes {
 
     /// Esvaziar a pasta de recebidos, a pedido de quem está olhando o tamanho dela.
     callback limpar-recebidos();
+    /// Desligar a economia de energia do Wi-Fi — do outro computador (`true`) ou deste.
+    callback resolver-economia(bool);
     /// Descartar o recado.
     callback descartar-recado();
     /// Ligar o serviço e dar acesso a este usuário, com a senha de administrador.

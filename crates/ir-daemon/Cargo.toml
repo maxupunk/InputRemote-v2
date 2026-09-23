@@ -28,6 +28,10 @@ ir-input.workspace = true
 ir-sessao.workspace = true
 # O que a máquina guarda em disco: configuração e identidade.
 ir-configuracao.workspace = true
+# Os canais locais: o de controle, da interface, e o do agente.
+ir-canais.workspace = true
+# A economia de energia do Wi-Fi: o aviso e o botão que a desliga.
+ir-energia.workspace = true
 ir-ipc.workspace = true
 tokio.workspace = true
 tracing.workspace = true

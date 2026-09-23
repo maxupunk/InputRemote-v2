@@ -8,10 +8,24 @@
 //! O serviço é o dono do estado: nenhuma decisão acontece neste módulo. Ele move quadros entre
 //! o socket e o ator, que traduz do estado interno para o [`ir_ipc::Estado`] publicado.
 
-pub(crate) mod agente;
-pub(crate) mod controle;
+//! Saiu do `ir-daemon` quando o serviço chegou ao teto de tamanho de crate: a fronteira já estava
+//! provada — o módulo só conhecia o vocabulário do `ir-ipc`, o portão do `ir-acesso` e o `tokio`.
+
+#![forbid(unsafe_code)]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic
+    )
+)]
+
+mod agente;
+mod controle;
 mod escuta;
-pub(crate) mod quadros;
+mod quadros;
 
 use anyhow::Result;
 use ir_ipc::{Aviso, ComandoDoAgente, FatoDoAgente, Resposta};
@@ -19,16 +33,17 @@ use tokio::sync::broadcast;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 
-pub(crate) use ir_sessao::Ajudantes;
+pub use ir_sessao::Ajudantes;
 
 /// Um pedido da interface, com o caminho de volta para a resposta do ator.
-pub(crate) struct PedidoRecebido {
+#[derive(Debug)]
+pub struct PedidoRecebido {
     /// O que a interface pediu.
-    pub(crate) pedido: ir_ipc::Pedido,
+    pub pedido: ir_ipc::Pedido,
     /// Com a autoridade de quem pediu — o que o serviço pode ler **por** esta pessoa.
-    pub(crate) leitor: ir_transferencia::Leitor,
+    pub leitor: ir_transferencia::Leitor,
     /// Por onde o ator devolve a resposta.
-    pub(crate) responder: oneshot::Sender<Resposta>,
+    pub responder: oneshot::Sender<Resposta>,
 }
 
 /// Quantos avisos ficam em espera para uma interface antes de os mais velhos serem descartados.
@@ -44,7 +59,7 @@ const FILA_DE_AVISOS: usize = 256;
 /// `\\.\pipe\<nome>` no Windows e um socket em `TMP` no Linux. O nome curto existe porque a
 /// barra invertida do caminho de *pipe* não sobrevive a algumas camadas de shell.
 #[must_use]
-pub(crate) fn endereco_de_controle() -> String {
+pub fn endereco_de_controle() -> String {
     match std::env::var("IR_CONTROL_ENDPOINT") {
         Ok(valor) if !valor.is_empty() => expandir_override(&valor),
         _ => padrao(),
@@ -92,7 +107,7 @@ fn padrao() -> String {
 /// # Errors
 ///
 /// Erro do sistema ao abrir o ponto de escuta.
-pub(crate) fn iniciar_controle(
+pub fn iniciar_controle(
     pedidos: UnboundedSender<PedidoRecebido>,
     ajudantes: Ajudantes,
 ) -> Result<broadcast::Sender<Aviso>> {
@@ -114,7 +129,7 @@ const FILA_DE_COMANDOS: usize = 4096;
 
 /// O nome do canal do agente, sobrescrevível por `IR_AGENT_ENDPOINT` para o teste.
 #[must_use]
-pub(crate) fn endereco_do_agente() -> String {
+pub fn endereco_do_agente() -> String {
     match std::env::var("IR_AGENT_ENDPOINT") {
         Ok(valor) if !valor.is_empty() => expandir_override(&valor),
         _ => padrao_do_agente(),
@@ -138,7 +153,7 @@ fn padrao_do_agente() -> String {
 /// # Errors
 ///
 /// Erro do sistema ao abrir o ponto de escuta.
-pub(crate) fn iniciar_agente(
+pub fn iniciar_agente(
     fatos: UnboundedSender<FatoDoAgente>,
 ) -> Result<broadcast::Sender<ComandoDoAgente>> {
     let (comandos, _) = broadcast::channel(FILA_DE_COMANDOS);

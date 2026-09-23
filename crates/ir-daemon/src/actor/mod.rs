@@ -26,6 +26,7 @@ mod alcance;
 #[cfg(test)]
 mod bancada;
 mod discagem;
+mod energia;
 mod enlace;
 mod papel;
 mod parada;
@@ -35,7 +36,7 @@ mod pedidos;
 
 pub(crate) use papel::{nova_sessao, papel_na_subida};
 use pareamento::Pareamento;
-pub(crate) use partes::{Entradas, Parts};
+pub(crate) use partes::{DeFundo, Entradas, Parts};
 
 /// A entrada de captura, já convertida para o canal do ator.
 pub(crate) type CaptureRx = UnboundedReceiver<CaptureEvent>;
@@ -72,8 +73,12 @@ pub(crate) struct Daemon {
     pub(crate) alcance: ir_transporte::Alcance,
     /// O endereço do rádio desta máquina, para a sessão contar ao par.
     pub(crate) radio_proprio: Option<ir_proto::ids::RadioAddress>,
-    /// Por onde a busca do par na rede devolve o que achou.
-    pub(crate) achados: tokio::sync::mpsc::UnboundedSender<std::net::SocketAddr>,
+    /// A economia de energia do Wi-Fi desta máquina, pela última verificação ([`energia`]).
+    pub(crate) economia_aqui: ir_energia::Economia,
+    /// A do par, pelo que ele contou.
+    pub(crate) economia_no_par: Option<ir_proto::message::NetworkPowerSaving>,
+    /// Por onde as tarefas de fundo devolvem o resultado ([`DeFundo`]).
+    pub(crate) de_fundo: tokio::sync::mpsc::UnboundedSender<DeFundo>,
     /// Contador de batidas, para espaçar as tentativas de reconexão.
     ticks: u32,
     /// Por onde o serviço empurra avisos para as interfaces conectadas.
@@ -109,6 +114,9 @@ pub(crate) struct Daemon {
 
 /// A cada quantas batidas de 5 ms se tenta reconectar. 600 × 5 ms = 3 s.
 const RECONNECT_TICKS: u32 = 600;
+
+/// A cada quantas batidas se verifica a economia de energia do Wi-Fi. 6 000 × 5 ms = 30 s.
+const ENERGIA_TICKS: u32 = 6_000;
 
 /// A cada quantas batidas se registra o placar da rota dupla. 12 000 × 5 ms = 1 min.
 const PLACAR_TICKS: u32 = 12_000;
@@ -155,6 +163,19 @@ impl Daemon {
         if self.ticks.is_multiple_of(PLACAR_TICKS) {
             self.registrar_placar();
         }
+        // A economia volta a cada reconexão do Wi-Fi, se nada a fixar: verificar de vez em quando.
+        if self.ticks.is_multiple_of(ENERGIA_TICKS) {
+            self.verificar_economia();
+        }
+    }
+
+    /// O resultado de uma tarefa de fundo, na vez do ator.
+    fn on_de_fundo(&mut self, resultado: DeFundo) {
+        match resultado {
+            DeFundo::ParAchado(endereco) => self.on_par_achado(endereco),
+            DeFundo::Economia(economia) => self.on_economia(economia),
+            DeFundo::Radio(aberto) => self.on_radio_tardio(aberto),
+        }
     }
 
     /// Registra, enquanto a rota for dupla, qual portador chega primeiro — o dado que diz se ela
@@ -183,7 +204,7 @@ impl Daemon {
             mut pedidos,
             mut fatos,
             mut parada,
-            mut achados,
+            mut de_fundo,
         } = entradas;
         // Bate a sessão a cada 5 ms: é o que faz os prazos (heartbeat, snapshot, retransmissão,
         // queda por tempo) vencerem, sem gerenciar temporizadores um a um.
@@ -215,9 +236,9 @@ impl Daemon {
                         self.on_fato(fato);
                     }
                 }
-                achado = achados.recv() => {
-                    if let Some(endereco) = achado {
-                        self.on_par_achado(endereco);
+                resultado = de_fundo.recv() => {
+                    if let Some(resultado) = resultado {
+                        self.on_de_fundo(resultado);
                     }
                 }
                 // Parar, ou quem podia pedir parada foi embora: nos dois casos, sair limpo.

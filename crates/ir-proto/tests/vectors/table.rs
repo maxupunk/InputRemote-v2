@@ -13,7 +13,9 @@ use ir_proto::ids::{MachineId, MonitorId, RadioAddress};
 use ir_proto::input::{
     Button, HidUsage, InputState, Modifiers, PointerDelta, PointerPosition, WheelDelta,
 };
-use ir_proto::message::{Control, Feedback, Greeting, InputMessage, Message, PointerMessage};
+use ir_proto::message::{
+    Control, Feedback, Greeting, InputMessage, Message, NetworkPowerSaving, PointerMessage,
+};
 use ir_proto::peer::{Capabilities, ClipboardCapabilities, MachineName, PrivilegedInputLevel};
 use ir_proto::screens::{Edge, ScreenLayout};
 use ir_proto::version;
@@ -112,7 +114,7 @@ fn control_vectors() -> Vec<Vector> {
         v(
             "hello",
             control(Control::Hello(greeting()), 1),
-            "0000020102030405060708090a0b0c0d0e0f100762616e63616461010101010200010000",
+            "0000030102030405060708090a0b0c0d0e0f100762616e63616461010101010200010000",
         ),
         v(
             "screens",
@@ -142,6 +144,17 @@ fn control_vectors() -> Vec<Vector> {
                 18,
             ),
             "000cac50de47eb28120000",
+        ),
+        v(
+            "network_power",
+            // Versão 3: a economia de energia do Wi-Fi de quem envia.
+            control(Control::NetworkPower(NetworkPowerSaving::On), 19),
+            "000d01130000",
+        ),
+        v(
+            "disable_network_power_saving",
+            control(Control::DisableNetworkPowerSaving, 20),
+            "000e140000",
         ),
     ]
 }

@@ -65,6 +65,38 @@ export component Inicio inherits VerticalLayout {
             cor-de-fundo: Tema.atencao-suave;
         }
 
+        // O Wi-Fi que cochila faz o mouse pela rede travar em rajadas. O aviso vem com o botão que
+        // resolve: sem ele, a pessoa teria de achar sozinha a configuração de energia da placa — e,
+        // quando a placa é a do outro computador, ir até ele.
+        if Dados.estado.aviso-de-rede != "": Rectangle {
+            background: Tema.atencao-suave;
+            border-radius: Tema.raio-pequeno;
+
+            VerticalLayout {
+                padding: Tema.e3;
+                spacing: Tema.e2;
+
+                Text {
+                    text: Dados.estado.aviso-de-rede;
+                    color: Tema.texto;
+                    font-size: Tema.fonte-corpo;
+                    wrap: word-wrap;
+                }
+
+                HorizontalLayout {
+                    alignment: start;
+
+                    Botao {
+                        texto: "Resolver";
+                        primario: true;
+                        acionado => {
+                            Acoes.resolver-economia(Dados.estado.aviso-de-rede-no-par);
+                        }
+                    }
+                }
+            }
+        }
+
         if Dados.estado.conectado: VerticalLayout {
             spacing: Tema.e2;
 

@@ -18,17 +18,25 @@ use crate::error::{ProtoError, Result};
 /// retransmissão e descarte de repetição valem também sobre RFCOMM —, que é o que permite a rota
 /// dupla trocar de portador sem refazer a sessão ([ADR-0012](../../../docs/adr/0012-rota-dupla.md)).
 /// Ganhou também [`Control::Reach`](crate::message::Control::Reach).
-pub const CURRENT: ProtocolVersion = ProtocolVersion(2);
+///
+/// Versão 3: `Control::NetworkPower` e `Control::DisableNetworkPowerSaving`, para cada ponta contar
+/// ao par se o Wi-Fi dela está em economia de energia. As duas só vão para um par da versão 3 — um
+/// da versão 2 não as decodificaria —, e por isso a versão 2 continua aceita.
+pub const CURRENT: ProtocolVersion = ProtocolVersion(3);
+
+/// A primeira versão que entende as mensagens de economia de energia do Wi-Fi.
+pub const NETWORK_POWER: ProtocolVersion = ProtocolVersion(3);
 
 /// Versão mais antiga que esta build ainda aceita conversar.
 ///
 /// Elevar isto abandona pares antigos de propósito, e é uma decisão de lançamento.
 ///
-/// Subiu junto com [`CURRENT`], e não por descuido: uma ponta da versão 1 sobre RFCOMM não
+/// Subiu para 2 junto com a versão 2, e não por descuido: uma ponta da versão 1 sobre RFCOMM não
 /// confirma nada, e a janela de retransmissão desta encheria até derrubar a sessão a cada
 /// segundo — em silêncio, parecendo defeito de rádio. Recusar na negociação diz o motivo. Não há
 /// versão 1 lançada com quem manter compatibilidade (`tests/vectors/main.rs`, exceção de
-/// pré-lançamento).
+/// pré-lançamento). Ficou em 2 quando [`CURRENT`] foi a 3: o que a versão 3 acrescenta só vai
+/// para quem a fala ([`NETWORK_POWER`]).
 pub const MIN_SUPPORTED: ProtocolVersion = ProtocolVersion(2);
 
 /// Versão do protocolo, monotônica.

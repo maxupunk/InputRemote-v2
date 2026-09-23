@@ -88,6 +88,13 @@ pub enum Notice {
     /// É o que permite discar o Bluetooth para um par que só era conhecido pela rede. Quem disca é
     /// a periferia: a sessão só repassa o que ouviu.
     PeerRadio(RadioAddress),
+    /// O par contou como está a economia de energia do Wi-Fi dele.
+    PeerNetworkPower(ir_proto::message::NetworkPowerSaving),
+    /// O par pediu que a economia de energia do Wi-Fi daqui seja desligada. Quem aplica é a
+    /// periferia; a sessão só repassa.
+    NetworkPowerFixRequested,
+    /// O pedido de desligar a economia no par não pôde sair: sem sessão, ou o par não entende.
+    PeerCannotFixNetworkPower,
 }
 
 /// Por que um portador foi escolhido.

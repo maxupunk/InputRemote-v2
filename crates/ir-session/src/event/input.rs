@@ -94,6 +94,15 @@ pub enum Input {
     /// estabelecer e, se já estiver de pé, na hora. É o que deixa o par discar o Bluetooth quando
     /// os dois se conheceram pela rede, e a rota dupla nascer de qualquer pareamento.
     LocalRadio(ir_proto::ids::RadioAddress),
+
+    /// A periferia viu como está a economia de energia do Wi-Fi desta máquina.
+    ///
+    /// A sessão conta ao par, que é quem mostra o aviso — quem sente as travadas é quem olha a
+    /// tela do outro lado.
+    LocalNetworkPower(ir_proto::message::NetworkPowerSaving),
+
+    /// O usuário pediu, daqui, que o par desligue a economia de energia do Wi-Fi dele.
+    DisablePeerNetworkPowerSaving,
 }
 
 /// Por que um portador caiu, do ponto de vista local.

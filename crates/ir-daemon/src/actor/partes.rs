@@ -40,8 +40,22 @@ pub(crate) struct Entradas {
     pub(crate) fatos: UnboundedReceiver<FatoDoAgente>,
     /// O pedido de parada do serviço.
     pub(crate) parada: tokio::sync::watch::Receiver<bool>,
-    /// O par achado na rede pela descoberta, para a rota dupla ([`super::alcance`]).
-    pub(crate) achados: UnboundedReceiver<std::net::SocketAddr>,
+    /// O que as tarefas de fundo devolvem ([`DeFundo`]).
+    pub(crate) de_fundo: UnboundedReceiver<DeFundo>,
+}
+
+/// O que as tarefas de fundo do ator devolvem a ele.
+///
+/// Um canal só para todas: cada uma roda fora do ator porque bloqueia ou demora, e todas terminam
+/// num evento que o ator trata na vez dele. Um canal por tarefa faria o laço crescer a cada uma.
+#[derive(Debug)]
+pub(crate) enum DeFundo {
+    /// A descoberta achou o par na rede, para a rota dupla ([`super::alcance`]).
+    ParAchado(std::net::SocketAddr),
+    /// Uma verificação da economia de energia do Wi-Fi ([`super::energia`]).
+    Economia(ir_energia::Economia),
+    /// O rádio abriu depois da subida — o canal estava ocupado ([`ir_transporte::abrir`]).
+    Radio(ir_transporte::RadioAberto),
 }
 
 /// O que o ator precisa para nascer.
@@ -91,8 +105,8 @@ pub(crate) struct Parts {
     pub(crate) arquivos: ir_transferencia::Pedidos,
     /// O endereço do rádio desta máquina, quando há rádio e ele diz.
     pub(crate) radio_proprio: Option<ir_proto::ids::RadioAddress>,
-    /// Por onde a busca do par na rede devolve o que achou.
-    pub(crate) achados: tokio::sync::mpsc::UnboundedSender<std::net::SocketAddr>,
+    /// Por onde as tarefas de fundo devolvem o resultado ao ator.
+    pub(crate) de_fundo: tokio::sync::mpsc::UnboundedSender<DeFundo>,
 }
 
 impl Daemon {
@@ -120,7 +134,9 @@ impl Daemon {
             seed_pointer: true,
             alcance,
             radio_proprio: parts.radio_proprio,
-            achados: parts.achados,
+            economia_aqui: ir_energia::Economia::Desconhecida,
+            economia_no_par: None,
+            de_fundo: parts.de_fundo,
             ticks: 0,
             avisos: parts.avisos,
             machine: parts.machine,

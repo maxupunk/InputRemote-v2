@@ -8,18 +8,19 @@
 //! é sinal de que a regra foi duplicada — o serviço já decide, e uma segunda cópia da regra na
 //! interface é a cópia que vai ficar desatualizada.
 
+mod acoes;
 mod pareamento;
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
 
-use ir_ipc::status::{Estado, Papel};
+use ir_ipc::status::Estado;
 use ir_ipc::vocabulario::Maquina;
 use ir_ipc::{Autoridade, Aviso, Candidato, Falha, Pedido, Resposta};
 use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel, Weak};
 
-use crate::gerado::{Acoes, Dados, EtapaDoPareamento, Janela};
+use crate::gerado::{Dados, EtapaDoPareamento, Janela};
 use crate::servico::{Servico, Situacao};
 use crate::{ativacao, copia, ponte};
 
@@ -315,9 +316,9 @@ pub fn abrir(
         depois.servico.tentar_agora();
         depois.observar_conexao();
     });
-    ligar_configuracao(&janela, &contexto);
+    acoes::ligar_configuracao(&janela, &contexto);
     pareamento::ligar(&janela, &contexto);
-    ligar_sessao(&janela, &contexto);
+    acoes::ligar_sessao(&janela, &contexto);
     contexto.sincronizar();
 
     // A mesma batida recolhe os avisos e mantém a ligação: é consultando o serviço que a
@@ -330,70 +331,4 @@ pub fn abrir(
     });
 
     crate::bandeja::rodar(&janela, inicio, marca)
-}
-
-fn ligar_configuracao(janela: &Janela, contexto: &Rc<Contexto>) {
-    let acoes = janela.global::<Acoes>();
-
-    let alvo = Rc::clone(contexto);
-    acoes.on_definir_papel(move |servidor| {
-        let papel = if servidor {
-            Papel::Servidor
-        } else {
-            Papel::Cliente
-        };
-        alvo.enviar(Pedido::DefinirPapel(papel));
-    });
-
-    let alvo = Rc::clone(contexto);
-    acoes.on_definir_borda(move |indice| {
-        alvo.enviar(Pedido::DefinirBorda(ponte::borda_do_indice(indice)));
-    });
-
-    let alvo = Rc::clone(contexto);
-    acoes.on_fixar_portador(move |indice| {
-        alvo.enviar(Pedido::FixarPortador(ponte::portador_do_indice(indice)));
-    });
-
-    let alvo = Rc::clone(contexto);
-    acoes.on_permitir_bloqueio(move |permitir| {
-        if let Some(maquina) = alvo.par_corrente() {
-            alvo.enviar(Pedido::PermitirTelaDeBloqueio { maquina, permitir });
-        }
-    });
-}
-
-fn ligar_sessao(janela: &Janela, contexto: &Rc<Contexto>) {
-    let acoes = janela.global::<Acoes>();
-
-    let alvo = Rc::clone(contexto);
-    acoes.on_encerrar(move || alvo.enviar(Pedido::Encerrar));
-
-    let alvo = Rc::clone(contexto);
-    acoes.on_esquecer_par(move || {
-        if let Some(maquina) = alvo.par_corrente() {
-            alvo.enviar(Pedido::EsquecerPar { maquina });
-        }
-    });
-
-    let alvo = Rc::clone(contexto);
-    acoes.on_limpar_recebidos(move || {
-        // O serviço responde "recebi" e apaga fora do compasso dele; o tamanho novo chega pelo
-        // aviso de estado, e é ele que apaga o botão quando não sobra nada.
-        alvo.enviar(Pedido::LimparRecebidos);
-    });
-
-    let alvo = Rc::clone(contexto);
-    acoes.on_mostrar_diagnostico(move || {
-        if let Resposta::Diagnostico(relatorio) = alvo.servico.pedir(Pedido::Diagnostico) {
-            alvo.com_janela(|janela| {
-                janela
-                    .global::<Dados>()
-                    .set_diagnostico(relatorio.clone().into());
-            });
-        }
-    });
-
-    let alvo = Rc::clone(contexto);
-    acoes.on_descartar_recado(move || alvo.recado(None));
 }

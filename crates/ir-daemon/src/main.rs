@@ -70,7 +70,8 @@ async fn executar(parada: watch::Receiver<bool>) -> Result<()> {
     let identidade = identidade_local(&identity);
 
     let canais = abrir_canais()?;
-    let (achados, achados_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (de_fundo, de_fundo_rx) = tokio::sync::mpsc::unbounded_channel();
+    repassar_radio_tardio(abertos.radio_tardio, de_fundo.clone());
     let arquivos = arquivos::abrir(&cfg, &dir, &identity, &canais.avisos, &abertos.descoberta);
 
     let mut daemon = Daemon::new(Parts {
@@ -78,7 +79,7 @@ async fn executar(parada: watch::Receiver<bool>) -> Result<()> {
         rede: abertos.rede,
         radio: abertos.radio,
         radio_proprio: abertos.radio_proprio,
-        achados,
+        de_fundo,
         descoberta: abertos.descoberta,
         injector,
         capturer,
@@ -107,7 +108,7 @@ async fn executar(parada: watch::Receiver<bool>) -> Result<()> {
             pedidos: canais.pedidos,
             fatos: canais.fatos,
             parada,
-            achados: achados_rx,
+            de_fundo: de_fundo_rx,
         })
         .await;
     Ok(())
@@ -133,6 +134,18 @@ fn carregar() -> Result<(
     Ok((dir, cfg, identity, role, edge))
 }
 
+/// Repassa ao ator o rádio que abrir depois da subida, como mais um resultado de fundo.
+fn repassar_radio_tardio(
+    mut tardio: mpsc::UnboundedReceiver<ir_transporte::RadioAberto>,
+    de_fundo: mpsc::UnboundedSender<actor::DeFundo>,
+) {
+    tokio::spawn(async move {
+        if let Some(aberto) = tardio.recv().await {
+            let _ = de_fundo.send(actor::DeFundo::Radio(aberto));
+        }
+    });
+}
+
 /// Tamanho de tela: da plataforma quando ela sabe, senão da configuração.
 fn tamanho_da_tela(cfg: &config::Config) -> (u32, u32) {
     ir_input::primary_screen_size().unwrap_or((cfg.screen_width, cfg.screen_height))
@@ -142,6 +155,7 @@ fn tamanho_da_tela(cfg: &config::Config) -> (u32, u32) {
 fn dar_partida(daemon: &mut Daemon, screen: (u32, u32)) {
     feed_screens(daemon, screen);
     daemon.anunciar_radio_proprio();
+    daemon.verificar_economia();
     daemon.connect_if_possible();
     // O agente nasce junto com o serviço; o laço periódico só cuida de ressubi-lo se ele cair.
     daemon.garantir_agente();

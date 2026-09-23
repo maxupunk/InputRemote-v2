@@ -95,6 +95,7 @@ crates/
 ├── ir-files/      manifesto, blocos, BLAKE3, cotas, staging ......... sem rede
 ├── ir-transferencia/ a transferência conduzida: o motor ligado à porta
 ├── ir-configuracao/ configuração e identidade persistentes da máquina
+├── ir-canais/     os canais locais do serviço: controle (interface) e agente
 ├── ir-daemon/     binário do serviço
 ├── ir-agent/      binário do agente
 └── ir-ui/         interface (Slint): biblioteca testável + binário fino

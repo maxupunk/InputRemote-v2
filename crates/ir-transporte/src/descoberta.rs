@@ -48,6 +48,11 @@ impl Descoberta {
         }
     }
 
+    /// Passa a listar os pareados deste rádio — o que abriu depois da subida.
+    pub fn adotar_pareados(&mut self, pareados: Pareados) {
+        self.pareados = Some(pareados);
+    }
+
     /// Uma descoberta que não acha nada: para a bancada de testes do serviço.
     #[must_use]
     pub fn desligada() -> Self {

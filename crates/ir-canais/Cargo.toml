@@ -1,0 +1,23 @@
+[package]
+name = "ir-canais"
+description = "Os canais locais do serviço: o de controle, da interface, e o do agente."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ir-ipc.workspace = true
+# Quem conectou, e o que pode: o portão de cada canal e a identificação do cliente do pipe.
+ir-acesso.workspace = true
+ir-sessao.workspace = true
+ir-transferencia.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+
+[lints]
+workspace = true

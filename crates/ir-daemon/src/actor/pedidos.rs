@@ -99,6 +99,7 @@ impl Daemon {
             // O texto vem de quem pediu, e não de um caminho que o serviço leria: não há o que
             // conferir de permissão, só se há par para receber.
             Pedido::OferecerTexto(texto) => self.oferecer_texto(texto),
+            Pedido::DesligarEconomiaDeEnergia { no_par } => self.desligar_economia(no_par),
             // A tela de bloqueio é N2: depende do agente no desktop seguro, que ainda não entra.
             // O curinga cobre também variantes futuras do contrato ainda não tratadas aqui.
             _ => Resposta::Falha(Falha::ForaDeContexto),
@@ -276,6 +277,8 @@ ajudantes de clipboard ligados: {}",
             ultima_queda: None,
             recebidos_bytes: self.arquivos.recebidos().espaco(),
             rota_dupla: self.session.route().is_some_and(ir_session::Route::is_dual),
+            economia_aqui: self.economia_aqui_na_tela(),
+            economia_no_par: self.economia_no_par_na_tela(),
         }
     }
 

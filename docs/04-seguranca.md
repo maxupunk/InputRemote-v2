@@ -93,6 +93,14 @@ Regras que sustentam a garantia:
 - 5 tentativas de pareamento por par, com espera crescente entre elas;
 - a comparação do código recebido é feita em tempo constante.
 
+### 3.2.1. O que o par pode pedir a esta máquina
+
+Um par autenticado pode pedir **uma** mudança de configuração nesta máquina: desligar a economia de
+energia do Wi-Fi (`DisableNetworkPowerSaving`, [ADR-0013](adr/0013-economia-de-energia-do-wifi.md)).
+O pedido nasce de um clique na janela do outro computador, só é aceito com sessão estabelecida, e
+não carrega parâmetro nenhum: não há como pedir outra coisa por ele, nem religar, nem escolher o
+que mudar. O pior que um par legítimo faz com isto é gastar um pouco mais de bateria.
+
 ### 3.3. Reconexões
 
 `Noise_IK` com a chave estática do par **fixada**. Chave diferente da fixada é recusa,

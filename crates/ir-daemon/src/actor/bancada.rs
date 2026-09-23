@@ -129,7 +129,7 @@ impl Bancada {
         let (agente, receptor_do_agente) = broadcast::channel(16);
         // A busca na rede não roda na bancada (não há runtime nos testes síncronos): o receptor
         // morre aqui, e um achado mandado para ele só se perde.
-        let (achados, _) = tokio::sync::mpsc::unbounded_channel();
+        let (de_fundo, _) = tokio::sync::mpsc::unbounded_channel();
         let daemon = Daemon::new(Parts {
             // A bancada exercita o ator, e o canal de arquivos não faz parte dele.
             arquivos: ir_transferencia::Pedidos::desligada(),
@@ -151,7 +151,7 @@ impl Bancada {
             identidade_local: identidade(),
             ajudantes: crate::ipc::Ajudantes::default(),
             radio_proprio: None,
-            achados,
+            de_fundo,
         });
         Self {
             daemon,

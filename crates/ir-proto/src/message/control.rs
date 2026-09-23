@@ -102,6 +102,28 @@ pub enum Control {
         /// O endereço do rádio Bluetooth de quem envia.
         radio: RadioAddress,
     },
+    /// Como está a economia de energia do Wi-Fi de quem envia. Desde a versão 3.
+    ///
+    /// Com a economia ligada a placa cochila entre pacotes, e os comandos pela rede chegam em
+    /// rajadas: o ponteiro flui, trava e volta a fluir. Quem está olhando a tela quase sempre é o
+    /// outro computador, e é lá que o aviso precisa aparecer.
+    NetworkPower(NetworkPowerSaving),
+    /// Desligue a economia de energia do seu Wi-Fi. Desde a versão 3.
+    ///
+    /// Só isto: um par autenticado pode pedir que a placa daqui não cochile, e nada mais sobre a
+    /// configuração da máquina. O botão que manda o pedido está na tela do outro computador.
+    DisableNetworkPowerSaving,
+}
+
+/// A economia de energia do Wi-Fi de uma máquina.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NetworkPowerSaving {
+    /// Desligada, ou não há Wi-Fi.
+    Off,
+    /// Ligada agora.
+    On,
+    /// Desligada na tomada e ligada na bateria.
+    OnBattery,
 }
 
 /// Identificação trocada no handshake.

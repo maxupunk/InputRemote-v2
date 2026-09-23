@@ -71,10 +71,10 @@ impl Daemon {
             return;
         }
         let busca = self.descoberta.localizar(crate::machine_id_of(&chave));
-        let achados = self.achados.clone();
+        let de_fundo = self.de_fundo.clone();
         runtime.spawn(async move {
             if let Some(endereco) = busca.await {
-                let _ = achados.send(endereco);
+                let _ = de_fundo.send(super::DeFundo::ParAchado(endereco));
             }
         });
     }
@@ -100,6 +100,19 @@ impl Daemon {
                 }
             }
         }
+        self.discar_o_que_falta();
+    }
+
+    /// O rádio abriu depois da subida — o canal estava ocupado pelo serviço anterior.
+    ///
+    /// Entra como se tivesse aberto na subida: a busca passa a listar os pareados, a sessão conta o
+    /// endereço ao par, e o que faltava discar é discado.
+    pub(crate) fn on_radio_tardio(&mut self, aberto: ir_transporte::RadioAberto) {
+        info!("o rádio Bluetooth abriu depois da subida; a rota dupla volta");
+        self.radio = Some(aberto.transporte);
+        self.radio_proprio = aberto.proprio;
+        self.descoberta.adotar_pareados(aberto.pareados);
+        self.anunciar_radio_proprio();
         self.discar_o_que_falta();
     }
 

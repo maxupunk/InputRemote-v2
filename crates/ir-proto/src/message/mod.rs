@@ -15,7 +15,7 @@ pub mod data;
 pub mod input_msg;
 
 pub use clipboard::{ClipId, ClipKind, ClipboardMessage, DeclineReason};
-pub use control::{Control, DisconnectReason, ErrorCode, Greeting};
+pub use control::{Control, DisconnectReason, ErrorCode, Greeting, NetworkPowerSaving};
 pub use data::{BulkMessage, CancelReason, ManifestItem, RejectReason, TransferId};
 pub use input_msg::{Feedback, InputMessage, PointerMessage};
 

@@ -16,6 +16,8 @@ members = [
     "crates/ir-clip",
     "crates/ir-input",
     "crates/ir-sessao",
+    "crates/ir-canais",
+    "crates/ir-energia",
     "crates/ir-configuracao",
     "crates/ir-daemon",
     "crates/ir-agent",
@@ -48,6 +50,8 @@ ir-transferencia = { path = "crates/ir-transferencia", version = "0.1.0-dev" }
 ir-clip = { path = "crates/ir-clip", version = "0.1.0-dev" }
 ir-input = { path = "crates/ir-input", version = "0.1.0-dev" }
 ir-sessao = { path = "crates/ir-sessao", version = "0.1.0-dev" }
+ir-canais = { path = "crates/ir-canais", version = "0.1.0-dev" }
+ir-energia = { path = "crates/ir-energia", version = "0.1.0-dev" }
 ir-configuracao = { path = "crates/ir-configuracao", version = "0.1.0-dev" }
 
 postcard = { version = "1.1", default-features = false, features = ["alloc"] }

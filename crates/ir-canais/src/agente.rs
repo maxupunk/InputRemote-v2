@@ -167,9 +167,9 @@ mod tests {
         // O canal de verdade nasce `Restrito`, e aí só o serviço o alcança — nem este teste,
         // que roda como usuário comum, conseguiria abrir. Quem é exercitado aqui é a **lógica**
         // do canal (fato sobe, comando desce, segundo agente recusado); o descritor de segurança
-        // é assunto de `super::super::seguranca`, e o teste do canal de controle já prova que a
+        // é assunto de `ir_acesso::seguranca`, e o teste do canal de controle já prova que a
         // permissão declarada é a que vale.
-        let escuta = Escuta::abrir(&endereco, super::super::escuta::Acesso::UsuarioInterativo)
+        let escuta = Escuta::abrir(&endereco, crate::escuta::Acesso::UsuarioInterativo)
             .expect("abre o ponto de escuta");
         let (fato_tx, mut fatos) = mpsc::unbounded_channel();
         let (comandos, _) = broadcast::channel(16);
