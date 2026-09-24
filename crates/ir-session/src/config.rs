@@ -9,48 +9,47 @@ use ir_proto::screens::Edge;
 
 use crate::time::Millis;
 
-/// O papel desta máquina na sessão.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Role {
-    /// Tem o teclado e o mouse físicos. Captura e envia.
-    Server,
-    /// É controlada. Recebe e injeta.
-    Client,
+/// Quem pode controlar quem ([ADR-0014](../../../docs/adr/0014-controle-simetrico.md)).
+///
+/// Não é um papel: com [`Policy::Both`], o padrão, qualquer um dos dois computadores leva o controle
+/// ao outro, e quem está usando agora é só a fase da sessão. As outras duas existem para quem precisa
+/// de um computador que nunca comanda, ou que nunca é comandado.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Policy {
+    /// Os dois controlam um ao outro.
+    #[default]
+    Both,
+    /// Este computador controla o outro, e nunca é controlado.
+    OnlyControls,
+    /// Este computador é controlado pelo outro, e nunca o controla.
+    OnlyControlled,
 }
 
-impl Role {
-    /// O papel da outra ponta.
+impl Policy {
+    /// Se a entrada daqui pode ir para o par.
     #[must_use]
-    pub const fn peer(self) -> Self {
-        match self {
-            Self::Server => Self::Client,
-            Self::Client => Self::Server,
-        }
+    pub const fn sends(self) -> bool {
+        !matches!(self, Self::OnlyControlled)
     }
 
-    /// Se este papel captura entrada local.
+    /// Se esta máquina aceita ser controlada pelo par.
     #[must_use]
-    pub const fn captures(self) -> bool {
-        matches!(self, Self::Server)
-    }
-
-    /// Se este papel injeta entrada.
-    #[must_use]
-    pub const fn injects(self) -> bool {
-        matches!(self, Self::Client)
+    pub const fn receives(self) -> bool {
+        !matches!(self, Self::OnlyControls)
     }
 
     /// Nome estável, para interface e log.
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
-            Self::Server => "servidor",
-            Self::Client => "cliente",
+            Self::Both => "os dois",
+            Self::OnlyControls => "só este controla",
+            Self::OnlyControlled => "só o outro controla",
         }
     }
 }
 
-impl core::fmt::Display for Role {
+impl core::fmt::Display for Policy {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(self.name())
     }
@@ -87,6 +86,19 @@ pub struct Timings {
     /// reenvio. Não há contagem de tentativas: o enlace cai quando uma mensagem passa de
     /// [`Self::link_timeout`] sem confirmação, contado do primeiro envio (log 23).
     pub min_retransmit: Millis,
+
+    /// Depois de o par levar o controle para cá, por quanto tempo o teclado e o mouse daqui não o
+    /// retomam.
+    ///
+    /// Origem: ADR-0014 — é o intervalo em que a mão de quem atravessou ainda está chegando, e em
+    /// que um esbarrão na mesa daqui devolveria o controle sem ninguém querer.
+    pub reclaim_grace: Millis,
+
+    /// Em quanto tempo o ponteiro daqui precisa andar [`crate::session::RECLAIM_DISTANCE`] para
+    /// retomar o controle. Mais devagar que isso é tremida, não gesto.
+    ///
+    /// Origem: ADR-0014.
+    pub reclaim_window: Millis,
 }
 
 impl Timings {
@@ -97,6 +109,8 @@ impl Timings {
         snapshot_interval: Millis(250),
         pointer_interval: Millis(8),
         min_retransmit: Millis(20),
+        reclaim_grace: Millis(150),
+        reclaim_window: Millis(300),
     };
 
     /// Se os prazos fazem sentido entre si.
@@ -129,13 +143,16 @@ impl Default for Timings {
 /// A configuração de uma sessão.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SessionConfig {
-    /// O papel desta máquina.
-    pub role: Role,
+    /// Quem pode controlar quem.
+    pub policy: Policy,
     /// A borda desta tela que dá para a tela do par.
     ///
-    /// Só ela atravessa. As outras três prendem o ponteiro
-    /// (`ir_geometry::crossing`).
+    /// Só ela atravessa. As outras três prendem o ponteiro (`ir_geometry::crossing`). O par usa a
+    /// oposta; se as duas divergirem, vale a escolhida mais recentemente (`session/edge.rs`).
     pub peer_edge: Edge,
+    /// Quando [`Self::peer_edge`] foi escolhida na tela, em milissegundos desde 1970; `0` se nunca
+    /// foi.
+    pub edge_chosen_at: u64,
     /// Os prazos.
     pub timings: Timings,
     /// De onde nascem as épocas desta sessão ([`ir_proto::frame::Epoch`]).
@@ -146,37 +163,18 @@ pub struct SessionConfig {
     /// serviço sorteia uma a cada sessão criada. Repetir a semente entre duas execuções do
     /// serviço faria o par tomar a sessão nova pela antiga — o laço que ela existe para impedir.
     pub incarnation_seed: u32,
-    /// Quando o papel desta máquina foi escolhido na tela, em milissegundos desde 1970; `0` se
-    /// nunca foi. Numa colisão de papéis com o par, vale a escolha mais recente (`session/role.rs`).
-    pub role_chosen_at: u64,
 }
 
 impl SessionConfig {
-    /// Uma configuração de servidor com o par à direita e prazos padrão.
+    /// Os dois controlando um ao outro, com o par do lado dado e prazos padrão.
     #[must_use]
-    pub const fn server(peer_edge: Edge) -> Self {
+    pub const fn new(peer_edge: Edge) -> Self {
         Self {
-            role: Role::Server,
+            policy: Policy::Both,
             peer_edge,
+            edge_chosen_at: 0,
             timings: Timings::DEFAULT,
             incarnation_seed: 0,
-            role_chosen_at: 0,
-        }
-    }
-
-    /// Uma configuração de cliente.
-    ///
-    /// A borda é a que dá de volta para o servidor: se o cliente está à direita, o servidor
-    /// fica à esquerda dele. É só o ponto de partida — a última gravada —, porque quem decide é o
-    /// servidor, e o cliente adota a oposta da dele assim que a sessão sobe.
-    #[must_use]
-    pub const fn client(peer_edge: Edge) -> Self {
-        Self {
-            role: Role::Client,
-            peer_edge,
-            timings: Timings::DEFAULT,
-            incarnation_seed: 0,
-            role_chosen_at: 0,
         }
     }
 }
@@ -186,21 +184,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn roles_are_complementary() {
-        assert_eq!(Role::Server.peer(), Role::Client);
-        assert_eq!(Role::Client.peer(), Role::Server);
-        assert_eq!(Role::Server.peer().peer(), Role::Server);
+    fn by_default_both_control_each_other() {
+        let policy = Policy::default();
+        assert!(policy.sends() && policy.receives());
     }
 
     #[test]
-    fn only_the_server_captures_and_only_the_client_injects() {
-        assert!(Role::Server.captures());
-        assert!(!Role::Server.injects());
-        assert!(Role::Client.injects());
-        assert!(
-            !Role::Client.captures(),
-            "capturar no cliente seria ler a senha da máquina"
-        );
+    fn the_restricted_policies_close_exactly_one_direction() {
+        assert!(Policy::OnlyControls.sends());
+        assert!(!Policy::OnlyControls.receives());
+        assert!(Policy::OnlyControlled.receives());
+        assert!(!Policy::OnlyControlled.sends());
+    }
+
+    #[test]
+    fn the_grace_is_shorter_than_the_reclaim_window() {
+        let t = Timings::DEFAULT;
+        assert!(t.reclaim_grace.get() < t.reclaim_window.get());
     }
 
     #[test]
@@ -268,9 +268,10 @@ mod tests {
     }
 
     #[test]
-    fn constructors_set_the_expected_role() {
-        assert_eq!(SessionConfig::server(Edge::Right).role, Role::Server);
-        assert_eq!(SessionConfig::client(Edge::Left).role, Role::Client);
-        assert_eq!(SessionConfig::server(Edge::Top).peer_edge, Edge::Top);
+    fn a_new_session_lets_both_control_each_other() {
+        let config = SessionConfig::new(Edge::Top);
+        assert_eq!(config.policy, Policy::Both);
+        assert_eq!(config.peer_edge, Edge::Top);
+        assert_eq!(config.edge_chosen_at, 0, "nunca escolhida pela tela");
     }
 }

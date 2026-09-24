@@ -5,18 +5,18 @@
 
 mod agent;
 mod area;
-mod client;
 mod consultas;
+mod direction;
 mod edge;
 mod frames;
 mod incarnation;
 mod link;
 mod power;
 mod reach;
-mod role;
+mod receiving;
 mod route;
 mod secure;
-mod server;
+mod sending;
 pub mod state;
 mod upkeep;
 
@@ -35,7 +35,8 @@ use crate::reliability::{ReliableChannels, SendOutcome};
 use crate::sequences::Sequences;
 use crate::time::Timestamp;
 
-use incarnation::Incarnations;
+pub use direction::RECLAIM_DISTANCE;
+use ir_confiabilidade::incarnation::Incarnations;
 pub use route::{CarrierWins, Route, RouteReport};
 pub use state::{CarrierSet, Clock, LocalIdentity, PeerInfo};
 
@@ -63,14 +64,14 @@ pub struct Session {
 
     /// Onde o ponteiro está **nesta** máquina.
     ///
-    /// No servidor, enquanto o controle é local. No cliente, enquanto ele está sendo
-    /// controlado — é assim que a travessia de volta é detectada do lado certo.
+    /// Com o controle aqui, é o ponteiro local; com o par usando esta tela, é onde ele está —
+    /// é assim que a travessia de volta é detectada do lado certo.
     pub(super) pointer: Point,
 
     /// O que está pressionado.
     ///
-    /// No servidor é o que foi enviado; no cliente é o que foi injetado. É a mesma estrutura
-    /// nos dois lados justamente para que a reconciliação seja uma comparação.
+    /// Mandando, é o que foi enviado; recebendo, é o que foi injetado. É a mesma estrutura nos
+    /// dois sentidos justamente para que a reconciliação seja uma comparação.
     pub(super) input_state: InputState,
 
     /// Se o agente local está pronto para injetar.
@@ -124,6 +125,9 @@ pub struct Session {
 
     /// A economia de energia do Wi-Fi daqui, para contar ao par ([`power`]).
     pub(super) local_power: Option<ir_proto::message::NetworkPowerSaving>,
+
+    /// Enquanto o par usa esta tela, o que o daqui mexeu — para retomar ([`direction`]).
+    pub(super) reclaim_watch: direction::ReclaimWatch,
 }
 
 impl Session {
@@ -157,6 +161,7 @@ impl Session {
             last_pointer_rx: None,
             wins: CarrierWins::default(),
             local_power: None,
+            reclaim_watch: direction::ReclaimWatch::default(),
         }
     }
 
@@ -207,7 +212,9 @@ impl Session {
             }
             Input::EmergencyRelease => self.on_emergency(now, out),
             Input::LocalScreens(layout) => self.on_local_screens(now, layout, out),
-            Input::SetPeerEdge(edge) => self.on_set_peer_edge(now, edge, out),
+            Input::SetPeerEdge { edge, chosen_at } => {
+                self.on_set_peer_edge(now, edge, chosen_at, out);
+            }
             Input::AgentReady => self.agent_ready = true,
             Input::AgentLost => self.on_agent_lost(now, out),
             Input::ClipboardText(texto) => self.on_clipboard_text(now, texto, out),

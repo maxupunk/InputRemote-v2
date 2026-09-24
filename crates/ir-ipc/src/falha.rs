@@ -44,17 +44,14 @@ pub enum Falha {
     /// para o pedido falhar com uma razão e uma instrução em vez de um "falha interna" genérico.
     #[error("o serviço do InputRemote não está respondendo")]
     ServicoIndisponivel,
-    /// O papel pedido não funciona nesta plataforma.
+    /// A política pedida não funciona nesta máquina: "só este controla", sem ler o próprio teclado.
     ///
-    /// Hoje é o de servidor num Linux, que ainda não captura a entrada local. Aceitar a troca
-    /// gravaria um papel em que nada funciona — e foi exatamente isso que aconteceu, em silêncio,
-    /// antes desta falha existir.
-    #[error("este computador ainda não pode ter o teclado e o mouse")]
-    PapelIndisponivel,
-    /// A borda só se escolhe no computador que tem o teclado e o mouse.
-    ///
-    /// O controlado usa sozinho a borda oposta à do outro. Deixar os dois escolherem foi o que
-    /// deixou a bancada com os dois lados dizendo "esquerda" (log 24).
+    /// Aceitar gravaria uma política em que nada funciona — e foi exatamente isso que aconteceu, em
+    /// silêncio, antes desta falha existir (quando ainda era um papel).
+    #[error("este computador não consegue controlar o outro")]
+    PoliticaIndisponivel,
+    /// Não é mais produzida: desde o controle simétrico (ADR-0014), a borda se escolhe dos dois
+    /// lados. Fica aqui pela regra 2 do módulo — tirá-la mudaria o índice das que vêm depois.
     #[error("a borda é escolhida no computador que tem o teclado e o mouse")]
     BordaDoServidor,
     /// O pareamento não chegou ao fim: o outro computador não respondeu, ou o código já não vale.
@@ -119,9 +116,9 @@ impl Falha {
                 "Confira se o serviço do InputRemote está em execução. A janela reconecta sozinha \
                  quando ele voltar."
             }
-            Self::PapelIndisponivel => {
-                "Neste computador, por enquanto, só funciona o papel de controlado. Use o outro \
-                 computador como o que tem o teclado e o mouse."
+            Self::PoliticaIndisponivel => {
+                "Este computador não lê o próprio teclado e mouse, então não controla o outro. \
+                 Escolha \"Os dois\" ou \"Só o outro controla este\"."
             }
             Self::BordaDoServidor => {
                 "Troque a borda no computador que tem o teclado e o mouse. Este acompanha sozinho, \
@@ -186,7 +183,7 @@ mod tests {
             Falha::Interna,
             Falha::SemPermissao,
             Falha::ServicoIndisponivel,
-            Falha::PapelIndisponivel,
+            Falha::PoliticaIndisponivel,
             Falha::BordaDoServidor,
             Falha::PareamentoInterrompido,
             Falha::ParNaoRespondeu,
@@ -226,7 +223,7 @@ mod tests {
             (Falha::Interna, 5),
             (Falha::SemPermissao, 6),
             (Falha::ServicoIndisponivel, 7),
-            (Falha::PapelIndisponivel, 8),
+            (Falha::PoliticaIndisponivel, 8),
             (Falha::BordaDoServidor, 9),
             (Falha::PareamentoInterrompido, 10),
             (Falha::ParNaoRespondeu, 11),

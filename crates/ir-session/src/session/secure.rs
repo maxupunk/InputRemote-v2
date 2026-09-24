@@ -83,15 +83,17 @@ impl Session {
         let Some(atalho) = shortcut(self.held_here, usage) else {
             return false;
         };
-        let engaged = self.phase == Phase::Engaged;
-        match atalho {
-            // Com o controle aqui, Ctrl+Alt+End e Ctrl+Alt+Shift+Esc são de quem está em foco.
-            Shortcut::SecureAttention | Shortcut::Emergency if !engaged => return false,
-            Shortcut::SecureAttention => self.request_secure_attention(now, out),
+        match (atalho, self.phase) {
+            // Ctrl+Alt+End só vai ao par com o cursor lá; aqui, é de quem está em foco.
+            (Shortcut::SecureAttention, Phase::Sending) => self.request_secure_attention(now, out),
             // Voltar pelo atalho é voltar soltando tudo lá: os modificadores do atalho desceram no
             // par, e a subida deles vai acontecer aqui.
-            Shortcut::Emergency | Shortcut::Switch if engaged => self.on_emergency(now, out),
-            Shortcut::Switch | Shortcut::Emergency => self.switch_to_peer(now, out),
+            (Shortcut::Emergency | Shortcut::Switch, Phase::Sending) => self.on_emergency(now, out),
+            // Com o par usando esta tela, os dois atalhos trazem o controle para cá.
+            (Shortcut::Emergency | Shortcut::Switch, Phase::Receiving) => self.reclaim(now, out),
+            // Com o controle aqui, Ctrl+Alt+End e a emergência são de quem está em foco.
+            (Shortcut::SecureAttention | Shortcut::Emergency, _) => return false,
+            (Shortcut::Switch, _) => self.switch_to_peer(now, out),
         }
         self.swallowed = Some(usage);
         true

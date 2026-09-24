@@ -46,15 +46,21 @@ Depois disso a conexão é automática: quem liga primeiro espera, e as quedas s
 
 ## 3. Usar
 
-Encoste o ponteiro na borda onde o outro computador está (escolhida em **Preferências**). Ele
-atravessa, e o teclado e o mouse passam a controlar o outro lado. Para voltar, a borda oposta.
+Os dois computadores controlam um ao outro: não há "dono" do teclado.
 
-Quem tem o teclado se escolhe em **Preferências**, numa máquina só: a outra passa sozinha ao papel
-que combina e conta isso na tela. Se as duas forem trocadas, vale a última escolha.
+- **Ir:** encoste o ponteiro na borda onde o outro computador está. Ele atravessa, e o teclado e o
+  mouse daqui passam a controlar o outro. Vale dos dois lados.
+- **Voltar:** a borda oposta — ou simplesmente **mexa no mouse ou no teclado do computador que está
+  sendo usado**: ele retoma o controle na hora. Um esbarrão na mesa não conta; um clique, uma tecla
+  ou um movimento de verdade, sim.
+- **De que lado fica o outro** se escolhe na tela inicial de qualquer um dos dois; o outro passa a
+  mostrar o lado oposto sozinho, e conta isso na tela.
+- **Quem pode controlar** (Preferências): *Os dois* (o padrão), *Só este* (este controla o outro e
+  nunca é controlado) ou *Só o outro*.
 
-| Atalho (no teclado que controla) | O que faz |
+| Atalho | O que faz |
 |---|---|
-| **Ctrl+Alt+Shift+Espaço** | leva o controle ao outro computador, ou o traz de volta |
+| **Ctrl+Alt+Shift+Espaço** | leva o controle ao outro computador, ou o traz de volta — dos dois lados |
 | **Ctrl+Alt+Shift+Esc** | devolve o controle a este computador **e solta tudo** — a saída de emergência |
 | **Ctrl+Alt+End** | o Ctrl+Alt+Del do outro computador |
 

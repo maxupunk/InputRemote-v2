@@ -30,10 +30,16 @@ pub enum Notice {
         /// Se a sessão vai tentar voltar sozinha.
         will_retry: bool,
     },
-    /// O controle mudou de lado.
+    /// O cursor atravessou a borda.
     ControlMoved {
-        /// `true` quando o controle está agora no par.
+        /// `true` quando o cursor saiu desta tela para a do par; `false` quando chegou a esta.
         remote: bool,
+    },
+    /// O controle foi retomado sem atravessar: quem estava sendo controlado mexeu no próprio teclado
+    /// ou mouse (ADR-0014).
+    ControlReclaimed {
+        /// `true` quando foi esta máquina que retomou; `false` quando foi o par.
+        here: bool,
     },
     /// O portador ativo mudou.
     CarrierChanged {
@@ -65,13 +71,22 @@ pub enum Notice {
         /// Se a sessão terminou por causa dele.
         fatal: bool,
     },
-    /// A borda que dá para o par mudou, e é esta que vale agora.
-    ///
-    /// No servidor, porque o usuário escolheu; no cliente, porque o servidor anunciou. O serviço
-    /// grava: sem isto, o cliente voltaria à borda velha na próxima subida, até reconectar.
+    /// O usuário escolheu, nesta tela, uma borda nova, e é ela que vale agora. O serviço grava.
     EdgeChanged {
         /// A borda desta tela que dá para a tela do par.
         edge: Edge,
+        /// Quando foi escolhida, para gravar junto.
+        chosen_at: u64,
+    },
+    /// O par mudou de lado na tela dele, e esta ponta passou a usar a borda oposta.
+    ///
+    /// Distinto de [`Self::EdgeChanged`] porque a tela daqui precisa **contar** por que a posição
+    /// mudou sem ninguém tocar nela.
+    EdgeAdopted {
+        /// A borda desta tela que dá para a tela do par.
+        edge: Edge,
+        /// Quando o par a escolheu — gravado igual, para esta ponta não vencer a próxima comparação.
+        chosen_at: u64,
     },
     /// A rota da sessão de pé mudou: um portador entrou ou saiu, sem refazer a sessão.
     ///
@@ -102,16 +117,6 @@ pub enum Notice {
     },
     /// O pedido de desligar a economia no par não pôde sair: sem sessão, ou o par não entende.
     PeerCannotFixNetworkPower,
-    /// O par tem o mesmo papel, escolhido depois: esta ponta passa ao papel complementar.
-    ///
-    /// Quem troca é a periferia — grava, recria a sessão com o papel novo e conta à tela. A sessão
-    /// só decide quem cede (`session/role.rs`).
-    AdoptRole {
-        /// O papel a adotar aqui.
-        role: crate::config::Role,
-        /// Quando o par escolheu o dele, para esta ponta gravar o mesmo e não ceder de volta.
-        chosen_at: u64,
-    },
 }
 
 /// Por que um portador foi escolhido.

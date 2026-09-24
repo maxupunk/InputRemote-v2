@@ -6,7 +6,7 @@
 //!
 //! Saiu do `ir-daemon` quando a rota dupla o levou ao teto de tamanho de crate
 //! ([ADR-0012](../../../docs/adr/0012-rota-dupla.md)): o que a máquina guarda em disco já era uma
-//! fronteira estável, que só conhecia a identidade, o papel e a borda.
+//! fronteira estável, que só conhecia a identidade, a política e a borda.
 
 #![forbid(unsafe_code)]
 #![cfg_attr(
@@ -20,24 +20,31 @@
 )]
 
 mod gravador;
-mod papel;
+mod politica;
 
 pub use gravador::Gravador;
-pub use papel::{edge_para_texto, papel_na_subida, papel_sustentado, texto_do_papel};
+pub use politica::{
+    edge_para_texto, politica_do_texto, politica_na_subida, politica_sustentada, texto_da_politica,
+};
 
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use ir_crypto::{Identity, PublicKey};
 use ir_proto::screens::Edge;
-use ir_session::Role;
+use ir_session::Policy;
 use serde::{Deserialize, Serialize};
 
 /// A configuração da máquina, como fica no `config.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    /// `"server"` (tem o teclado) ou `"client"` (é controlada).
-    pub role: String,
+    /// Quem pode controlar quem: `ambos` (o padrão), `so-este` (este controla o outro e nunca é
+    /// controlado) ou `so-o-outro` (este é controlado e nunca controla).
+    ///
+    /// Um arquivo de antes do controle simétrico tem `role`, que é ignorado: a máquina sobe com os
+    /// dois controlando um ao outro (ADR-0014).
+    #[serde(default = "politica_padrao")]
+    pub politica: String,
     /// A borda que dá para o par: `left`/`right`/`top`/`bottom`.
     pub peer_edge: String,
     /// A porta UDP local.
@@ -78,18 +85,23 @@ pub struct Config {
     /// computador que era controlado não pode ficar aberto para quem passar por ele.
     #[serde(default = "sim")]
     pub bloquear_juntos: bool,
-    /// Quando o papel foi escolhido na tela, em milissegundos desde 1970.
+    /// Quando a borda foi escolhida na tela, em milissegundos desde 1970.
     ///
-    /// Os dois computadores anunciam o papel um ao outro; se colidirem, vale a escolha mais
-    /// recente, e o outro passa ao papel complementar sozinho. Sem isto gravado, a escolha de antes
-    /// de reiniciar perderia para qualquer outra.
+    /// Os dois computadores anunciam a borda um ao outro; se não forem opostas, vale a escolha mais
+    /// recente, e o outro passa a usar a oposta sozinho. Sem isto gravado, a escolha de antes de
+    /// reiniciar perderia para qualquer outra.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub papel_escolhido_em: Option<u64>,
+    pub borda_escolhida_em: Option<u64>,
 }
 
 /// O padrão das opções que nascem ligadas.
 const fn sim() -> bool {
     true
+}
+
+/// A política de quem não gravou nenhuma: os dois controlando um ao outro.
+fn politica_padrao() -> String {
+    politica::PADRAO.to_owned()
 }
 
 /// Um par pareado, com a chave estática fixada.
@@ -118,7 +130,7 @@ pub struct PinnedPeer {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            role: "server".to_owned(),
+            politica: politica_padrao(),
             peer_edge: "right".to_owned(),
             port: 52525,
             screen_width: 1920,
@@ -129,23 +141,19 @@ impl Default for Config {
             politica_de_atencao_anterior: None,
             portador_fixado: None,
             bloquear_juntos: true,
-            papel_escolhido_em: None,
+            borda_escolhida_em: None,
         }
     }
 }
 
 impl Config {
-    /// O papel da sessão.
+    /// Quem pode controlar quem.
     ///
     /// # Errors
     ///
-    /// Erro se o texto não for `server` nem `client`.
-    pub fn session_role(&self) -> Result<Role> {
-        match self.role.as_str() {
-            "server" => Ok(Role::Server),
-            "client" => Ok(Role::Client),
-            other => bail!("papel inválido: {other} (use server ou client)"),
-        }
+    /// Erro se o texto não for uma das três políticas.
+    pub fn policy(&self) -> Result<Policy> {
+        politica_do_texto(&self.politica)
     }
 
     /// A borda de travessia.
@@ -353,11 +361,19 @@ mod tests {
     }
 
     #[test]
+    fn um_arquivo_de_antes_do_controle_simetrico_sobe_com_os_dois_controlando() {
+        let antigo = "role = \"client\"\npeer_edge = \"left\"\nport = 52525\n\
+                      screen_width = 1920\nscreen_height = 1080\npeers = []\n";
+        let config: Config = toml::from_str(antigo).unwrap();
+        assert_eq!(config.policy().unwrap(), Policy::Both);
+    }
+
+    #[test]
     fn a_configuracao_padrao_e_criada_e_relida() {
         let dir = pasta("config");
         let criada = load_config(&dir).unwrap();
         let relida = load_config(&dir).unwrap();
-        assert_eq!(criada.role, relida.role);
+        assert_eq!(criada.politica, relida.politica);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

@@ -233,8 +233,6 @@ impl Daemon {
 mod tests {
     use std::net::SocketAddr;
 
-    use ir_session::Role;
-
     use super::*;
     use crate::actor::bancada::{Bancada, Feito};
     use crate::config::{PinnedPeer, encode_key};
@@ -279,7 +277,7 @@ mod tests {
         // precisa de código novo e confirmação visual. A recusa era "existe fixada **e** difere",
         // então com a lista vazia ninguém era recusado: quem insistisse num `Noise_IK` entrava
         // calado, sem código e sem ninguém confirmar nada (log 27).
-        let mut bancada = Bancada::nova(Role::Server);
+        let mut bancada = Bancada::nova();
         assert!(bancada.daemon.config.peers.is_empty(), "nenhum par gravado");
 
         estabeleceu(&mut bancada, chave());
@@ -296,7 +294,7 @@ mod tests {
 
     #[test]
     fn uma_chave_diferente_da_fixada_e_recusada() {
-        let mut bancada = Bancada::nova(Role::Server);
+        let mut bancada = Bancada::nova();
         gravar_par(&mut bancada);
 
         estabeleceu(&mut bancada, outra_chave());
@@ -308,7 +306,7 @@ mod tests {
     fn com_a_chave_fixada_certa_o_servico_aceita() {
         // Proteção do que já funcionava: uma reconexão legítima continua entrando, senão a
         // correção teria trocado um defeito por outro.
-        let mut bancada = Bancada::nova(Role::Server);
+        let mut bancada = Bancada::nova();
         gravar_par(&mut bancada);
 
         estabeleceu(&mut bancada, chave());
@@ -321,7 +319,7 @@ mod tests {
         // O outro caminho legítimo: o pareamento que o usuário acabou de confirmar.
         // O código chega como na produção, pelo transporte: é ele que diz por onde se pareia, e só
         // o enlace desse portador conclui o pareamento.
-        let mut bancada = Bancada::nova(Role::Server);
+        let mut bancada = Bancada::nova();
         bancada
             .daemon
             .on_fato_do_transporte(Fato::CodigoDePareamento {
@@ -343,7 +341,7 @@ mod tests {
 
     #[test]
     fn o_radio_perdido_sai_de_cena_e_a_rede_continua() {
-        let mut bancada = Bancada::nova(Role::Server);
+        let mut bancada = Bancada::nova();
         assert!(bancada.daemon.radio.is_some());
 
         bancada.daemon.on_fato_do_transporte(Fato::Perdido {

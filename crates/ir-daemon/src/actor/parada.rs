@@ -39,7 +39,7 @@ impl Daemon {
 #[cfg(test)]
 mod tests {
     use ir_proto::carrier::Carrier;
-    use ir_session::{Input, Role};
+    use ir_session::Input;
     use tokio::sync::broadcast;
 
     use super::*;
@@ -56,7 +56,7 @@ mod tests {
 
     #[tokio::test]
     async fn ao_parar_a_sessao_cai_e_o_agente_e_dispensado() {
-        let mut bancada = Bancada::nova(Role::Client);
+        let mut bancada = Bancada::nova();
         bancada.daemon.drive(Input::CarrierUp(Carrier::Udp));
         assert_ne!(
             bancada.daemon.session.phase(),
@@ -76,7 +76,7 @@ mod tests {
     #[tokio::test]
     async fn parar_sem_sessao_ainda_dispensa_o_agente() {
         // O caso da máquina sem par: o agente sobe com o serviço mesmo assim, e precisa sair junto.
-        let mut bancada = Bancada::nova(Role::Client);
+        let mut bancada = Bancada::nova();
 
         bancada.daemon.encerrar().await;
 

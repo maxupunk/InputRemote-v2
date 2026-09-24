@@ -33,7 +33,7 @@ fn the_pointer_reaches_the_peer_at_125_hz_or_more() {
         Side::Server,
         Input::LocalPointer(PointerDelta { dx: 5000, dy: 0 }),
     );
-    assert_eq!(pair.server.phase(), Phase::Engaged);
+    assert_eq!(pair.server.phase(), Phase::Sending);
     pair.clear_log();
 
     // Um mouse de 1 kHz, andando em círculo pequeno para não sair pela borda, por um segundo.

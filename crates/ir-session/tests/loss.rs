@@ -24,7 +24,7 @@ fn engaged() -> Pair {
         Side::Server,
         Input::LocalPointer(PointerDelta { dx: 5000, dy: 0 }),
     );
-    assert_eq!(pair.client.phase(), Phase::Engaged);
+    assert_eq!(pair.client.phase(), Phase::Receiving);
     pair.clear_log();
     pair
 }
@@ -101,7 +101,7 @@ fn continuous_typing_does_not_fill_the_window() {
 
     assert_eq!(
         pair.server.phase(),
-        Phase::Engaged,
+        Phase::Sending,
         "200 teclas não podem derrubar a sessão: a janela tem de estar sendo liberada"
     );
     assert!(
@@ -279,7 +279,7 @@ fn a_stream_carrier_also_uses_the_window_and_confirmations_drain_it() {
 
     assert_eq!(
         pair.server.phase(),
-        Phase::Engaged,
+        Phase::Sending,
         "a janela esvazia a cada confirmação"
     );
     assert!(pair.client.input_state().is_released());

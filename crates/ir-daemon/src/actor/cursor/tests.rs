@@ -5,7 +5,6 @@ use std::sync::{Arc, Mutex};
 use ir_input::{CaptureEvent, InjectEvent, Injector};
 use ir_proto::input::{Button, PointerPosition};
 use ir_proto::screens::ScreenLayout;
-use ir_session::Role;
 
 use crate::actor::Daemon;
 use crate::actor::bancada::{Bancada, CapturaDeMentira};
@@ -41,7 +40,7 @@ impl Anotador {
 
 /// Um serviço com o teclado, que captura e injeta — o Linux com a condução ligada.
 fn conduzindo() -> (Bancada, Anotador) {
-    let mut bancada = Bancada::nova(Role::Server);
+    let mut bancada = Bancada::nova();
     let anotador = Anotador::default();
     bancada.daemon.capturer = Some(Box::new(CapturaDeMentira));
     bancada.daemon.injector = Some(Box::new(anotador.clone()));
@@ -98,27 +97,32 @@ fn botao_e_roda_tomados_chegam_ao_sistema_daqui() {
 }
 
 #[test]
-fn uma_sessao_recriada_parte_de_onde_o_cursor_esta() {
-    // Trocar de papel ou reconectar cria uma sessão nova; sem isto o cursor saltaria para onde
-    // ela nasceu.
+fn onde_o_outro_deixou_o_cursor_e_de_onde_a_mao_daqui_continua() {
+    // O outro computador move o cursor daqui enquanto o usa; ao retomar, a mão daqui segue dali,
+    // sem o cursor pular de volta para onde ela o tinha deixado.
     let (mut bancada, anotador) = conduzindo();
     mover(&mut bancada.daemon, 100, 50);
-    let antes = bancada.daemon.session.pointer_xy();
-    bancada.daemon.session.sync_pointer(0, 0);
+    bancada.daemon.session.sync_pointer(300, 200);
     anotador.tirar();
     mover(&mut bancada.daemon, 1, 0);
-    assert_eq!(bancada.daemon.session.pointer_xy(), (antes.0 + 1, antes.1));
+    assert_eq!(bancada.daemon.session.pointer_xy(), (301, 200));
 }
 
 #[test]
-fn controlado_ou_sem_injetor_nao_conduz() {
-    let mut cliente = Bancada::nova(Role::Client);
-    cliente.daemon.capturer = Some(Box::new(CapturaDeMentira));
-    cliente.daemon.injector = Some(Box::new(Anotador::default()));
-    cliente.daemon.ajustar_conducao();
-    assert!(!cliente.daemon.cursor.ligada);
+fn quem_nunca_controla_ou_nao_tem_injetor_nao_conduz() {
+    let mut so_o_outro = Bancada::nova();
+    so_o_outro.daemon.session = crate::actor::nova_sessao(
+        ir_session::Policy::OnlyControlled,
+        ir_proto::screens::Edge::Right,
+        so_o_outro.daemon.identidade_local.clone(),
+        None,
+    );
+    so_o_outro.daemon.capturer = Some(Box::new(CapturaDeMentira));
+    so_o_outro.daemon.injector = Some(Box::new(Anotador::default()));
+    so_o_outro.daemon.ajustar_conducao();
+    assert!(!so_o_outro.daemon.cursor.ligada);
 
-    let mut sem_injetor = Bancada::nova(Role::Server);
+    let mut sem_injetor = Bancada::nova();
     sem_injetor.daemon.capturer = Some(Box::new(CapturaDeMentira));
     sem_injetor.daemon.ajustar_conducao();
     assert!(!sem_injetor.daemon.cursor.ligada);

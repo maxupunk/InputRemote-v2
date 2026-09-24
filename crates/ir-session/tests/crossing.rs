@@ -33,10 +33,10 @@ fn crossing_the_edge_hands_control_over_and_suppresses_local_input() {
 
     assert_eq!(
         pair.server.phase(),
-        Phase::Engaged,
+        Phase::Sending,
         "o servidor entregou o controle"
     );
-    assert_eq!(pair.client.phase(), Phase::Engaged, "o cliente assumiu");
+    assert_eq!(pair.client.phase(), Phase::Receiving, "o cliente assumiu");
     assert!(pair.any(Side::Server, is::enter_screen));
     assert!(
         pair.any(Side::Server, is::suppress),
@@ -116,7 +116,7 @@ fn crossing_between_different_resolutions_lands_proportionally() {
     pair.clear_log();
     cross_to_client(&mut pair);
 
-    assert_eq!(pair.client.phase(), Phase::Engaged);
+    assert_eq!(pair.client.phase(), Phase::Receiving);
     let landed = pair.client.pointer();
     let middle = 720 / 2;
     assert!(
@@ -194,7 +194,7 @@ fn seeding_the_pointer_positions_without_crossing_then_a_delta_crosses() {
     );
     assert_eq!(
         pair.server.phase(),
-        Phase::Engaged,
+        Phase::Sending,
         "chegando na borda a partir da posição real, atravessa"
     );
 }

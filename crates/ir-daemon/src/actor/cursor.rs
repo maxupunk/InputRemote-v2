@@ -5,7 +5,7 @@
 //! em velocidades diferentes, e a travessia vinha no meio da tela — nenhum ajuste de escala fecha
 //! isso, e a volta do par, que devia realinhar os dois, não movia o cursor (log 50).
 //!
-//! Então, com o teclado aqui, o serviço **conduz** o cursor: a captura toma o mouse e o touchpad
+//! Então o serviço **conduz** o cursor: a captura toma o mouse e o touchpad
 //! (`Capturer::conduzir_o_cursor`), a sessão move o modelo, e este módulo põe o cursor do compositor
 //! exatamente no modelo, pelo ponteiro virtual absoluto — o mesmo pelo qual o outro computador
 //! controla este. Botões e roda, também tomados, são repostos pelo mesmo caminho. O teclado não é
@@ -14,7 +14,7 @@
 //! Só onde há captura **e** injetor: sem os dois, nada é tomado, e a máquina fica como antes.
 
 use ir_input::{CaptureEvent, InjectEvent};
-use ir_session::{Input, Phase, Role};
+use ir_session::{Input, Phase};
 use tracing::{debug, info};
 
 use super::Daemon;
@@ -29,15 +29,14 @@ pub(crate) struct Conducao {
 }
 
 impl Daemon {
-    /// Liga a condução se esta máquina tem o teclado e pode capturar e injetar; desliga no resto.
+    /// Liga a condução se esta máquina controla o outro e pode capturar e injetar; desliga no resto.
     ///
     /// No Windows o serviço nunca tem captura nem injetor próprios — são do agente, que conta a
     /// posição real do cursor —, e a condução não liga.
     #[cfg_attr(windows, allow(dead_code))]
     pub(crate) fn ajustar_conducao(&mut self) {
-        let pode = self.session.role() == Role::Server
-            && self.capturer.is_some()
-            && self.injector.is_some();
+        let pode =
+            self.session.policy().sends() && self.capturer.is_some() && self.injector.is_some();
         if pode == self.cursor.ligada {
             return;
         }
@@ -47,7 +46,7 @@ impl Daemon {
         }
         self.cursor.ultimo = None;
         if pode {
-            info!("este computador tem o teclado: o serviço passa a conduzir o cursor daqui");
+            info!("o serviço passa a conduzir o cursor daqui");
             // O cursor real vai uma vez para o meio da tela, e dali em diante é o modelo.
             self.seed_pointer = false;
             let (largura, altura) = self.screen;
@@ -72,18 +71,7 @@ impl Daemon {
 
     /// Se o controle está aqui e o serviço conduz o cursor.
     fn conduzindo_aqui(&self) -> bool {
-        self.cursor.ligada && self.session.phase() != Phase::Engaged
-    }
-
-    /// Antes de um evento capturado: uma sessão recriada (troca de papel, reconexão) nasce com o
-    /// ponteiro em outro lugar; ela passa a partir de onde o cursor real está.
-    pub(crate) fn modelo_no_cursor(&mut self) {
-        if self.conduzindo_aqui()
-            && let Some((x, y)) = self.cursor.ultimo
-            && self.session.pointer_xy() != (x, y)
-        {
-            self.session.sync_pointer(x, y);
-        }
+        self.cursor.ligada && self.session.phase() != Phase::Sending
     }
 
     /// Depois de um evento capturado com o controle aqui: o cursor acompanha o modelo, e o botão e
@@ -134,7 +122,6 @@ impl Daemon {
 
     /// Um evento capturado localmente (papel de servidor), com a condução do cursor em volta.
     pub(crate) fn capturado(&mut self, evento: CaptureEvent, entrada: Input) {
-        self.modelo_no_cursor();
         self.drive(entrada);
         self.repor_localmente(evento);
     }

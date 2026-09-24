@@ -25,7 +25,7 @@ fn controlling() -> Pair {
         Side::Server,
         Input::LocalPointer(PointerDelta { dx: 5000, dy: 0 }),
     );
-    assert_eq!(pair.server.phase(), Phase::Engaged);
+    assert_eq!(pair.server.phase(), Phase::Sending);
     pair.clear_log();
     pair
 }
@@ -136,7 +136,7 @@ fn ctrl_alt_shift_space_goes_to_the_peer_and_back() {
     key(&mut pair, SPACE, true);
     assert_eq!(
         pair.server.phase(),
-        Phase::Engaged,
+        Phase::Sending,
         "foi sem passar pela borda"
     );
     key(&mut pair, SPACE, false);
@@ -166,7 +166,7 @@ fn with_the_edge_locked_the_pointer_stays_here() {
         Side::Server,
         Input::LocalPointer(PointerDelta { dx: 5000, dy: 0 }),
     );
-    assert_eq!(pair.server.phase(), Phase::Engaged);
+    assert_eq!(pair.server.phase(), Phase::Sending);
 }
 
 #[test]

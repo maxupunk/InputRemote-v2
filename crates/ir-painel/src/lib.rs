@@ -18,6 +18,6 @@ pub use diagnostico::{Extras, relatorio};
 pub use medidas::{JANELA, Voltas, motivo_da_queda};
 pub use retrato::{Entrada, ParGravado, Retrato, estado, nivel};
 pub use traducao::{
-    borda_de, comando_do_agente, economia_na_tela, link_state, papel_de, portador_de,
-    portador_do_texto, role_de, texto_do_portador,
+    borda_de, comando_do_agente, economia_na_tela, link_state, policy_de, politica_de, portador_de,
+    portador_do_texto, texto_do_portador,
 };

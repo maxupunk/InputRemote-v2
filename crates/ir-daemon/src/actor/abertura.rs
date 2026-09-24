@@ -49,7 +49,6 @@ impl Daemon {
 
 #[cfg(test)]
 mod tests {
-    use ir_session::Role;
 
     use super::*;
     use crate::actor::bancada::{Bancada, Feito};
@@ -67,7 +66,7 @@ mod tests {
 
     #[test]
     fn sem_par_gravado_o_pareamento_de_fora_entra() {
-        let mut bancada = Bancada::nova(Role::Server);
+        let mut bancada = Bancada::nova();
         bancada.daemon.anunciar_abertura();
         assert!(
             bancada
@@ -79,7 +78,7 @@ mod tests {
 
     #[test]
     fn com_par_gravado_so_entra_com_a_janela_de_pareamento_aberta() {
-        let mut bancada = Bancada::nova(Role::Server);
+        let mut bancada = Bancada::nova();
         com_par(&mut bancada);
         bancada.daemon.anunciar_abertura();
         assert_eq!(bancada.rede.feitos(), vec![Feito::AceitaPareamento(false)]);
@@ -97,7 +96,7 @@ mod tests {
 
     #[test]
     fn a_decisao_so_e_repetida_quando_muda() {
-        let mut bancada = Bancada::nova(Role::Server);
+        let mut bancada = Bancada::nova();
         bancada.daemon.anunciar_abertura();
         let _ = bancada.rede.feitos();
         bancada.daemon.anunciar_abertura();

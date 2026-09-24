@@ -5,7 +5,7 @@ fn todos_os_pedidos() -> Vec<Pedido> {
     vec![
         Pedido::Estado,
         Pedido::Acompanhar,
-        Pedido::DefinirPapel(crate::status::Papel::Cliente),
+        Pedido::DefinirPolitica(crate::status::Politica::SoOOutro),
         Pedido::DefinirBorda(Borda::Esquerda),
         Pedido::FixarPortador(Some(Portador::Bluetooth)),
         Pedido::Procurar,

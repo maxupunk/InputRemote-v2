@@ -1,9 +1,10 @@
 //! As fases da sessão, e quais transições existem.
 //!
-//! Quatro fases, e a mesma máquina serve aos dois papéis — o que muda é o significado de
-//! [`Phase::Engaged`]: no servidor é "o controle está no par", no cliente é "estou recebendo
-//! entrada". Uma máquina por papel duplicaria as regras de queda e de liberação de teclas,
-//! que são as que não podem divergir.
+//! Não há papel fixo ([ADR-0014](../../../docs/adr/0014-controle-simetrico.md)): qualquer um dos dois
+//! computadores pode levar o controle ao outro. A fase diz **para onde** a entrada está indo agora —
+//! [`Phase::Sending`] de um lado é sempre [`Phase::Receiving`] do outro. Antes havia uma fase só,
+//! `Engaged`, que queria dizer uma coisa em cada papel; com a direção no tipo, uma máquina não tem
+//! como estar "em uso" sem saber se manda ou recebe.
 //!
 //! As transições são enumeradas e testadas. Uma transição não listada não acontece, e
 //! [`Phase::can_move_to`] é o que diz isso — não um comentário.
@@ -21,22 +22,32 @@ pub enum Phase {
     /// trocaram capacidades.
     Handshaking,
 
-    /// A sessão está estabelecida e o controle está **desta** máquina.
+    /// A sessão está estabelecida, e cada um usa a própria tela.
     ///
-    /// No servidor: o ponteiro está na tela local, e a borda do par é vigiada.
-    /// No cliente: nada a fazer além de responder ao *heartbeat*.
+    /// As bordas são vigiadas: encostar na que dá para o par leva o controle para lá.
     Ready,
 
-    /// O controle está do outro lado.
+    /// A entrada daqui vai para o par: o cursor está na tela dele.
     ///
-    /// No servidor: entrada local suprimida, eventos indo para o par.
-    /// No cliente: injetando o que chega.
-    Engaged,
+    /// A entrada local está suprimida; os eventos vão para o par.
+    Sending,
+
+    /// O par está usando esta tela: o que ele manda é injetado aqui.
+    ///
+    /// Mexer no teclado ou no mouse daqui retoma o controle (ADR-0014, "quem mexe por último,
+    /// manda").
+    Receiving,
 }
 
 impl Phase {
     /// Todas as fases, para varreduras e testes exaustivos.
-    pub const ALL: [Self; 4] = [Self::Offline, Self::Handshaking, Self::Ready, Self::Engaged];
+    pub const ALL: [Self; 5] = [
+        Self::Offline,
+        Self::Handshaking,
+        Self::Ready,
+        Self::Sending,
+        Self::Receiving,
+    ];
 
     /// As transições que existem, como tabela.
     ///
@@ -45,25 +56,32 @@ impl Phase {
     /// tabela também. Assim não há como um braço de `match` divergir da intenção sem que a
     /// linha correspondente mude.
     ///
-    /// Note as duas ausências deliberadas: não se vai de [`Phase::Offline`] direto para
-    /// [`Phase::Ready`] (sem handshake não há sessão), e não se vai de [`Phase::Handshaking`]
-    /// direto para [`Phase::Engaged`] (não se entrega o controle a um par que ainda não
-    /// confirmou quem é).
-    const TRANSITIONS: [(Self, Self); 10] = [
+    /// Note as ausências deliberadas: não se vai de [`Phase::Offline`] direto para
+    /// [`Phase::Ready`] (sem handshake não há sessão), e do handshake não se vai direto para
+    /// mandar ou receber (não se entrega o controle a um par que ainda não confirmou quem é).
+    /// De [`Phase::Sending`] direto para [`Phase::Receiving`] existe só para o caso de os dois
+    /// atravessarem ao mesmo tempo: quem cede passa a receber (`session/direction.rs`).
+    const TRANSITIONS: [(Self, Self); 15] = [
         // Cair para offline é sempre possível: é o que toda falha faz.
         (Self::Offline, Self::Offline),
         (Self::Handshaking, Self::Offline),
         (Self::Ready, Self::Offline),
-        (Self::Engaged, Self::Offline),
+        (Self::Sending, Self::Offline),
+        (Self::Receiving, Self::Offline),
         // O caminho de subida.
         (Self::Offline, Self::Handshaking),
         (Self::Handshaking, Self::Ready),
-        // O controle indo e voltando.
-        (Self::Ready, Self::Engaged),
-        (Self::Engaged, Self::Ready),
+        // O controle indo e voltando, nos dois sentidos.
+        (Self::Ready, Self::Sending),
+        (Self::Sending, Self::Ready),
+        (Self::Ready, Self::Receiving),
+        (Self::Receiving, Self::Ready),
+        // Os dois atravessaram juntos, e este cedeu.
+        (Self::Sending, Self::Receiving),
         // Reconectar sem perder a sessão passa pelo handshake de novo.
         (Self::Ready, Self::Handshaking),
-        (Self::Engaged, Self::Handshaking),
+        (Self::Sending, Self::Handshaking),
+        (Self::Receiving, Self::Handshaking),
     ];
 
     /// Se existe transição direta desta fase para aquela.
@@ -75,16 +93,16 @@ impl Phase {
     /// Se a sessão está estabelecida — handshake concluído e enlace vivo.
     #[must_use]
     pub const fn is_established(self) -> bool {
-        matches!(self, Self::Ready | Self::Engaged)
+        matches!(self, Self::Ready | Self::Sending | Self::Receiving)
     }
 
-    /// Se há alguma coisa possivelmente pressionada do outro lado.
+    /// Se a entrada está atravessando, num sentido ou no outro.
     ///
     /// É a pergunta que decide se um `ReleaseAll` precisa ser emitido ao cair. Emitir a mais
     /// é inofensivo — `ReleaseAll` é idempotente —, e emitir a menos deixa tecla presa.
     #[must_use]
     pub const fn may_hold_input(self) -> bool {
-        matches!(self, Self::Engaged)
+        matches!(self, Self::Sending | Self::Receiving)
     }
 
     /// Nome estável, para interface e log.
@@ -94,7 +112,8 @@ impl Phase {
             Self::Offline => "desconectado",
             Self::Handshaking => "conectando",
             Self::Ready => "pronto",
-            Self::Engaged => "em uso",
+            Self::Sending => "controlando o outro",
+            Self::Receiving => "controlado pelo outro",
         }
     }
 }
@@ -123,10 +142,10 @@ mod tests {
     }
 
     #[test]
-    fn the_table_covers_exactly_ten_transitions() {
+    fn the_table_covers_exactly_fifteen_transitions() {
         // O número é parte da especificação: se ele mudar, alguém acrescentou ou removeu um
         // caminho, e isso precisa ser deliberado.
-        assert_eq!(Phase::TRANSITIONS.len(), 10);
+        assert_eq!(Phase::TRANSITIONS.len(), 15);
     }
 
     #[test]
@@ -143,16 +162,28 @@ mod tests {
 
     #[test]
     fn there_is_no_shortcut_from_offline_to_a_working_session() {
-        assert!(
-            !Phase::Offline.can_move_to(Phase::Ready),
-            "sem handshake não há sessão"
-        );
-        assert!(!Phase::Offline.can_move_to(Phase::Engaged));
+        for phase in [Phase::Ready, Phase::Sending, Phase::Receiving] {
+            assert!(
+                !Phase::Offline.can_move_to(phase),
+                "sem handshake não há sessão"
+            );
+        }
     }
 
     #[test]
     fn control_is_never_handed_over_before_the_handshake_finishes() {
-        assert!(!Phase::Handshaking.can_move_to(Phase::Engaged));
+        assert!(!Phase::Handshaking.can_move_to(Phase::Sending));
+        assert!(!Phase::Handshaking.can_move_to(Phase::Receiving));
+    }
+
+    #[test]
+    fn receiving_never_jumps_straight_to_sending() {
+        // Retomar o controle passa por usar a própria tela; ir para o par é outra travessia.
+        assert!(!Phase::Receiving.can_move_to(Phase::Sending));
+        assert!(
+            Phase::Sending.can_move_to(Phase::Receiving),
+            "os dois juntos"
+        );
     }
 
     #[test]
@@ -166,16 +197,21 @@ mod tests {
     }
 
     #[test]
-    fn only_engaged_may_be_holding_input() {
+    fn only_crossing_phases_may_be_holding_input() {
         for phase in Phase::ALL {
-            assert_eq!(phase.may_hold_input(), phase == Phase::Engaged, "{phase}");
+            assert_eq!(
+                phase.may_hold_input(),
+                matches!(phase, Phase::Sending | Phase::Receiving),
+                "{phase}"
+            );
         }
     }
 
     #[test]
-    fn established_means_ready_or_engaged() {
+    fn established_means_ready_or_crossing() {
         assert!(Phase::Ready.is_established());
-        assert!(Phase::Engaged.is_established());
+        assert!(Phase::Sending.is_established());
+        assert!(Phase::Receiving.is_established());
         assert!(!Phase::Offline.is_established());
         assert!(
             !Phase::Handshaking.is_established(),
@@ -197,10 +233,6 @@ mod tests {
 
     #[test]
     fn the_default_phase_is_the_safe_one() {
-        assert_eq!(
-            Phase::default(),
-            Phase::Offline,
-            "começar conectado seria mentira"
-        );
+        assert_eq!(Phase::default(), Phase::Offline);
     }
 }

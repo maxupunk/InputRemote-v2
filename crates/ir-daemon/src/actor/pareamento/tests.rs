@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 
 use ir_crypto::PublicKey;
 use ir_proto::carrier::Carrier;
-use ir_session::{Input, Role};
+use ir_session::Input;
 
 use super::*;
 use crate::actor::bancada::{Bancada, Feito};
@@ -60,7 +60,7 @@ fn endereco() -> Endereco {
 
 /// Um serviço que já conhece o endereço do outro computador, sem par gravado.
 fn com_endereco() -> Bancada {
-    let mut bancada = Bancada::nova(Role::Server);
+    let mut bancada = Bancada::nova();
     bancada.daemon.peer = Some(endereco());
     bancada.daemon.alcance.anotar(endereco());
     bancada
@@ -108,7 +108,7 @@ fn com_par_gravado_o_servico_tenta_reconectar() {
 fn o_endereco_decide_o_portador_da_reconexao() {
     // O ponto da fiação de portador: um par visto pelo rádio precisa ser procurado pelo
     // rádio. Antes, tudo ia para o socket de rede, qualquer que fosse o portador.
-    let mut bancada = Bancada::nova(Role::Server);
+    let mut bancada = Bancada::nova();
     let radio = Endereco::ler("AC:50:DE:47:EB:28").expect("endereço de rádio");
     bancada.daemon.peer = Some(radio);
     bancada.daemon.alcance.anotar(radio);

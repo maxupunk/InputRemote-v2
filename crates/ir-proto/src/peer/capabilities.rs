@@ -68,6 +68,9 @@ pub struct Capabilities {
     pub privileged_input: PrivilegedInputLevel,
     /// Consegue gerar Ctrl+Alt+Del (`SendSAS`, com a política habilitada).
     pub secure_attention: bool,
+    /// Recusa ser controlada: a política dela é "só este controla o outro" (ADR-0014). Com isto,
+    /// a borda do lado de lá vira parede, em vez de o ponteiro atravessar e ser devolvido.
+    pub declines_control: bool,
 }
 
 impl Capabilities {
@@ -85,6 +88,7 @@ impl Capabilities {
             bulk_transfer: self.bulk_transfer && server.bulk_transfer,
             privileged_input: self.privileged_input,
             secure_attention: self.secure_attention,
+            declines_control: self.declines_control,
         }
     }
 }
@@ -104,6 +108,7 @@ mod tests {
             bulk_transfer: true,
             privileged_input: PrivilegedInputLevel::LockScreen,
             secure_attention: true,
+            declines_control: false,
         };
         let server = Capabilities {
             clipboard: ClipboardCapabilities {
@@ -114,6 +119,7 @@ mod tests {
             bulk_transfer: true,
             privileged_input: PrivilegedInputLevel::None,
             secure_attention: false,
+            declines_control: false,
         };
         let joint = client.negotiated_with(server);
         assert!(joint.clipboard.text, "ambos suportam");

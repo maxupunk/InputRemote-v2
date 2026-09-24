@@ -209,7 +209,7 @@ fn mostrar_resposta(resposta: &Resposta) -> bool {
         Resposta::Estado(estado) => {
             println!("ESTADO");
             println!("  enlace:   {:?}", estado.enlace);
-            println!("  papel:    {:?}", estado.papel);
+            println!("  política: {:?}", estado.politica);
             println!("  portador: {:?}", estado.portador);
             println!("  motivo:   {:?}", estado.motivo_do_portador);
             println!("  par:      {:?}", estado.par.as_ref().map(|p| p.conectado));

@@ -13,7 +13,7 @@
 //!     name: MachineName::new("bancada").unwrap(),
 //!     capabilities: Capabilities::default(),
 //! };
-//! let mut session = Session::new(SessionConfig::server(Edge::Right), identity);
+//! let mut session = Session::new(SessionConfig::new(Edge::Right), identity);
 //! let mut out = CommandBatch::new();
 //!
 //! session.step(Timestamp::ZERO, Input::CarrierUp(Carrier::Udp), &mut out);
@@ -62,12 +62,13 @@ pub use ir_confiabilidade as reliability;
 /// O tempo injetado, que mora no `ir-confiabilidade` junto com quem mais o usa.
 pub use ir_confiabilidade::time;
 
-pub use config::{Role, SessionConfig, Timings};
+pub use config::{Policy, SessionConfig, Timings};
 pub use event::{
     CarrierChoice, ClipText, Command, CommandBatch, Injection, Input, LinkDown, Notice,
 };
 pub use phase::Phase;
 pub use session::{
-    CarrierSet, CarrierWins, ConfigError, LocalIdentity, PeerInfo, Route, RouteReport, Session,
+    CarrierSet, CarrierWins, ConfigError, LocalIdentity, PeerInfo, RECLAIM_DISTANCE, Route,
+    RouteReport, Session,
 };
 pub use time::{Millis, Timestamp};

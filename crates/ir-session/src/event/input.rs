@@ -66,11 +66,17 @@ pub enum Input {
     /// O arranjo de telas desta máquina mudou.
     LocalScreens(ScreenLayout),
 
-    /// O usuário escolheu por qual borda desta tela se chega ao par.
+    /// O usuário escolheu, nesta tela, de que lado fica o par.
     ///
-    /// Só vale no servidor, que tem o teclado e o mouse e é a fonte de verdade da borda. O cliente
-    /// não escolhe: ele usa a oposta da que o servidor anunciar.
-    SetPeerEdge(Edge),
+    /// Vale dos dois lados ([ADR-0014](../../../docs/adr/0014-controle-simetrico.md)): o par passa
+    /// a usar a oposta. `chosen_at` é o relógio de parede em milissegundos desde 1970 — a sessão não
+    /// lê relógio —, e decide qual escolha vale quando as duas pontas divergem.
+    SetPeerEdge {
+        /// A borda desta tela que dá para a tela do par.
+        edge: Edge,
+        /// Quando foi escolhida.
+        chosen_at: u64,
+    },
 
     /// O agente desta máquina está pronto para injetar.
     AgentReady,

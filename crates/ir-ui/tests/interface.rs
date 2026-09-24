@@ -12,7 +12,7 @@
     clippy::indexing_slicing
 )]
 
-use ir_ipc::status::Papel;
+use ir_ipc::status::Politica;
 use ir_ipc::vocabulario::{Borda, Portador};
 use ir_ipc::{Aviso, Estado, Pedido, Resposta};
 use ir_ui::ponte;
@@ -192,15 +192,11 @@ fn fixar_o_bluetooth_muda_o_motivo_que_a_tela_explica() {
 }
 
 #[test]
-fn desligar_a_tela_de_bloqueio_no_cliente_explica_em_preferencias_sem_pintar_de_laranja() {
+fn desligar_a_tela_de_bloqueio_explica_em_preferencias_sem_pintar_de_laranja() {
     let servico = ServicoSimulado::new();
     conectar(&servico);
     let par = estado(&servico).par.expect("par").maquina;
 
-    assert!(matches!(
-        servico.pedir(Pedido::DefinirPapel(Papel::Cliente)),
-        Resposta::Feito
-    ));
     let desligar = Pedido::PermitirTelaDeBloqueio {
         maquina: par,
         permitir: false,
@@ -208,7 +204,7 @@ fn desligar_a_tela_de_bloqueio_no_cliente_explica_em_preferencias_sem_pintar_de_
     assert!(matches!(servico.pedir(desligar), Resposta::Feito));
 
     let tela = ponte::estado_ui(&estado(&servico));
-    // Opcional e desligada por padrão: não é impedimento, e o controlado fica verde.
+    // Opcional e desligada por padrão: não é impedimento, e a tela fica verde.
     assert!(tela.impedimento.is_empty(), "{}", tela.impedimento);
     assert_eq!(tela.saude, ponte::SAUDE_BOA);
     // A explicação, com o que fazer, mora em Preferências.
@@ -220,27 +216,40 @@ fn desligar_a_tela_de_bloqueio_no_cliente_explica_em_preferencias_sem_pintar_de_
 }
 
 #[test]
-fn no_computador_controlado_a_borda_nao_se_escolhe() {
-    // A borda é do servidor, e o cliente usa a oposta. A tela esconde a escolha pelo campo
-    // `servidor`, e o serviço recusa o pedido se ele chegar mesmo assim.
+fn a_posicao_do_outro_se_escolhe_dos_dois_lados() {
+    // Sem dono do teclado (ADR-0014): qualquer computador diz de que lado fica o outro, mesmo o que
+    // só é controlado.
     let servico = ServicoSimulado::new();
     conectar(&servico);
     assert!(matches!(
-        servico.pedir(Pedido::DefinirPapel(Papel::Cliente)),
+        servico.pedir(Pedido::DefinirPolitica(Politica::SoOOutro)),
         Resposta::Feito
     ));
-    assert!(!ponte::estado_ui(&estado(&servico)).servidor);
-
-    let recusa = servico.pedir(Pedido::DefinirBorda(Borda::Acima));
-    let Resposta::Falha(falha) = recusa else {
-        panic!("o cliente não escolhe a borda, veio {recusa:?}");
-    };
+    let tela = ponte::estado_ui(&estado(&servico));
+    assert_eq!(tela.politica, 2);
     assert!(
-        falha.o_que_fazer().contains("teclado e o mouse"),
-        "{}",
-        falha.o_que_fazer()
+        !tela.manda,
+        "quem só é controlado não manda o teclado ao outro"
     );
-    assert_ne!(estado(&servico).borda_do_par, Borda::Acima);
+
+    assert!(matches!(
+        servico.pedir(Pedido::DefinirBorda(Borda::Acima)),
+        Resposta::Feito
+    ));
+    assert_eq!(estado(&servico).borda_do_par, Borda::Acima);
+}
+
+#[test]
+fn por_padrao_os_dois_controlam_e_a_tela_explica_como_voltar() {
+    let servico = ServicoSimulado::new();
+    conectar(&servico);
+    let tela = ponte::estado_ui(&estado(&servico));
+    assert_eq!(tela.politica, 0);
+    assert!(
+        tela.politica_nota.contains("mexa no mouse"),
+        "{}",
+        tela.politica_nota
+    );
 }
 
 #[test]

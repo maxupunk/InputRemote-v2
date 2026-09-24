@@ -39,6 +39,7 @@
 )]
 
 mod channels;
+pub mod incarnation;
 mod receiver;
 mod sender;
 pub mod sequences;

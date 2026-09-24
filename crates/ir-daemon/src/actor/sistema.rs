@@ -32,9 +32,10 @@ impl Daemon {
         }
     }
 
-    /// A tela daqui bloqueou: se esta máquina tem o teclado, o par que ela controlava bloqueia junto.
+    /// A tela daqui bloqueou: o par bloqueia junto, se a pessoa quis assim. Quem decide se aceita
+    /// é o par, pela política dele — um computador que nunca é controlado não bloqueia a pedido.
     pub(super) fn bloquear_o_par_junto(&mut self) {
-        if self.session.role() != ir_session::Role::Server || !self.config.bloquear_juntos {
+        if !self.config.bloquear_juntos {
             return;
         }
         info!("a tela daqui bloqueou: pedindo ao par que bloqueie a dele");
@@ -84,14 +85,14 @@ impl Daemon {
 #[allow(clippy::expect_used)]
 mod tests {
     use ir_proto::carrier::Carrier;
-    use ir_session::{Input, Role};
+    use ir_session::Input;
 
     use super::*;
     use crate::actor::bancada::Bancada;
 
     #[test]
     fn suspender_derruba_a_sessao_e_para_de_discar_ate_acordar() {
-        let mut bancada = Bancada::nova(Role::Client);
+        let mut bancada = Bancada::nova();
         bancada.daemon.drive(Input::CarrierUp(Carrier::Udp));
         assert_ne!(bancada.daemon.session.phase(), Phase::Offline);
 
@@ -105,7 +106,7 @@ mod tests {
 
     #[test]
     fn travar_a_borda_vale_e_aparece_na_janela() {
-        let mut bancada = Bancada::nova(Role::Server);
+        let mut bancada = Bancada::nova();
         let resposta = bancada.daemon.tratar(
             ir_ipc::Pedido::TravarBorda(true),
             ir_transferencia::Leitor::Proprio,
@@ -116,7 +117,7 @@ mod tests {
 
     #[test]
     fn bloquear_juntos_nasce_ligado_e_desligar_fica_gravado() {
-        let mut bancada = Bancada::nova(Role::Server);
+        let mut bancada = Bancada::nova();
         assert!(bancada.daemon.estado().bloquear_juntos);
         let _ = bancada.daemon.tratar(
             ir_ipc::Pedido::BloquearJuntos(false),
@@ -129,7 +130,7 @@ mod tests {
 
     #[test]
     fn so_quem_tem_o_teclado_pede_ao_par_que_bloqueie() {
-        let mut bancada = Bancada::nova(Role::Client);
+        let mut bancada = Bancada::nova();
         bancada.daemon.drive(Input::CarrierUp(Carrier::Udp));
         let _ = bancada.rede.feitos();
         bancada.daemon.on_sistema(EventoDoSistema::TelaBloqueada);

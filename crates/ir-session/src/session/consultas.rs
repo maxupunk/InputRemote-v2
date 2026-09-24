@@ -12,7 +12,7 @@ use ir_proto::input::InputState;
 use ir_proto::screens::Edge;
 
 use super::{CarrierWins, PeerInfo, Route, RouteReport, Session};
-use crate::config::Role;
+use crate::config::Policy;
 use crate::phase::Phase;
 use crate::time::{Millis, Timestamp};
 
@@ -73,15 +73,15 @@ impl Session {
         self.peer.as_ref()
     }
 
-    /// O papel desta máquina.
+    /// Quem pode controlar quem, nesta sessão.
     #[must_use]
-    pub const fn role(&self) -> Role {
-        self.config.role
+    pub const fn policy(&self) -> Policy {
+        self.config.policy
     }
 
     /// A borda desta tela que dá para a tela do par — a única que atravessa.
     ///
-    /// No servidor é a escolhida pelo usuário; no cliente é a oposta da que o servidor anunciou.
+    /// A escolhida nesta tela, ou a oposta da que o par escolheu por último (`session/edge.rs`).
     /// Exposta para quem troca a borda poder confirmar que a sessão **em uso** é a da borda nova:
     /// a periferia já mostrou uma borda enquanto a sessão atravessava por outra.
     #[must_use]

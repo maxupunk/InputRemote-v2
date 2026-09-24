@@ -8,7 +8,7 @@
 //! vindas do Rust sem custo de manutenção, então borda e portador viajam como `int` — e a conversão
 //! nos dois sentidos fica aqui, com teste de ida e volta para cada valor.
 
-use ir_ipc::status::{Estado, LinkState, Papel};
+use ir_ipc::status::{Estado, LinkState, Politica};
 use ir_ipc::vocabulario::{Borda, Portador};
 use slint::SharedString;
 
@@ -39,7 +39,9 @@ pub fn estado_ui(estado: &Estado) -> EstadoUi {
         enlace: estado.frase_do_enlace().into(),
         saude: saude(estado),
         conectado: estado.enlace.conectado(),
-        servidor: estado.papel == Papel::Servidor,
+        politica: indice_da_politica(estado.politica),
+        politica_nota: estado.politica.frase().into(),
+        manda: estado.vai(),
         borda: indice_da_borda(estado.borda_do_par),
         tem_par: estado.par.is_some(),
         par_nome: nome_do_par(estado),
@@ -74,6 +76,43 @@ pub fn estado_ui(estado: &Estado) -> EstadoUi {
     }
 }
 
+/// O que dizer quando o outro computador mudou de lado na tela dele, e este acompanhou.
+///
+/// A posição muda sem ninguém tocar nesta tela; sem a frase, parece defeito.
+#[must_use]
+pub const fn frase_da_borda_ajustada(borda: ir_ipc::Borda) -> &'static str {
+    match borda {
+        ir_ipc::Borda::Esquerda => {
+            "O outro computador mudou de lado: agora ele fica à esquerda deste."
+        }
+        ir_ipc::Borda::Direita => {
+            "O outro computador mudou de lado: agora ele fica à direita deste."
+        }
+        ir_ipc::Borda::Acima => "O outro computador mudou de lado: agora ele fica acima deste.",
+        ir_ipc::Borda::Abaixo => "O outro computador mudou de lado: agora ele fica abaixo deste.",
+    }
+}
+
+/// A política no índice das alternativas da tela.
+#[must_use]
+pub const fn indice_da_politica(politica: Politica) -> i32 {
+    match politica {
+        Politica::Ambos => 0,
+        Politica::SoEste => 1,
+        Politica::SoOOutro => 2,
+    }
+}
+
+/// O índice das alternativas da tela, como política. Um índice desconhecido é "os dois".
+#[must_use]
+pub const fn politica_do_indice(indice: i32) -> Politica {
+    match indice {
+        1 => Politica::SoEste,
+        2 => Politica::SoOOutro,
+        _ => Politica::Ambos,
+    }
+}
+
 /// A dica do ícone da bandeja: o estado curto e a frase principal.
 ///
 /// O Windows corta a dica em 127 caracteres; a frase principal é cortada antes, numa palavra.
@@ -102,7 +141,9 @@ pub fn dica_da_bandeja(enlace: &str, resumo: &str) -> String {
 /// usuário a ignorar vermelho.
 #[must_use]
 pub fn saude(estado: &Estado) -> i32 {
-    if !estado.agente_pronto {
+    // Vermelho só quando nada atravessa, em nenhum sentido: uma máquina que só não consegue ir ao
+    // outro ainda funciona, e é laranja, com o motivo no impedimento.
+    if !estado.vai() && !estado.vem() {
         return SAUDE_RUIM;
     }
     // Uma pausa é vontade de alguém, e não defeito: nem vermelho, nem verde.
@@ -110,7 +151,7 @@ pub fn saude(estado: &Estado) -> i32 {
         return SAUDE_ATENCAO;
     }
     match estado.enlace {
-        LinkState::Pronto | LinkState::EmUso => {
+        LinkState::Pronto | LinkState::Controlando | LinkState::Controlado => {
             if estado.impedimento().is_some() {
                 SAUDE_ATENCAO
             } else {

@@ -80,7 +80,7 @@ impl Daemon {
             // As duas trocas valem na hora (`super::papel`): a de papel refaz a sessão, e a de borda
             // só a ajusta — e só no servidor, que é quem decide a borda.
             Pedido::DefinirBorda(borda) => self.trocar_borda(borda.no_protocolo()),
-            Pedido::DefinirPapel(papel) => self.trocar_papel(ir_painel::role_de(papel)),
+            Pedido::DefinirPolitica(p) => self.definir_politica(ir_painel::policy_de(p)),
             Pedido::Diagnostico => Resposta::Diagnostico(self.diagnostico()),
             // Arquivos e clipboard são o outro assunto desta conexão, e ficam juntos.
             outro => self.tratar_conteudo(outro, leitor),

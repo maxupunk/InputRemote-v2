@@ -1,11 +1,10 @@
-//! Os botões da janela ligados aos pedidos: configuração (papel, borda, portador) e sessão
+//! Os botões da janela ligados aos pedidos: configuração (política, borda, portador) e sessão
 //! (encerrar, esquecer, recebidos, economia de energia, diagnóstico).
 //!
 //! Só tradução de clique em pedido. O que o clique muda chega de volta pelo aviso de estado.
 
 use std::rc::Rc;
 
-use ir_ipc::status::Papel;
 use ir_ipc::{Pedido, Resposta};
 use slint::ComponentHandle;
 
@@ -17,13 +16,8 @@ pub(super) fn ligar_configuracao(janela: &Janela, contexto: &Rc<Contexto>) {
     let acoes = janela.global::<Acoes>();
 
     let alvo = Rc::clone(contexto);
-    acoes.on_definir_papel(move |servidor| {
-        let papel = if servidor {
-            Papel::Servidor
-        } else {
-            Papel::Cliente
-        };
-        alvo.enviar(Pedido::DefinirPapel(papel));
+    acoes.on_definir_politica(move |indice| {
+        alvo.enviar(Pedido::DefinirPolitica(ponte::politica_do_indice(indice)));
     });
 
     let alvo = Rc::clone(contexto);

@@ -20,8 +20,12 @@ export struct EstadoUi {
     saude: int,
     /// Se há sessão de pé.
     conectado: bool,
-    /// Se esta máquina tem o teclado e o mouse.
-    servidor: bool,
+    /// Quem pode controlar quem: 0 os dois, 1 só este controla, 2 só o outro controla este.
+    politica: int,
+    /// O que a política escolhida quer dizer, em uma frase.
+    politica-nota: string,
+    /// Se o teclado e o mouse daqui podem ir para o outro computador.
+    manda: bool,
     /// A borda por onde se atravessa: 0 esquerda, 1 direita, 2 acima, 3 abaixo.
     borda: int,
     /// Se há par pareado.
@@ -184,8 +188,8 @@ export global Dados {
 }
 
 export global Acoes {
-    /// Trocar o papel desta máquina. `true` para servidor.
-    callback definir-papel(bool);
+    /// Mudar quem pode controlar quem: 0 os dois, 1 só este, 2 só o outro.
+    callback definir-politica(int);
     /// Trocar a borda de travessia: 0 esquerda, 1 direita, 2 acima, 3 abaixo.
     callback definir-borda(int);
     /// Fixar portador: 0 automático, 1 Bluetooth, 2 rede.

@@ -28,10 +28,12 @@ pub enum LinkState {
     Desconectado,
     /// Um meio subiu; as duas máquinas estão se reconhecendo.
     Conectando,
-    /// Pronto, com o controle nesta máquina.
+    /// Pronto: cada um usa a própria tela.
     Pronto,
-    /// O controle está do outro lado.
-    EmUso,
+    /// O teclado e o mouse daqui estão controlando o outro computador.
+    Controlando,
+    /// O outro computador está usando esta tela.
+    Controlado,
 }
 
 impl LinkState {
@@ -42,35 +44,61 @@ impl LinkState {
             Self::Desconectado => "Desconectado",
             Self::Conectando => "Conectando…",
             Self::Pronto => "Pronto",
-            Self::EmUso => "Controlando o outro computador",
+            Self::Controlando => "Controlando o outro computador",
+            Self::Controlado => "Controlado pelo outro computador",
         }
     }
 
     /// Se há sessão de pé.
     #[must_use]
     pub const fn conectado(self) -> bool {
-        matches!(self, Self::Pronto | Self::EmUso)
+        matches!(self, Self::Pronto | Self::Controlando | Self::Controlado)
     }
 }
 
-/// O papel desta máquina.
+/// Quem pode controlar quem ([ADR-0014](../../../docs/adr/0014-controle-simetrico.md)).
+///
+/// Não é um papel: com [`Politica::Ambos`], o padrão, qualquer um dos dois computadores leva o
+/// controle ao outro, e quem está usando agora é só o [`LinkState`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum Papel {
-    /// Tem o teclado e o mouse.
+pub enum Politica {
+    /// Os dois controlam um ao outro.
     #[default]
-    Servidor,
-    /// É controlada.
-    Cliente,
+    Ambos,
+    /// Este controla o outro, e nunca é controlado.
+    SoEste,
+    /// Este é controlado pelo outro, e nunca o controla.
+    SoOOutro,
 }
 
-impl Papel {
-    /// A frase que a interface mostra.
+impl Politica {
+    /// A explicação curta de cada opção, para a tela.
     #[must_use]
     pub const fn frase(self) -> &'static str {
         match self {
-            Self::Servidor => "Este computador tem o teclado e o mouse",
-            Self::Cliente => "Este computador é controlado pelo outro",
+            Self::Ambos => {
+                "O teclado e o mouse de cada computador controlam o outro: leve o ponteiro até a \
+                 borda para ir, e mexa no mouse daqui para voltar."
+            }
+            Self::SoEste => {
+                "O teclado e o mouse daqui controlam o outro computador, e o outro nunca vem para cá."
+            }
+            Self::SoOOutro => {
+                "O teclado e o mouse do outro computador controlam este, e os daqui ficam só aqui."
+            }
         }
+    }
+
+    /// Se o teclado e o mouse daqui podem ir para o outro computador.
+    #[must_use]
+    pub const fn manda(self) -> bool {
+        !matches!(self, Self::SoOOutro)
+    }
+
+    /// Se o outro computador pode vir para cá.
+    #[must_use]
+    pub const fn recebe(self) -> bool {
+        !matches!(self, Self::SoEste)
     }
 }
 
@@ -157,8 +185,8 @@ pub struct ParConhecido {
 pub struct Estado {
     /// Em que ponto a sessão está.
     pub enlace: LinkState,
-    /// O papel desta máquina.
-    pub papel: Papel,
+    /// Quem pode controlar quem.
+    pub politica: Politica,
     /// De que lado fica a outra tela.
     pub borda_do_par: Borda,
     /// Esta máquina, para a impressão digital aparecer na tela de pareamento.
@@ -216,6 +244,11 @@ pub struct Estado {
     pub borda_travada: bool,
     /// Se o outro computador bloqueia junto quando este bloquear.
     pub bloquear_juntos: bool,
+    /// Se esta máquina consegue ler o próprio teclado e mouse, para controlar o outro.
+    ///
+    /// Distinto de [`Self::agente_pronto`], que é conseguir **receber**: no Linux a captura e a
+    /// injeção são peças separadas, e uma pode faltar sem a outra.
+    pub captura_pronta: bool,
 }
 
 impl Estado {
@@ -230,15 +263,9 @@ impl Estado {
     }
 
     /// A frase curta do enlace, do ponto de vista desta máquina.
-    ///
-    /// "Controlando o outro computador" só é verdade de quem tem o teclado; o controlado lia a
-    /// mesma frase, como se fosse ele no comando.
     #[must_use]
     pub const fn frase_do_enlace(&self) -> &'static str {
-        match (self.enlace, self.papel) {
-            (LinkState::EmUso, Papel::Cliente) => "Controlado pelo outro computador",
-            _ => self.enlace.frase(),
-        }
+        self.enlace.frase()
     }
 
     /// Um estado de máquina recém-instalada: nada pareado, nada conectado.
@@ -246,7 +273,7 @@ impl Estado {
     pub fn recem_instalado(maquina: Maquina, nome: Nome) -> Self {
         Self {
             enlace: LinkState::Desconectado,
-            papel: Papel::Servidor,
+            politica: Politica::Ambos,
             borda_do_par: Borda::Direita,
             esta_maquina: maquina,
             este_nome: nome,
@@ -268,120 +295,13 @@ impl Estado {
             pasta_de_recebidos: String::new(),
             borda_travada: false,
             bloquear_juntos: true,
-        }
-    }
-
-    /// A frase principal que a interface mostra, em uma linha.
-    ///
-    /// É a coisa mais importante da tela: se ela responder "por que não está funcionando?"
-    /// sozinha, o usuário não precisa procurar em mais lugar nenhum.
-    #[must_use]
-    pub fn resumo(&self) -> String {
-        if let Some(par) = self.par.as_ref() {
-            match self.pausa {
-                Some(Pausa::Aqui) => {
-                    return "Pausado. Teclado, mouse e cópias não atravessam até você retomar."
-                        .to_owned();
-                }
-                Some(Pausa::NoPar) => {
-                    return format!("{} pausou o compartilhamento.", par.nome);
-                }
-                None => {}
-            }
-        }
-        match (self.enlace, self.par.as_ref()) {
-            (LinkState::Desconectado, None) => {
-                "Nenhum computador pareado. Pareie um para começar.".to_owned()
-            }
-            (LinkState::Desconectado, Some(par)) => match self.ultima_queda {
-                Some(motivo) => format!("{} — {}", par.nome, motivo.frase()),
-                None => format!("{} está pareado, mas não está por perto.", par.nome),
-            },
-            (LinkState::Conectando, Some(par)) => format!("Conectando a {}…", par.nome),
-            (LinkState::Conectando, None) => "Conectando…".to_owned(),
-            // "Leve o ponteiro até a borda" com a captura parada mandava fazer o que não ia dar
-            // certo; o porquê está no impedimento, logo abaixo (log 47).
-            (LinkState::Pronto, Some(par)) if !self.agente_pronto => {
-                format!(
-                    "Conectado a {}, mas o teclado e o mouse não atravessam.",
-                    par.nome
-                )
-            }
-            (LinkState::Pronto, Some(par)) if self.papel == Papel::Cliente => {
-                format!(
-                    "Conectado a {}. O teclado e o mouse de lá controlam este.",
-                    par.nome
-                )
-            }
-            (LinkState::Pronto, Some(par)) => {
-                format!("Conectado a {}. Leve o ponteiro até a borda.", par.nome)
-            }
-            (LinkState::EmUso, Some(par)) if self.papel == Papel::Servidor => {
-                format!("Controlando {}.", par.nome)
-            }
-            (LinkState::EmUso, Some(par)) => format!("{} está usando este computador.", par.nome),
-            (_, None) => self.enlace.frase().to_owned(),
-        }
-    }
-
-    /// O que impede o produto de funcionar agora, se algo impedir.
-    ///
-    /// Devolve a frase de um único problema — o mais grave. Mostrar cinco avisos ao mesmo tempo
-    /// é a mesma coisa que não mostrar nenhum.
-    #[must_use]
-    pub fn impedimento(&self) -> Option<&'static str> {
-        // Qual lado falhou depende do papel: quem tem o teclado precisa **ler** o daqui, quem é
-        // controlado precisa **digitar** o que vem de lá. "O componente que digita" no computador
-        // que tem o teclado apontava para o lugar errado (log 47).
-        if !self.agente_pronto {
-            return Some(match self.papel {
-                Papel::Servidor => {
-                    "Este computador não consegue ler o teclado e o mouse ligados a ele, então \
-                     não controla o outro. Instale a versão mais nova do InputRemote aqui, ou \
-                     deixe o teclado com o outro computador em Preferências."
-                }
-                Papel::Cliente => {
-                    "Este computador não consegue receber o teclado e o mouse do outro. Instale \
-                     a versão mais nova do InputRemote aqui; se continuar, veja o diagnóstico em \
-                     Preferências."
-                }
-            });
-        }
-        // A tela de bloqueio não entra aqui: ela é opcional e vem desligada por padrão
-        // ([04, §6](../../../docs/04-seguranca.md)). Tratá-la como impedimento deixava o
-        // computador controlado sempre em laranja, com tudo funcionando — e o laranja deixa de
-        // querer dizer alguma coisa. A explicação dela mora em Preferências
-        // ([`Self::sobre_a_tela_de_bloqueio`]).
-        None
-    }
-
-    /// A situação da digitação na tela de bloqueio, para Preferências.
-    ///
-    /// Não conseguir e não ter deixado são coisas diferentes, com soluções diferentes: dizer "não
-    /// aceita" a quem só precisa ligar uma opção manda a pessoa investigar a instalação à toa.
-    #[must_use]
-    pub fn sobre_a_tela_de_bloqueio(&self) -> &'static str {
-        match (
-            self.nivel_privilegiado.suficiente(),
-            self.bloqueio_permitido,
-        ) {
-            (false, _) => {
-                "Este computador não consegue receber digitação na tela de bloqueio nesta \
-                 instalação. Instale o InputRemote como serviço para liberar."
-            }
-            (true, false) => {
-                "Desligada: o outro computador não digita na tela de bloqueio nem nos pedidos de \
-                 permissão daqui. Ligue para poder desbloquear este computador de lá."
-            }
-            (true, true) => {
-                "Ligada: o outro computador pode digitar a senha na tela de bloqueio e nos pedidos \
-                 de permissão daqui."
-            }
+            captura_pronta: false,
         }
     }
 }
 
 mod avisos;
+mod frases;
 mod queda;
 
 pub use avisos::{AvisoDeRede, EconomiaDoWifi, Pausa};

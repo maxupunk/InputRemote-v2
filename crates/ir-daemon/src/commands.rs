@@ -59,9 +59,10 @@ impl Daemon {
     /// Um aviso da sessão: registrar, e o que ele muda no serviço e na janela.
     fn on_notice(&mut self, notice: &Notice) {
         log_notice(notice);
-        // A borda que a sessão passou a usar precisa ir para o arquivo e para a janela.
-        if let Notice::EdgeChanged { edge } = notice {
-            self.adotar_borda(*edge);
+        // A borda que o par escolheu precisa ir para o arquivo e para a janela; a escolhida aqui
+        // já foi gravada antes de chegar à sessão.
+        if let Notice::EdgeAdopted { edge, chosen_at } = notice {
+            self.adotar_borda(*edge, *chosen_at);
         }
         // O controle saiu desta máquina: o que está no clipboard daqui vai junto. É o
         // gatilho que funciona onde o sistema não avisa mudança de clipboard — o GNOME não
@@ -92,7 +93,6 @@ impl Daemon {
                 self.par_retomou();
                 self.lembrar_nome_do_par(peer.as_str());
             }
-            Notice::AdoptRole { role, chosen_at } => self.adotar_papel(*role, *chosen_at),
             Notice::PeerCannotSecureAttention => self.ctrl_alt_del_nao_saiu(),
             Notice::PeerProtectedDesktop { refused } => {
                 self.on_par_recusa_protegido(*refused);
@@ -224,7 +224,8 @@ fn log_notice(notice: &Notice) {
         }
         Notice::LatencySample(rtt) => debug!(%rtt, "latência medida"),
         Notice::ProtocolError { code, fatal } => warn!(?code, fatal, "erro de protocolo"),
-        Notice::EdgeChanged { edge } => debug!(%edge, "borda em uso"),
+        Notice::EdgeChanged { edge, .. } => debug!(%edge, "borda escolhida aqui"),
+        Notice::ControlReclaimed { here } => info!(here, "controle retomado sem atravessar"),
         _ => {}
     }
 }

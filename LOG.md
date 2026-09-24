@@ -75,3 +75,4 @@ quê. Um registro que se reescreve não é registro.
 | 48 | 2026-09-23 | [O touchpad que a captura não via](docs/logs/48-o-touchpad-que-a-captura-nao-via.md) |
 | 49 | 2026-09-23 | [O Windows que recusava tudo em silêncio, e a travessia que vinha antes da borda](docs/logs/49-o-windows-que-recusava-tudo.md) |
 | 50 | 2026-09-23 | [O cursor que o serviço conduz](docs/logs/50-o-cursor-que-o-servico-conduz.md) |
+| 51 | 2026-09-24 | [Quem mexe, manda: os dois teclados controlam o outro](docs/logs/51-quem-mexe-manda.md) |

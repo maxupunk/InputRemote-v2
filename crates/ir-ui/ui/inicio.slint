@@ -244,7 +244,7 @@ export component Inicio inherits VerticalLayout {
 
         // O Ctrl+Alt+Del de verdade nunca sai deste teclado; o atalho é Ctrl+Alt+End, e o botão
         // é para quem não se lembra dele.
-        if Dados.estado.servidor: Botao {
+        if Dados.estado.manda: Botao {
             texto: "Ctrl+Alt+Del no outro";
             horizontal-stretch: 1;
             acionado => {
@@ -253,9 +253,9 @@ export component Inicio inherits VerticalLayout {
         }
     }
 
-    // A borda é do computador que tem o teclado e o mouse; o controlado usa sozinho a oposta. Uma
-    // escolha nos dois lados deixou a bancada com as duas telas dizendo "esquerda" (log 24).
-    if Dados.estado.tem-par && Dados.estado.servidor: Cartao {
+    // Qualquer um dos dois escolhe de que lado fica o outro, e o outro passa a mostrar a oposta:
+    // vale a escolha mais recente (ADR-0014).
+    if Dados.estado.tem-par: Cartao {
         EscolhaDeBorda { }
 
         // Travar a borda é para quando o ponteiro atravessa sem querer — uma apresentação, um
@@ -269,9 +269,10 @@ export component Inicio inherits VerticalLayout {
         }
 
         Text {
-            text: "Atalhos: Ctrl+Alt+Shift+Espaço leva o controle ao outro computador e o traz "
-                + "de volta; Ctrl+Alt+Shift+Esc devolve o controle e solta tudo; Ctrl+Alt+End é "
-                + "o Ctrl+Alt+Del do outro computador.";
+            text: "Mexa no mouse ou no teclado do computador que está sendo usado de longe para "
+                + "voltar a usá-lo. Atalhos: Ctrl+Alt+Shift+Espaço leva o controle ao outro "
+                + "computador e o traz de volta; Ctrl+Alt+Shift+Esc devolve o controle e solta "
+                + "tudo; Ctrl+Alt+End é o Ctrl+Alt+Del do outro computador.";
             font-size: Tema.fonte-nota;
             color: Tema.texto-fraco;
             wrap: word-wrap;

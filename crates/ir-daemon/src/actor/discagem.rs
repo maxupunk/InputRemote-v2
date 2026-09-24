@@ -74,7 +74,6 @@ impl Daemon {
 mod tests {
     use ir_crypto::PublicKey;
     use ir_ipc::Pedido;
-    use ir_session::Role;
     use ir_transporte::Fato;
 
     use super::*;
@@ -99,7 +98,7 @@ mod tests {
 
     #[test]
     fn o_pedido_que_o_transporte_nao_conseguiu_entregar_vira_falha_com_motivo() {
-        let mut bancada = Bancada::nova(Role::Server);
+        let mut bancada = Bancada::nova();
         let mut avisos = bancada.daemon.avisos.subscribe();
         pedir_pareamento(&mut bancada);
         bancada.daemon.on_fato_do_transporte(Fato::Erro {
@@ -115,7 +114,7 @@ mod tests {
 
     #[test]
     fn o_erro_de_outro_portador_nao_encerra_o_pedido() {
-        let mut bancada = Bancada::nova(Role::Server);
+        let mut bancada = Bancada::nova();
         let mut avisos = bancada.daemon.avisos.subscribe();
         pedir_pareamento(&mut bancada);
         bancada.daemon.on_fato_do_transporte(Fato::Erro {
@@ -128,7 +127,7 @@ mod tests {
 
     #[test]
     fn o_codigo_que_chega_encerra_a_espera_sem_falha() {
-        let mut bancada = Bancada::nova(Role::Server);
+        let mut bancada = Bancada::nova();
         let mut avisos = bancada.daemon.avisos.subscribe();
         pedir_pareamento(&mut bancada);
         bancada
@@ -152,7 +151,7 @@ mod tests {
 
     #[test]
     fn sem_resposta_nenhuma_o_prazo_encerra_o_pedido() {
-        let mut bancada = Bancada::nova(Role::Server);
+        let mut bancada = Bancada::nova();
         let mut avisos = bancada.daemon.avisos.subscribe();
         pedir_pareamento(&mut bancada);
         if let Some(discagem) = bancada.daemon.discagem.as_mut() {
@@ -168,7 +167,7 @@ mod tests {
     fn a_janela_que_chega_depois_do_codigo_tambem_o_recebe() {
         // O defeito #1 do log 21: o código ia por aviso uma vez só, e a janela aberta depois — ou
         // tirada da bandeja — ficava sem nada para comparar.
-        let mut bancada = Bancada::nova(Role::Client);
+        let mut bancada = Bancada::nova();
         bancada
             .daemon
             .on_pairing_code([9, 8, 7, 6, 5, 4], PublicKey([4; 32]));

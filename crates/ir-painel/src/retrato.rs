@@ -6,9 +6,9 @@ use ir_ipc::{
 };
 use ir_proto::carrier::Carrier;
 use ir_proto::screens::Edge;
-use ir_session::{PeerInfo, Phase, Role};
+use ir_session::{PeerInfo, Phase, Policy};
 
-use crate::traducao::{borda_de, link_state, papel_de, portador_de};
+use crate::traducao::{borda_de, link_state, politica_de, portador_de};
 
 /// O par gravado, e o que se sabe dele agora.
 #[derive(Debug, Clone, Copy)]
@@ -45,8 +45,8 @@ pub struct Entrada<'a> {
 pub struct Retrato<'a> {
     /// A fase da sessão.
     pub fase: Phase,
-    /// O papel desta máquina.
-    pub papel: Role,
+    /// Quem pode controlar quem.
+    pub politica: Policy,
     /// A borda que dá para o par.
     pub borda: Edge,
     /// Esta máquina.
@@ -93,7 +93,7 @@ pub fn estado(r: &Retrato<'_>) -> Estado {
     let estabelecida = r.fase.is_established();
     Estado {
         enlace: link_state(r.fase),
-        papel: papel_de(r.papel),
+        politica: politica_de(r.politica),
         borda_do_par: borda_de(r.borda),
         esta_maquina: r.maquina,
         este_nome: r.nome.clone(),
@@ -103,11 +103,8 @@ pub fn estado(r: &Retrato<'_>) -> Estado {
         motivo_do_portador: motivo_do_portador(r),
         latencia: r.latencia.filter(|_| estabelecida),
         nivel_privilegiado: nivel(&r.entrada),
-        // Pronto para digitar: ou o agente está de pé (Windows), ou o serviço injeta ou captura
-        // direto (Linux). Sem um dos dois, nada é digitado nesta máquina.
-        agente_pronto: r.entrada.agente_pronto
-            || r.entrada.injeta_direto
-            || r.entrada.captura_direto,
+        // Receber: ou o agente está de pé (Windows), ou o serviço injeta direto (Linux).
+        agente_pronto: r.entrada.agente_pronto || r.entrada.injeta_direto,
         bloqueio_permitido: r.bloqueio_permitido,
         ultima_queda: r.ultima_queda,
         recebidos_bytes: r.recebidos_bytes,
@@ -120,6 +117,8 @@ pub fn estado(r: &Retrato<'_>) -> Estado {
         pasta_de_recebidos: r.pasta_de_recebidos.clone(),
         borda_travada: r.borda_travada,
         bloquear_juntos: r.bloquear_juntos,
+        // Ler o teclado daqui: no Windows é o agente que captura; no Linux, o serviço.
+        captura_pronta: r.entrada.agente_pronto || r.entrada.captura_direto,
     }
 }
 

@@ -1,12 +1,10 @@
-//! O lado que tem o teclado: captura, travessia e envio.
+//! A entrada daqui: o ponteiro local, a travessia, e o envio ao par ([`Phase::Sending`]).
 //!
-//! Duas assimetrias importantes com relação ao cliente:
-//!
-//! - o servidor **nunca injeta**; ele só captura e envia;
-//! - enquanto o controle está no par, o servidor não sabe onde o ponteiro remoto está. Ele
-//!   manda deltas crus, e quem converte para posição absoluta é o cliente, que é quem conhece
-//!   o próprio arranjo de telas. Isso evita que os dois lados mantenham a mesma coordenada e
-//!   discordem dela.
+//! Qualquer um dos dois computadores faz isto (ADR-0014); a outra metade, receber e injetar, mora
+//! em `receiving.rs`. Enquanto a entrada daqui vai para o par, esta máquina não sabe onde o
+//! ponteiro remoto está: manda deltas crus, e quem converte para posição absoluta é o par, que
+//! conhece o próprio arranjo de telas. Isso evita que os dois lados mantenham a mesma coordenada e
+//! discordem dela.
 
 use ir_geometry::{Crossing, Movement, advance};
 use ir_proto::ids::MonitorId;
@@ -14,7 +12,6 @@ use ir_proto::input::{Button, HidUsage, PointerDelta, PointerPosition, WheelDelt
 use ir_proto::message::{Control, InputMessage, Message, PointerMessage};
 use ir_proto::screens::Edge;
 
-use crate::config::Role;
 use crate::event::{Command, CommandBatch, Notice};
 use crate::phase::Phase;
 use crate::session::Session;
@@ -27,9 +24,6 @@ impl Session {
         delta: PointerDelta,
         out: &mut CommandBatch,
     ) {
-        if self.config.role != Role::Server {
-            return;
-        }
         if !self.phase.is_established() {
             // Sem par não há travessia, mas o ponteiro local anda: onde o serviço conduz o cursor
             // (Linux, log 50), é esta a posição que ele desenha, conectado ou não.
@@ -42,12 +36,19 @@ impl Session {
             return;
         }
 
-        if self.phase == Phase::Engaged {
-            // Coalescer e despachar no intervalo: perder amostra intermediária é invisível,
-            // atrasar não é (`docs/02-arquitetura.md` §6, regra 5).
-            self.pending_pointer = self.pending_pointer.coalesced_with(delta);
-            self.flush_pointer_if_due(now, out);
-            return;
+        match self.phase {
+            Phase::Sending => {
+                // Coalescer e despachar no intervalo: perder amostra intermediária é invisível,
+                // atrasar não é (`docs/02-arquitetura.md` §6, regra 5).
+                self.pending_pointer = self.pending_pointer.coalesced_with(delta);
+                self.flush_pointer_if_due(now, out);
+                return;
+            }
+            Phase::Receiving => {
+                self.local_motion_while_receiving(now, delta.dx, delta.dy, out);
+                return;
+            }
+            _ => {}
         }
 
         let Some(desktop) = self.local_screens.as_ref() else {
@@ -56,14 +57,18 @@ impl Session {
 
         match advance(desktop, self.pointer, delta, self.config.peer_edge) {
             Movement::Stayed(point) => self.pointer = point,
-            // Com a borda travada, bater nela não atravessa: o ponteiro fica onde está.
-            Movement::Crossed(_) if self.edge_locked => {}
+            // Com a borda travada, ou sem poder atravessar, bater nela não atravessa: o ponteiro
+            // fica onde está.
+            Movement::Crossed(_) if self.edge_locked || !self.may_cross() => {}
             Movement::Crossed(crossing) => self.give_control_away(now, crossing, out),
         }
     }
 
     /// Leva o controle ao par sem passar pela borda: pelo meio dela, como se tivesse atravessado ali.
     pub(super) fn switch_to_peer(&mut self, now: Timestamp, out: &mut CommandBatch) {
+        if !self.may_cross() {
+            return;
+        }
         let crossing = Crossing {
             exit_edge: self.config.peer_edge,
             fraction: u16::MAX / 2,
@@ -73,7 +78,7 @@ impl Session {
 
     /// Entrega o controle ao par.
     fn give_control_away(&mut self, now: Timestamp, crossing: Crossing, out: &mut CommandBatch) {
-        if !self.move_to(Phase::Engaged, out) {
+        if !self.move_to(Phase::Sending, out) {
             return;
         }
 
@@ -170,11 +175,16 @@ impl Session {
         pressed: bool,
         out: &mut CommandBatch,
     ) {
-        if self.config.role.captures() {
-            self.held_here = self.held_here.applying(usage, pressed);
-            if self.phase.is_established() && self.take_shortcut(now, usage, pressed, out) {
-                return;
-            }
+        self.held_here = self.held_here.applying(usage, pressed);
+        if self.phase.is_established() && self.take_shortcut(now, usage, pressed, out) {
+            return;
+        }
+        if self.phase == Phase::Receiving {
+            // Um modificador sozinho é o começo de um atalho, e não alguém querendo usar esta tela:
+            // retomar no Ctrl faria o resto de Ctrl+Alt+Shift+Espaço levar o controle de volta.
+            let modifier = ir_proto::input::Modifiers::from_usage(usage).is_some();
+            self.local_press_while_receiving(now, pressed && !modifier, out);
+            return;
         }
         if !self.is_forwarding() {
             return;
@@ -196,6 +206,10 @@ impl Session {
         pressed: bool,
         out: &mut CommandBatch,
     ) {
+        if self.phase == Phase::Receiving {
+            self.local_press_while_receiving(now, pressed, out);
+            return;
+        }
         if !self.is_forwarding() {
             return;
         }
@@ -215,6 +229,10 @@ impl Session {
         delta: WheelDelta,
         out: &mut CommandBatch,
     ) {
+        if self.phase == Phase::Receiving {
+            self.local_press_while_receiving(now, true, out);
+            return;
+        }
         if !self.is_forwarding() {
             return;
         }
@@ -228,7 +246,7 @@ impl Session {
 
     /// Se eventos locais devem ser encaminhados ao par neste instante.
     const fn is_forwarding(&self) -> bool {
-        self.config.role.captures() && matches!(self.phase, Phase::Engaged)
+        matches!(self.phase, Phase::Sending)
     }
 
     /// O par avisou que o ponteiro voltou pela borda dele.
@@ -239,7 +257,7 @@ impl Session {
         position: PointerPosition,
         out: &mut CommandBatch,
     ) {
-        if self.config.role != Role::Server || self.phase != Phase::Engaged {
+        if self.phase != Phase::Sending {
             return;
         }
 
@@ -290,10 +308,8 @@ impl Session {
     pub(super) fn hand_control_back(&mut self, out: &mut CommandBatch) {
         self.release_everything(out);
         self.pending_pointer = PointerDelta::ZERO;
-        if self.config.role.captures() {
-            out.push(Command::SuppressLocalInput(false));
-        }
-        if self.phase == Phase::Engaged {
+        out.push(Command::SuppressLocalInput(false));
+        if self.phase == Phase::Sending {
             self.phase = Phase::Ready;
             out.push(Command::Notify(Notice::ControlMoved { remote: false }));
         }

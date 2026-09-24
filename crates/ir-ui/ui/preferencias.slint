@@ -34,38 +34,38 @@ component Grupo inherits VerticalLayout {
 
 /// A tela de preferências.
 export component Preferencias inherits VerticalLayout {
-    /// O papel escolhido e ainda não confirmado: -1 nenhum, 0 tem o teclado, 1 é controlado.
-    property <int> papel-pedido: -1;
+    /// A política escolhida e ainda não confirmada: -1 nenhuma, senão o índice dela.
+    property <int> politica-pedida: -1;
 
     spacing: Tema.e4;
 
     Cartao {
         Grupo {
-            titulo: "PAPEL DESTE COMPUTADOR";
-            nota: Dados.estado.servidor
-                ? "O teclado e o mouse ligados aqui controlam os dois computadores."
-                : "O teclado e o mouse do outro computador controlam este.";
+            titulo: "QUEM PODE CONTROLAR";
+            nota: Dados.estado.politica-nota;
 
+            // Não há dono do teclado: com "Os dois", qualquer computador vai ao outro pela borda,
+            // e mexer no mouse do que está sendo usado traz o controle de volta (ADR-0014).
             Alternativas {
-                opcoes: ["Tem o teclado", "É controlado"];
-                escolhida: root.papel-pedido >= 0
-                    ? root.papel-pedido
-                    : (Dados.estado.servidor ? 0 : 1);
+                opcoes: ["Os dois", "Só este", "Só o outro"];
+                escolhida: root.politica-pedida >= 0
+                    ? root.politica-pedida
+                    : Dados.estado.politica;
                 escolher(indice) => {
-                    // Trocar o papel refaz a conexão: um clique errado derrubava a sessão.
-                    if indice != (Dados.estado.servidor ? 0 : 1) {
-                        root.papel-pedido = indice;
+                    // Mudar refaz a conexão: um clique errado não pode derrubar a sessão.
+                    if indice != Dados.estado.politica {
+                        root.politica-pedida = indice;
                     } else {
-                        root.papel-pedido = -1;
+                        root.politica-pedida = -1;
                     }
                 }
             }
 
-            if root.papel-pedido >= 0: HorizontalLayout {
+            if root.politica-pedida >= 0: HorizontalLayout {
                 spacing: Tema.e2;
 
                 Text {
-                    text: "Trocar o papel reinicia a conexão com o outro computador.";
+                    text: "Mudar isto reinicia a conexão com o outro computador.";
                     font-size: Tema.fonte-nota;
                     color: Tema.texto-fraco;
                     vertical-alignment: center;
@@ -74,18 +74,18 @@ export component Preferencias inherits VerticalLayout {
                 }
 
                 Botao {
-                    texto: "Trocar";
+                    texto: "Mudar";
                     primario: true;
                     acionado => {
-                        Acoes.definir-papel(root.papel-pedido == 0);
-                        root.papel-pedido = -1;
+                        Acoes.definir-politica(root.politica-pedida);
+                        root.politica-pedida = -1;
                     }
                 }
 
                 Botao {
                     texto: "Cancelar";
                     acionado => {
-                        root.papel-pedido = -1;
+                        root.politica-pedida = -1;
                     }
                 }
             }
@@ -149,11 +149,11 @@ export component Preferencias inherits VerticalLayout {
 
     }
 
-    if Dados.estado.servidor: Cartao {
+    if Dados.estado.tem-par: Cartao {
         Grupo {
             titulo: "BLOQUEAR JUNTOS";
-            nota: "Quando este computador bloquear a tela, o outro, que ele controla, bloqueia "
-                + "também — ele não fica aberto para quem passar por ele.";
+            nota: "Quando este computador bloquear a tela, o outro bloqueia também — ele não fica "
+                + "aberto para quem passar por ele.";
 
             Alternativas {
                 opcoes: ["Bloquear os dois", "Só este"];

@@ -167,7 +167,6 @@ impl Daemon {
 
 #[cfg(test)]
 mod tests {
-    use ir_session::Role;
 
     use super::*;
     use crate::actor::bancada::Bancada;
@@ -192,7 +191,7 @@ mod tests {
 
     #[test]
     fn com_a_tela_bloqueada_e_sem_permissao_a_tecla_nao_entra_mas_solta() {
-        let mut bancada = Bancada::nova(Role::Client);
+        let mut bancada = Bancada::nova();
         com_par(&mut bancada, false);
         bancada.daemon.on_tela_protegida(true);
 
@@ -213,7 +212,7 @@ mod tests {
 
     #[test]
     fn com_permissao_a_tela_bloqueada_recebe_digitacao() {
-        let mut bancada = Bancada::nova(Role::Client);
+        let mut bancada = Bancada::nova();
         com_par(&mut bancada, true);
         bancada.daemon.on_tela_protegida(true);
         assert!(!bancada.daemon.barrar_no_protegido(tecla(true)));
@@ -221,7 +220,7 @@ mod tests {
 
     #[test]
     fn a_recusa_do_par_aparece_no_estado() {
-        let mut bancada = Bancada::nova(Role::Server);
+        let mut bancada = Bancada::nova();
         bancada.daemon.on_par_recusa_protegido(true);
         assert!(bancada.daemon.par_recusa_protegido);
         assert!(

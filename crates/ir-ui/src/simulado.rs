@@ -14,9 +14,7 @@
 
 use std::cell::RefCell;
 
-use ir_ipc::status::{
-    Estado, Latencia, LinkState, MotivoDaQueda, MotivoDoPortador, Papel, ParConhecido,
-};
+use ir_ipc::status::{Estado, Latencia, LinkState, MotivoDaQueda, MotivoDoPortador, ParConhecido};
 use ir_ipc::vocabulario::{Clipboard, Maquina, Nivel, Nome, Portador, Recursos};
 use ir_ipc::{Autoridade, Aviso, Candidato, Falha, Pedido, Resposta};
 
@@ -73,6 +71,7 @@ impl ServicoSimulado {
         let mut estado =
             Estado::recem_instalado(Maquina([0x5A; 16]), Nome::coagido("esta-bancada"));
         estado.agente_pronto = true;
+        estado.captura_pronta = true;
         estado.nivel_privilegiado = Nivel::TelaDeBloqueio;
 
         Self {
@@ -185,14 +184,11 @@ impl Interno {
 
     fn mudar(&mut self, pedido: Pedido) -> Resposta {
         match pedido {
-            Pedido::DefinirPapel(papel) => {
-                self.estado.papel = papel;
+            Pedido::DefinirPolitica(politica) => {
+                self.estado.politica = politica;
             }
+            // Como no serviço de verdade: qualquer um dos dois escolhe de que lado fica o outro.
             Pedido::DefinirBorda(borda) => {
-                // Como no serviço de verdade: a borda é do servidor, e o cliente acompanha.
-                if self.estado.papel != Papel::Servidor {
-                    return Resposta::Falha(Falha::BordaDoServidor);
-                }
                 self.estado.borda_do_par = borda;
             }
             Pedido::FixarPortador(portador) => {

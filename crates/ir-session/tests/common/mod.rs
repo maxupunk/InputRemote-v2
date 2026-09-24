@@ -103,6 +103,7 @@ fn identity(name: &str, byte: u8) -> LocalIdentity {
             bulk_transfer: false,
             privileged_input: PrivilegedInputLevel::LockScreen,
             secure_attention: false,
+            declines_control: false,
         },
     }
 }
@@ -111,8 +112,8 @@ impl Pair {
     /// Servidor com o par à direita, cliente com o servidor à esquerda.
     pub fn new(server_screens: ScreenLayout, client_screens: ScreenLayout) -> Self {
         Self::with_configs(
-            SessionConfig::server(Edge::Right),
-            SessionConfig::client(Edge::Left),
+            SessionConfig::new(Edge::Right),
+            SessionConfig::new(Edge::Left),
             server_screens,
             client_screens,
         )
@@ -123,16 +124,15 @@ impl Pair {
     /// Para os cenários em que as duas máquinas discordam de onde fica a outra.
     pub fn with_edges(server_edge: Edge, client_edge: Edge) -> Self {
         Self::with_configs(
-            SessionConfig::server(server_edge),
-            SessionConfig::client(client_edge),
+            SessionConfig::new(server_edge),
+            SessionConfig::new(client_edge),
             layout(1920, 1080),
             layout(1920, 1080),
         )
     }
 
-    /// Duas sessões com a configuração dada a cada uma — inclusive papéis que não combinam.
-    ///
-    /// Os nomes `server` e `client` são das posições na bancada, não do papel que cada uma tem.
+    /// Duas sessões com a configuração dada a cada uma. `server` e `client` são posições na bancada
+    /// (A e B), e não papéis: os dois controlam um ao outro (ADR-0014).
     pub fn with_configs(
         server: SessionConfig,
         client: SessionConfig,

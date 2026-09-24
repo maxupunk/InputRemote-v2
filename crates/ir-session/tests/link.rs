@@ -207,7 +207,7 @@ fn bluetooth_joining_while_remote_keeps_the_keys_held() {
 
     assert!(!pair.any(Side::Server, is::release_all));
     assert!(!pair.any(Side::Client, is::release_all));
-    assert_eq!(pair.server.phase(), Phase::Engaged);
+    assert_eq!(pair.server.phase(), Phase::Sending);
     assert!(
         !pair.client.input_state().is_released(),
         "a tecla continua segura"

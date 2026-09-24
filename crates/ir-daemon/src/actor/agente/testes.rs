@@ -2,7 +2,7 @@
 
 use ir_ipc::{ComandoDoAgente, FatoDoAgente};
 use ir_proto::input::HidUsage;
-use ir_session::{Command, Injection, Role};
+use ir_session::{Command, Injection};
 
 use super::super::bancada::Bancada;
 
@@ -27,7 +27,7 @@ fn recebidos(bancada: &mut Bancada) -> Vec<ComandoDoAgente> {
 
 #[test]
 fn sem_agente_nada_vai_para_o_canal_dele() {
-    let mut bancada = Bancada::nova(Role::Client);
+    let mut bancada = Bancada::nova();
     assert!(bancada.daemon.comandos_do_agente().is_none());
     bancada.daemon.out.push(Command::ReleaseAll);
     bancada.daemon.apply_commands();
@@ -36,7 +36,7 @@ fn sem_agente_nada_vai_para_o_canal_dele() {
 
 #[test]
 fn com_agente_pronto_a_injecao_e_a_soltura_vao_para_ele() {
-    let mut bancada = Bancada::nova(Role::Client);
+    let mut bancada = Bancada::nova();
     pronto(&mut bancada);
     let tecla = HidUsage(0x04);
     bancada.daemon.out.push(Command::Inject(Injection::Key {
@@ -60,7 +60,7 @@ fn com_agente_pronto_a_injecao_e_a_soltura_vao_para_ele() {
 
 #[test]
 fn a_supressao_e_renovada_enquanto_vale() {
-    let mut bancada = Bancada::nova(Role::Server);
+    let mut bancada = Bancada::nova();
     pronto(&mut bancada);
     bancada.daemon.out.push(Command::SuppressLocalInput(true));
     bancada.daemon.apply_commands();
@@ -85,7 +85,7 @@ fn a_supressao_e_renovada_enquanto_vale() {
 
 #[test]
 fn o_agente_que_sai_deixa_de_receber_e_a_janela_fica_sabendo() {
-    let mut bancada = Bancada::nova(Role::Client);
+    let mut bancada = Bancada::nova();
     let mut avisos = bancada.daemon.avisos.subscribe();
     pronto(&mut bancada);
     assert!(bancada.daemon.comandos_do_agente().is_some());
@@ -106,7 +106,7 @@ fn o_agente_que_sai_deixa_de_receber_e_a_janela_fica_sabendo() {
 fn a_recusa_na_area_de_trabalho_aparece_na_tela_e_some_quando_para() {
     // O log 49: o sistema recusava toda injeção, o par dizia "controlando", e esta tela não dizia
     // nada.
-    let mut bancada = Bancada::nova(Role::Client);
+    let mut bancada = Bancada::nova();
     pronto(&mut bancada);
     assert!(bancada.daemon.estado().agente_pronto);
 

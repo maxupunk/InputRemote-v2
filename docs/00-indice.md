@@ -38,6 +38,7 @@ Uma decisão só muda por um ADR novo que substitua o anterior — não por edi�
 | [0011](adr/0011-clipboard-na-travessia.md) | O clipboard sincroniza na travessia, por um ajudante que roda como o usuário |
 | [0012](adr/0012-rota-dupla.md) | Rota dupla: Bluetooth e rede ao mesmo tempo, vale o que chegar primeiro |
 | [0013](adr/0013-economia-de-energia-do-wifi.md) | Avisar da economia de energia do Wi-Fi, e desligá-la com um botão — também no par |
+| [0014](adr/0014-controle-simetrico.md) | Controle simétrico: quem mexe, manda |
 
 ## Registro do que foi feito
 

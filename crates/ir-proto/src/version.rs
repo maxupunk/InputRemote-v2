@@ -27,12 +27,12 @@ use crate::error::{ProtoError, Result};
 /// `Control::ProtectedDesktop`, o controlado dizendo que recusa digitação na tela de bloqueio. Só
 /// vão para um par da versão 4 ([`PROTECTED_DESKTOP`]).
 ///
-/// Versão 5: `Control::Role`, cada ponta anunciando o próprio papel para os dois combinarem
-/// sozinhos. Só vai para um par da versão 5 ([`ROLE_CLAIM`]).
-pub const CURRENT: ProtocolVersion = ProtocolVersion(5);
-
-/// A primeira versão que anuncia o papel ao par.
-pub const ROLE_CLAIM: ProtocolVersion = ProtocolVersion(5);
+/// Versão 5: `Control::Role`, cada ponta anunciando o próprio papel.
+///
+/// Versão 6: controle simétrico ([ADR-0014](../../../docs/adr/0014-controle-simetrico.md)). Não há
+/// mais papel: `Control::Role` saiu, `Control::Reclaim` entrou, `EdgeConfig` leva quando a borda foi
+/// escolhida, e `Capabilities::declines_control` diz se a ponta recusa ser controlada.
+pub const CURRENT: ProtocolVersion = ProtocolVersion(6);
 
 /// A primeira versão que entende Ctrl+Alt+Del pedido e a recusa no desktop protegido.
 pub const PROTECTED_DESKTOP: ProtocolVersion = ProtocolVersion(4);
@@ -50,7 +50,12 @@ pub const NETWORK_POWER: ProtocolVersion = ProtocolVersion(3);
 /// versão 1 lançada com quem manter compatibilidade (`tests/vectors/main.rs`, exceção de
 /// pré-lançamento). Ficou em 2 quando [`CURRENT`] foi a 3: o que a versão 3 acrescenta só vai
 /// para quem a fala ([`NETWORK_POWER`]).
-pub const MIN_SUPPORTED: ProtocolVersion = ProtocolVersion(2);
+///
+/// Subiu para 6 com o controle simétrico: numa versão anterior cada ponta tem um papel fixo, e
+/// conversar com ela exigiria manter os dois modelos vivos na sessão. Sem versão lançada, os dois
+/// computadores do usuário atualizam juntos, e o par antigo é recusado na negociação com o motivo
+/// ("o outro computador tem uma versão mais antiga").
+pub const MIN_SUPPORTED: ProtocolVersion = ProtocolVersion(6);
 
 /// Versão do protocolo, monotônica.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

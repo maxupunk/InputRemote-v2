@@ -92,14 +92,14 @@ impl Daemon {
 mod tests {
     use ir_proto::carrier::Carrier;
     use ir_proto::message::DisconnectReason;
-    use ir_session::{Input, Role};
+    use ir_session::Input;
 
     use super::*;
     use crate::actor::bancada::{Bancada, Feito};
 
     #[test]
     fn pausar_derruba_avisa_e_para_de_discar() {
-        let mut bancada = Bancada::nova(Role::Client);
+        let mut bancada = Bancada::nova();
         bancada.daemon.alcance.subiu(Carrier::Udp);
         bancada.daemon.drive(Input::CarrierUp(Carrier::Udp));
         let _ = bancada.rede.feitos();
@@ -118,7 +118,7 @@ mod tests {
 
     #[test]
     fn retomar_volta_a_aceitar() {
-        let mut bancada = Bancada::nova(Role::Client);
+        let mut bancada = Bancada::nova();
         let _ = bancada.daemon.pausar();
         let _ = bancada.daemon.retomar();
         assert_eq!(bancada.daemon.estado().pausa, None);
@@ -127,7 +127,7 @@ mod tests {
 
     #[test]
     fn a_pausa_do_par_e_entendida_e_acaba_quando_ele_liga() {
-        let mut bancada = Bancada::nova(Role::Server);
+        let mut bancada = Bancada::nova();
         bancada
             .daemon
             .on_queda(LinkDown::PeerClosed(DisconnectReason::UserRequested));
@@ -143,7 +143,7 @@ mod tests {
     fn a_sessao_refeita_no_mesmo_enlace_tira_a_pausa_do_par() {
         // A troca de papel refaz a sessão sem enlace novo: "pausou" ficava na tela, com a conexão
         // pronta.
-        let mut bancada = Bancada::nova(Role::Server);
+        let mut bancada = Bancada::nova();
         bancada
             .daemon
             .on_queda(LinkDown::PeerClosed(DisconnectReason::UserRequested));
@@ -160,7 +160,7 @@ mod tests {
 
     #[test]
     fn trocar_de_papel_nao_parece_pausa_ao_par() {
-        let mut bancada = Bancada::nova(Role::Server);
+        let mut bancada = Bancada::nova();
         bancada
             .daemon
             .on_queda(LinkDown::PeerClosed(DisconnectReason::Reconfiguring));
@@ -169,7 +169,7 @@ mod tests {
 
     #[test]
     fn uma_queda_comum_nao_e_pausa() {
-        let mut bancada = Bancada::nova(Role::Server);
+        let mut bancada = Bancada::nova();
         bancada.daemon.on_queda(LinkDown::Timeout);
         assert_eq!(bancada.daemon.estado().pausa, None);
         assert_eq!(
@@ -180,7 +180,7 @@ mod tests {
 
     #[test]
     fn o_portador_fixado_fica_gravado_e_volta_na_subida() {
-        let mut bancada = Bancada::nova(Role::Server);
+        let mut bancada = Bancada::nova();
         assert_eq!(
             bancada
                 .daemon

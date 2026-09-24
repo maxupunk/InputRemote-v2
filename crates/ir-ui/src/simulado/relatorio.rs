@@ -1,6 +1,6 @@
 //! O relatório de diagnóstico do serviço simulado.
 
-use ir_ipc::status::{Estado, MotivoDaQueda, MotivoDoPortador, Papel};
+use ir_ipc::status::{Estado, MotivoDaQueda, MotivoDoPortador, Politica};
 use ir_ipc::vocabulario::Portador;
 
 /// O relatório de diagnóstico.
@@ -12,7 +12,7 @@ pub(super) fn diagnostico(estado: &Estado) -> String {
     let campos: [(&str, String); 12] = [
         ("maquina", estado.este_nome.como_texto().to_owned()),
         ("impressao", estado.esta_maquina.impressao()),
-        ("papel", papel_de(estado).to_owned()),
+        ("politica", politica_de(estado).to_owned()),
         ("enlace", estado.enlace.frase().to_owned()),
         ("borda", estado.borda_do_par.nome().to_owned()),
         (
@@ -50,11 +50,11 @@ pub(super) fn diagnostico(estado: &Estado) -> String {
     linhas.join("\n")
 }
 
-fn papel_de(estado: &Estado) -> &'static str {
-    if estado.papel == Papel::Servidor {
-        "servidor"
-    } else {
-        "cliente"
+const fn politica_de(estado: &Estado) -> &'static str {
+    match estado.politica {
+        Politica::Ambos => "ambos",
+        Politica::SoEste => "so-este",
+        Politica::SoOOutro => "so-o-outro",
     }
 }
 

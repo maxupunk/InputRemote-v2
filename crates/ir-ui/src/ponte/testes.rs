@@ -36,7 +36,7 @@ fn a_primeira_tela_diz_o_primeiro_passo() {
 fn sem_o_agente_nada_mais_importa_para_a_cor() {
     // Mesmo com sessão de pé, se o componente que digita não subiu o produto não funciona.
     let mut estado = recem_instalado();
-    estado.enlace = LinkState::EmUso;
+    estado.enlace = LinkState::Controlando;
     estado.agente_pronto = false;
     assert_eq!(saude(&estado), SAUDE_RUIM);
 }
@@ -127,6 +127,7 @@ fn o_impedimento_vira_texto_vazio_quando_nao_ha_nenhum() {
     // "None", a faixa apareceria sempre.
     let mut estado = recem_instalado();
     estado.agente_pronto = true;
+    estado.captura_pronta = true;
     assert_eq!(estado_ui(&estado).impedimento, "");
 }
 

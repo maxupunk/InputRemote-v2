@@ -1,12 +1,12 @@
 //! As traduções entre o vocabulário da sessão e o da interface — e o do agente.
 //!
-//! Uma por conceito, num lugar só: a borda, o papel e o portador tinham nome em três vocabulários
+//! Uma por conceito, num lugar só: a borda, a política e o portador tinham nome em três vocabulários
 //! (protocolo, interface, arquivo de configuração), e cada módulo do serviço convertia do seu jeito.
 
-use ir_ipc::{Borda, ComandoDoAgente, LinkState, Papel, Portador};
+use ir_ipc::{Borda, ComandoDoAgente, LinkState, Politica, Portador};
 use ir_proto::carrier::Carrier;
 use ir_proto::screens::Edge;
-use ir_session::{Injection, Phase, Role};
+use ir_session::{Injection, Phase, Policy};
 
 /// A fase da sessão, traduzida para o enlace que a interface mostra.
 #[must_use]
@@ -15,25 +15,28 @@ pub const fn link_state(phase: Phase) -> LinkState {
         Phase::Offline => LinkState::Desconectado,
         Phase::Handshaking => LinkState::Conectando,
         Phase::Ready => LinkState::Pronto,
-        Phase::Engaged => LinkState::EmUso,
+        Phase::Sending => LinkState::Controlando,
+        Phase::Receiving => LinkState::Controlado,
     }
 }
 
-/// O papel da sessão, no vocabulário da interface.
+/// A política da sessão, no vocabulário da interface.
 #[must_use]
-pub const fn papel_de(role: Role) -> Papel {
-    match role {
-        Role::Server => Papel::Servidor,
-        Role::Client => Papel::Cliente,
+pub const fn politica_de(policy: Policy) -> Politica {
+    match policy {
+        Policy::Both => Politica::Ambos,
+        Policy::OnlyControls => Politica::SoEste,
+        Policy::OnlyControlled => Politica::SoOOutro,
     }
 }
 
-/// O papel da interface, no vocabulário da sessão.
+/// A política da interface, no vocabulário da sessão.
 #[must_use]
-pub const fn role_de(papel: Papel) -> Role {
-    match papel {
-        Papel::Servidor => Role::Server,
-        Papel::Cliente => Role::Client,
+pub const fn policy_de(politica: Politica) -> Policy {
+    match politica {
+        Politica::Ambos => Policy::Both,
+        Politica::SoEste => Policy::OnlyControls,
+        Politica::SoOOutro => Policy::OnlyControlled,
     }
 }
 
@@ -126,9 +129,9 @@ mod tests {
     }
 
     #[test]
-    fn o_papel_vai_e_volta() {
-        for role in [Role::Server, Role::Client] {
-            assert_eq!(role_de(papel_de(role)), role);
+    fn a_politica_vai_e_volta() {
+        for policy in [Policy::Both, Policy::OnlyControls, Policy::OnlyControlled] {
+            assert_eq!(policy_de(politica_de(policy)), policy);
         }
     }
 }

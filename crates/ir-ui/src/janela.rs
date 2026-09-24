@@ -185,7 +185,9 @@ impl Contexto {
             Aviso::Transferencia(transferencia) => self.mostrar_copia(&transferencia),
             Aviso::PareamentoFalhou(falha) => self.falha_no_pareamento(falha),
             Aviso::Falhou(falha) => self.recado(Some(falha)),
-            Aviso::PapelAjustado(papel) => self.informar(frase_do_papel_ajustado(papel)),
+            Aviso::BordaAjustada(borda) => {
+                self.informar(crate::ponte::frase_da_borda_ajustada(borda));
+            }
             Aviso::PareamentoConcluido { sucesso: false } => {
                 // Uma recusa que a própria janela pediu já está na tela com o motivo certo, e o
                 // aviso que chega atrás dela não pode trocá-lo por um genérico. Fora isso, a
@@ -383,16 +385,4 @@ pub fn abrir(
     );
 
     crate::bandeja::rodar(&janela, inicio, marca)
-}
-
-/// O que dizer quando este computador trocou de papel porque o outro escolheu o mesmo depois.
-const fn frase_do_papel_ajustado(papel: ir_ipc::Papel) -> &'static str {
-    match papel {
-        ir_ipc::Papel::Cliente => {
-            "O outro computador passou a ter o teclado, e este passou a ser controlado."
-        }
-        ir_ipc::Papel::Servidor => {
-            "O outro computador passou a ser controlado, e o teclado daqui passou a controlar os dois."
-        }
-    }
 }

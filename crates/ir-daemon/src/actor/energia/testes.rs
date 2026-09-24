@@ -5,13 +5,12 @@
 use ir_energia::Economia;
 use ir_ipc::{EconomiaDoWifi, Falha, Resposta};
 use ir_proto::message::NetworkPowerSaving;
-use ir_session::Role;
 
 use crate::actor::bancada::Bancada;
 
 #[test]
 fn a_placa_daqui_aparece_no_estado_e_desconhecida_nao_apaga() {
-    let mut bancada = Bancada::nova(Role::Server);
+    let mut bancada = Bancada::nova();
     assert_eq!(bancada.daemon.estado().economia_aqui, None);
 
     bancada.daemon.on_economia(Economia::Ligada);
@@ -33,7 +32,7 @@ fn a_placa_daqui_aparece_no_estado_e_desconhecida_nao_apaga() {
 
 #[test]
 fn o_que_o_par_contou_aparece_e_vira_aviso_do_par() {
-    let mut bancada = Bancada::nova(Role::Server);
+    let mut bancada = Bancada::nova();
     bancada
         .daemon
         .on_economia_do_par(Some(NetworkPowerSaving::On));
@@ -45,7 +44,7 @@ fn o_que_o_par_contou_aparece_e_vira_aviso_do_par() {
 
 #[test]
 fn sem_sessao_pedir_ao_par_e_recusado_com_motivo() {
-    let mut bancada = Bancada::nova(Role::Server);
+    let mut bancada = Bancada::nova();
     assert_eq!(
         bancada.daemon.desligar_economia(true),
         Resposta::Falha(Falha::SemConexao)
@@ -54,7 +53,7 @@ fn sem_sessao_pedir_ao_par_e_recusado_com_motivo() {
 
 #[test]
 fn o_pedido_do_par_vale_uma_vez_por_minuto() {
-    let mut bancada = Bancada::nova(Role::Server);
+    let mut bancada = Bancada::nova();
     bancada.daemon.on_economia(Economia::Ligada);
     let agora = std::time::Instant::now();
 

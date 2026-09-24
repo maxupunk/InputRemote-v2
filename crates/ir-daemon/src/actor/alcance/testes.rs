@@ -6,7 +6,6 @@ use ir_crypto::PublicKey;
 use ir_ipc::{Pedido, Portador};
 use ir_proto::carrier::Carrier;
 use ir_proto::ids::RadioAddress;
-use ir_session::Role;
 use ir_transporte::{Endereco, Fato};
 
 use crate::actor::bancada::{Bancada, Feito};
@@ -24,7 +23,7 @@ fn rede() -> Endereco {
 
 /// Um serviço com o par gravado — pareado pela rede, sem saber ainda do rádio dele.
 fn pareado_pela_rede() -> Bancada {
-    let mut bancada = Bancada::nova(Role::Server);
+    let mut bancada = Bancada::nova();
     bancada.daemon.config.peers = vec![PinnedPeer {
         pubkey: encode_key(&chave()),
         addr: Some(rede().to_string()),
@@ -183,7 +182,7 @@ fn outro_computador_num_portador_nao_entra_na_rota() {
 #[test]
 fn a_configuracao_antiga_com_endereco_de_radio_vale_como_radio() {
     // Arquivos gravados antes da rota dupla têm só `addr`, e ele pode ser de rádio.
-    let mut bancada = Bancada::nova(Role::Server);
+    let mut bancada = Bancada::nova();
     bancada.daemon.config.peers = vec![PinnedPeer {
         pubkey: encode_key(&chave()),
         addr: Some("AC:50:DE:47:EB:28".to_owned()),
@@ -201,7 +200,7 @@ fn a_configuracao_antiga_com_endereco_de_radio_vale_como_radio() {
 
 /// Um serviço sem par gravado, com o código de um pareamento pela rede na tela.
 fn pareando_pela_rede() -> Bancada {
-    let mut bancada = Bancada::nova(Role::Server);
+    let mut bancada = Bancada::nova();
     bancada
         .daemon
         .on_fato_do_transporte(Fato::CodigoDePareamento {

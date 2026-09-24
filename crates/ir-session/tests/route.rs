@@ -33,7 +33,7 @@ fn cross(pair: &mut Pair) {
         Side::Server,
         Input::LocalPointer(PointerDelta { dx: 5000, dy: 0 }),
     );
-    assert_eq!(pair.server.phase(), Phase::Engaged);
+    assert_eq!(pair.server.phase(), Phase::Sending);
     pair.clear_log();
 }
 
@@ -137,7 +137,7 @@ fn losing_bluetooth_mid_keypress_keeps_the_session_and_the_key() {
 
     assert!(!pair.any(Side::Server, is::release_all), "nada é solto");
     assert!(!pair.any(Side::Client, is::release_all));
-    assert_eq!(pair.server.phase(), Phase::Engaged, "a sessão seguiu");
+    assert_eq!(pair.server.phase(), Phase::Sending, "a sessão seguiu");
     assert_eq!(pair.server.route(), Some(Route::Single(Carrier::Udp)));
     assert!(!pair.client.input_state().is_released());
 
@@ -165,7 +165,7 @@ fn a_silent_bluetooth_does_not_cost_the_session() {
 
     assert_eq!(
         pair.server.phase(),
-        Phase::Engaged,
+        Phase::Sending,
         "3 s sem Bluetooth, e nada caiu"
     );
     assert_eq!(key_injections(&pair), 2);
@@ -299,7 +299,7 @@ fn pinning_a_carrier_of_the_dual_route_narrows_it_in_place() {
     pair.pin(Side::Server, Some(Carrier::Rfcomm));
 
     assert_eq!(pair.server.route(), Some(Route::Single(Carrier::Rfcomm)));
-    assert_eq!(pair.server.phase(), Phase::Engaged);
+    assert_eq!(pair.server.phase(), Phase::Sending);
     assert!(!pair.any(Side::Server, is::release_all));
 }
 

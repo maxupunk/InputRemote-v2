@@ -10,7 +10,6 @@ use ir_proto::frame::{Frame, Sequence};
 use ir_proto::message::{Control, DisconnectReason, ErrorCode, Greeting, Message};
 use ir_proto::version;
 
-use crate::config::Role;
 use crate::event::{CarrierChoice, Command, CommandBatch, LinkDown, Notice};
 use crate::phase::Phase;
 use crate::session::Session;
@@ -121,7 +120,12 @@ impl Session {
             version: version::CURRENT,
             machine: self.identity.machine,
             name: self.identity.name.clone(),
-            capabilities: self.identity.capabilities,
+            // A recusa de ser controlada sai da política da sessão, e não da identidade: é a
+            // mesma decisão que `on_enter_screen` aplica, e as duas não podem divergir.
+            capabilities: ir_proto::peer::Capabilities {
+                declines_control: !self.config.policy.receives(),
+                ..self.identity.capabilities
+            },
         }
     }
 
@@ -187,7 +191,6 @@ impl Session {
         self.widen_route_to_available(out);
         self.announce_reach(now, out);
         self.announce_network_power(now, out);
-        self.announce_role(now, out);
 
         // O par precisa do nosso arranjo para saber onde o ponteiro entra.
         if let Some(desktop) = self.local_screens.as_ref() {
@@ -226,9 +229,7 @@ impl Session {
         // Primeiro soltar, depois qualquer outra coisa. A ordem é contrato.
         if self.phase.may_hold_input() {
             self.release_everything(out);
-            if self.config.role.captures() {
-                out.push(Command::SuppressLocalInput(false));
-            }
+            out.push(Command::SuppressLocalInput(false));
         }
 
         let will_retry = reason.should_retry();
@@ -284,7 +285,7 @@ impl Session {
             );
         }
 
-        if self.config.role == Role::Server && self.phase == Phase::Engaged {
+        if self.phase == Phase::Sending {
             self.flush_pointer_if_due(now, out);
             self.send_snapshot_if_due(now, out);
         }

@@ -171,7 +171,7 @@ impl Daemon {
 
     /// O desktop de entrada desta máquina mudou: bloqueou, abriu o UAC, voltou à área de trabalho.
     ///
-    /// Do lado que controla, a tela que bloqueia leva o controle de volta: os ganchos não veem o
+    /// Com o controle no par, a tela que bloqueia leva o controle de volta: os ganchos não veem o
     /// Win+L nem o desktop seguro, e o par ficaria recebendo o que ninguém mais digita
     /// ([05, §5.1](../../../docs/05-windows.md)). Do lado controlado, voltar à área de trabalho
     /// encerra a recusa do desktop protegido.
@@ -179,9 +179,7 @@ impl Daemon {
         info!(nome, "o desktop de entrada mudou");
         if nome.eq_ignore_ascii_case("Default") {
             self.recusando_protegido(false);
-        } else if self.session.role() == ir_session::Role::Server
-            && self.session.phase() == ir_session::Phase::Engaged
-        {
+        } else if self.session.phase() == ir_session::Phase::Sending {
             info!("a tela daqui bloqueou com o controle no par: devolvendo e soltando tudo");
             self.drive(Input::EmergencyRelease);
         }

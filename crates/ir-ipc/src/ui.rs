@@ -73,8 +73,8 @@ pub enum Pedido {
     Estado,
     /// Me avise a cada mudança de estado, até eu desconectar.
     Acompanhar,
-    /// Troque o papel desta máquina.
-    DefinirPapel(crate::status::Papel),
+    /// Mude quem pode controlar quem.
+    DefinirPolitica(crate::status::Politica),
     /// Troque a borda que dá para o outro computador.
     DefinirBorda(Borda),
     /// Fixe um portador, ou volte à escolha automática.
@@ -177,7 +177,7 @@ impl Pedido {
             }
             // Procurar não muda configuração, mas emite anúncio na rede e no rádio: é ação,
             // não leitura, e não é coisa que um processo qualquer deva conseguir disparar.
-            Self::DefinirPapel(_)
+            Self::DefinirPolitica(_)
             | Self::DefinirBorda(_)
             | Self::FixarPortador(_)
             | Self::Procurar
@@ -312,11 +312,11 @@ pub enum Aviso {
     /// sistema, fora do laço —, e sem isto a falha só ia para o registro: o botão parecia
     /// funcionar e nada mudava.
     Falhou(crate::Falha),
-    /// O outro computador escolheu o mesmo papel, depois, e este passou ao complementar sozinho.
+    /// O outro computador mudou de lado na tela dele, e este passou a usar a borda oposta.
     ///
-    /// O papel já muda no [`Estado`]; isto é para a tela **contar** — um botão que muda de lugar
-    /// sem explicação parece defeito.
-    PapelAjustado(crate::Papel),
+    /// A borda já muda no [`Estado`]; isto é para a tela **contar** — uma posição que muda sem
+    /// ninguém tocar parece defeito.
+    BordaAjustada(crate::Borda),
 }
 
 #[cfg(test)]

@@ -2,10 +2,10 @@
 
 use super::*;
 
-fn cliente_pronto() -> Estado {
-    let mut estado = Estado::recem_instalado(Maquina([3; 16]), Nome::coagido("cliente"));
-    estado.papel = Papel::Cliente;
+fn pronto() -> Estado {
+    let mut estado = Estado::recem_instalado(Maquina([3; 16]), Nome::coagido("notebook"));
     estado.agente_pronto = true;
+    estado.captura_pronta = true;
     estado.nivel_privilegiado = Nivel::TelaDeBloqueio;
     estado.bloqueio_permitido = true;
     estado
@@ -13,7 +13,7 @@ fn cliente_pronto() -> Estado {
 
 #[test]
 fn a_rota_dupla_aparece_com_os_dois_nomes() {
-    let mut estado = cliente_pronto();
+    let mut estado = pronto();
     assert_eq!(estado.nome_da_rota(), "", "sem sessão não há rota");
     estado.portador = Some(Portador::Bluetooth);
     assert_eq!(estado.nome_da_rota(), "Bluetooth");
@@ -23,24 +23,24 @@ fn a_rota_dupla_aparece_com_os_dois_nomes() {
 }
 
 #[test]
-fn o_agente_ausente_e_o_impedimento_mais_grave() {
-    // Sem o agente nada funciona, então ele precisa vencer qualquer outro aviso — mostrar
-    // "ligue a opção de tela de bloqueio" quando o componente que digita nem subiu manda o
+fn sem_receber_o_aviso_diz_que_so_este_controla() {
+    // Mostrar "ligue a opção de tela de bloqueio" quando o componente que digita nem subiu manda o
     // usuário resolver o problema errado.
-    let mut estado = cliente_pronto();
+    let mut estado = pronto();
     estado.agente_pronto = false;
     estado.nivel_privilegiado = Nivel::Nenhum;
     estado.bloqueio_permitido = false;
     let frase = estado.impedimento().expect("há impedimento");
     assert!(frase.contains("receber o teclado e o mouse"), "{frase}");
+    assert!(frase.contains("só este controla"), "{frase}");
 }
 
 #[test]
-fn quem_tem_o_teclado_e_nao_captura_ouve_o_problema_certo_e_o_que_fazer() {
-    // O relato do log 47: o Linux com o teclado dizia "o componente que digita", e o ponteiro
-    // parava na borda sem que nada explicasse que era a leitura do teclado daqui que faltava.
-    let mut estado = cliente_pronto();
-    estado.papel = Papel::Servidor;
+fn sem_captura_ouve_o_problema_certo_e_nao_manda_levar_o_ponteiro() {
+    // O relato do log 47: o Linux dizia "o componente que digita", e o ponteiro parava na borda
+    // sem que nada explicasse que era a leitura do teclado daqui que faltava.
+    let mut estado = pronto();
+    estado.captura_pronta = false;
     estado.agente_pronto = false;
     estado.enlace = LinkState::Pronto;
     estado.par = Some(ParConhecido {
@@ -50,8 +50,7 @@ fn quem_tem_o_teclado_e_nao_captura_ouve_o_problema_certo_e_o_que_fazer() {
         conectado: true,
     });
     let frase = estado.impedimento().expect("há impedimento");
-    assert!(frase.contains("ler o teclado e o mouse"), "{frase}");
-    assert!(frase.contains("deixe o teclado com o outro"), "{frase}");
+    assert!(frase.contains("ler o próprio teclado e mouse"), "{frase}");
     let resumo = estado.resumo();
     assert!(!resumo.contains("Leve o ponteiro"), "{resumo}");
     assert!(resumo.contains("não atravessam"), "{resumo}");
@@ -61,17 +60,17 @@ fn quem_tem_o_teclado_e_nao_captura_ouve_o_problema_certo_e_o_que_fazer() {
 fn a_tela_de_bloqueio_desligada_nao_pinta_o_cliente_de_laranja() {
     // Opcional e desligada por padrão: tratá-la como impedimento deixava o controlado sempre em
     // laranja, com tudo funcionando.
-    let mut sem_permissao = cliente_pronto();
+    let mut sem_permissao = pronto();
     sem_permissao.bloqueio_permitido = false;
     assert_eq!(sem_permissao.impedimento(), None);
 }
 
 #[test]
 fn nao_conseguir_e_nao_ter_deixado_sao_explicados_de_jeitos_diferentes() {
-    let mut sem_capacidade = cliente_pronto();
+    let mut sem_capacidade = pronto();
     sem_capacidade.nivel_privilegiado = Nivel::SoDesbloqueado;
 
-    let mut sem_permissao = cliente_pronto();
+    let mut sem_permissao = pronto();
     sem_permissao.bloqueio_permitido = false;
 
     assert_ne!(
@@ -83,16 +82,12 @@ fn nao_conseguir_e_nao_ter_deixado_sao_explicados_de_jeitos_diferentes() {
     for estado in [&sem_capacidade, &sem_permissao] {
         assert!(!estado.sobre_a_tela_de_bloqueio().contains("  "));
     }
-    assert!(
-        cliente_pronto()
-            .sobre_a_tela_de_bloqueio()
-            .starts_with("Ligada")
-    );
+    assert!(pronto().sobre_a_tela_de_bloqueio().starts_with("Ligada"));
 }
 
 #[test]
 fn a_pausa_aparece_no_resumo_de_cada_lado() {
-    let mut estado = cliente_pronto();
+    let mut estado = pronto();
     estado.par = Some(ParConhecido {
         maquina: Maquina([1; 16]),
         nome: Nome::coagido("notebook"),
@@ -106,33 +101,67 @@ fn a_pausa_aparece_no_resumo_de_cada_lado() {
 }
 
 #[test]
-fn quem_e_controlado_nao_le_que_esta_controlando() {
-    let mut estado = cliente_pronto();
-    estado.enlace = LinkState::EmUso;
+fn quem_e_usado_de_longe_aprende_a_voltar() {
+    let mut estado = pronto();
+    estado.enlace = LinkState::Controlado;
     estado.par = Some(ParConhecido {
         maquina: Maquina([1; 16]),
         nome: Nome::coagido("desktop"),
         recursos: Recursos::default(),
         conectado: true,
     });
-    assert_eq!(estado.resumo(), "desktop está usando este computador.");
+    assert_eq!(
+        estado.resumo(),
+        "desktop está usando este computador. Mexa no mouse daqui para voltar a usá-lo."
+    );
     assert_eq!(estado.frase_do_enlace(), "Controlado pelo outro computador");
-    estado.papel = Papel::Servidor;
+    estado.enlace = LinkState::Controlando;
     assert_eq!(estado.resumo(), "Controlando desktop.");
     assert_eq!(estado.frase_do_enlace(), "Controlando o outro computador");
 }
 
 #[test]
-fn um_cliente_capaz_e_permitido_nao_tem_impedimento() {
-    assert_eq!(cliente_pronto().impedimento(), None);
+fn quem_le_e_recebe_nao_tem_impedimento() {
+    assert_eq!(pronto().impedimento(), None);
 }
 
 #[test]
-fn o_servidor_nao_e_cobrado_pela_tela_de_bloqueio_do_par() {
-    // Quem tem o teclado não precisa aceitar digitação na própria tela de bloqueio para o
-    // produto cumprir o requisito: é o lado controlado que precisa.
-    let mut estado = cliente_pronto();
-    estado.papel = Papel::Servidor;
+fn a_politica_decide_o_que_falta_e_o_que_nao() {
+    // Quem só controla não precisa receber, e quem só é controlado não precisa ler.
+    let mut so_este = pronto();
+    so_este.politica = Politica::SoEste;
+    so_este.agente_pronto = false;
+    assert_eq!(so_este.impedimento(), None);
+
+    let mut so_o_outro = pronto();
+    so_o_outro.politica = Politica::SoOOutro;
+    so_o_outro.captura_pronta = false;
+    assert_eq!(so_o_outro.impedimento(), None);
+}
+
+#[test]
+fn pronto_diz_o_que_se_pode_fazer_daqui() {
+    let mut estado = pronto();
+    estado.enlace = LinkState::Pronto;
+    estado.par = Some(ParConhecido {
+        maquina: Maquina([1; 16]),
+        nome: Nome::coagido("desktop"),
+        recursos: Recursos::default(),
+        conectado: true,
+    });
+    assert!(estado.resumo().contains("Leve o ponteiro"));
+    estado.politica = Politica::SoOOutro;
+    assert!(
+        estado.resumo().contains("de lá controlam este"),
+        "{}",
+        estado.resumo()
+    );
+}
+
+#[test]
+fn a_tela_de_bloqueio_nao_e_impedimento() {
+    // Ela é opcional: o produto funciona sem ela, e o laranja passaria a não querer dizer nada.
+    let mut estado = pronto();
     estado.nivel_privilegiado = Nivel::Nenhum;
     estado.bloqueio_permitido = false;
     assert_eq!(estado.impedimento(), None);
@@ -142,7 +171,7 @@ fn o_servidor_nao_e_cobrado_pela_tela_de_bloqueio_do_par() {
 fn o_portador_em_uso_e_o_fixado_sao_campos_distintos() {
     // Um usuário que fixou Bluetooth e está na rede precisa ver as duas coisas: senão a
     // interface mostra "rede" e a preferência dele parece ter sido ignorada sem explicação.
-    let mut estado = cliente_pronto();
+    let mut estado = pronto();
     estado.portador_fixado = Some(Portador::Bluetooth);
     estado.portador = Some(Portador::RedeLocal);
     assert_ne!(estado.portador, estado.portador_fixado);
@@ -164,7 +193,7 @@ fn a_meta_de_latencia_e_mais_folgada_no_bluetooth() {
 
 #[test]
 fn o_aviso_de_rede_prefere_o_par_e_some_sem_economia() {
-    let mut estado = cliente_pronto();
+    let mut estado = pronto();
     assert_eq!(estado.aviso_de_rede(), None);
 
     estado.economia_aqui = Some(EconomiaDoWifi::SoNaBateria);
@@ -185,7 +214,7 @@ fn o_aviso_de_rede_prefere_o_par_e_some_sem_economia() {
 fn nenhuma_frase_do_aviso_de_rede_tem_espaco_sobrando() {
     // A continuação de linha das frases (`\` no fim) já se perdeu uma vez numa edição, e a janela
     // mostrou "cochila                entre pacotes".
-    let mut estado = cliente_pronto();
+    let mut estado = pronto();
     for (par, aqui) in [
         (Some(EconomiaDoWifi::Ligada), None),
         (None, Some(EconomiaDoWifi::Ligada)),

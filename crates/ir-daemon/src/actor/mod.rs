@@ -30,19 +30,20 @@ mod cursor;
 mod discagem;
 mod energia;
 mod enlace;
+mod entrada_local;
 mod estado;
-mod papel;
 mod parada;
 mod pareamento;
 mod partes;
 mod pausa;
 mod pedidos;
+mod politica;
 mod protegido;
 mod sistema;
 
-pub(crate) use papel::nova_sessao;
 use pareamento::Pareamento;
 pub(crate) use partes::{DeFundo, Entradas, Parts};
+pub(crate) use politica::nova_sessao;
 pub(crate) use sistema::EventoDoSistema;
 
 /// A entrada de captura, já convertida para o canal do ator.

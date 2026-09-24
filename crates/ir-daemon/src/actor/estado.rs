@@ -86,7 +86,7 @@ impl Daemon {
         let rota_dupla = self.session.route().is_some_and(ir_session::Route::is_dual);
         Retrato {
             fase: self.session.phase(),
-            papel: self.session.role(),
+            politica: self.session.policy(),
             borda: self.edge,
             maquina: self.machine,
             nome: &self.nome,

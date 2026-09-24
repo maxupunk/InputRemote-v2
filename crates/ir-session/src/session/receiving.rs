@@ -1,8 +1,9 @@
-//! O lado controlado: recebe, injeta e detecta a volta.
+//! O par usando esta tela: recebe, injeta e detecta a volta ([`Phase::Receiving`]).
 //!
-//! Duas responsabilidades que só existem aqui:
+//! Qualquer um dos dois computadores faz isto (ADR-0014). Duas responsabilidades que só existem
+//! aqui:
 //!
-//! - **converter delta em posição absoluta.** O servidor manda deltas crus; quem conhece o
+//! - **converter delta em posição absoluta.** O par manda deltas crus; quem conhece o
 //!   arranjo de telas desta máquina é ela mesma. Injetar movimento relativo faria o sistema
 //!   aplicar aceleração a deltas que já vêm acelerados (`docs/05-windows.md` §4.2).
 //! - **detectar a travessia de volta.** É aqui que o ponteiro está, então é aqui que se
@@ -10,32 +11,38 @@
 
 use ir_geometry::{Movement, advance};
 use ir_proto::input::{InputState, PointerPosition};
-use ir_proto::message::{Feedback, InputMessage, Message, PointerMessage};
-use ir_proto::screens::Edge;
+use ir_proto::message::{Control, Feedback, InputMessage, Message, PointerMessage};
 
-use crate::config::Role;
 use crate::event::{Command, CommandBatch, Injection, Notice};
 use crate::phase::Phase;
 use crate::session::Session;
 use crate::time::Timestamp;
 
 impl Session {
-    /// O servidor entregou o controle.
+    /// O par entregou o controle a esta tela.
     pub(super) fn on_enter_screen(
         &mut self,
-        entering_edge: Edge,
+        now: Timestamp,
         position: PointerPosition,
         state: &InputState,
         out: &mut CommandBatch,
     ) {
-        if self.config.role != Role::Client || !self.phase.is_established() {
+        if !self.phase.is_established() {
             return;
         }
-        if !self.move_to(Phase::Engaged, out) {
+        if !self.config.policy.receives() {
+            // Esta máquina não é controlada. O par não devia ter atravessado — ele sabe pelo
+            // `Hello` —, mas se atravessou, a resposta é devolver, e não deixá-lo mandando ao nada.
+            self.send(now, Message::Control(Control::Reclaim), out);
             return;
         }
-
-        let _ = entering_edge; // a borda é informativa; a posição já diz onde entrar
+        if self.phase == Phase::Sending && !self.yield_crossing(out) {
+            return; // os dois atravessaram juntos, e quem cede é o par
+        }
+        if !self.move_to(Phase::Receiving, out) {
+            return;
+        }
+        self.start_receiving(now);
 
         if let Some(desktop) = self.local_screens.as_ref() {
             self.pointer = desktop.from_position(position);
@@ -47,9 +54,9 @@ impl Session {
         self.reconcile(state, out);
     }
 
-    /// O servidor retomou o controle.
+    /// O par levou o controle de volta pela borda dele.
     pub(super) fn on_leave_screen(&mut self, out: &mut CommandBatch) {
-        if self.config.role != Role::Client || self.phase != Phase::Engaged {
+        if self.phase != Phase::Receiving {
             return;
         }
         self.release_everything(out);
@@ -141,7 +148,7 @@ impl Session {
         }
     }
 
-    /// O servidor mandou o estado completo. Reconcilia.
+    /// O par mandou o estado completo. Reconcilia.
     pub(super) fn on_snapshot(
         &mut self,
         state: &InputState,
@@ -241,9 +248,9 @@ impl Session {
         }
     }
 
-    /// Avisa o servidor de que o ponteiro voltou, e para de injetar.
+    /// Avisa o par de que o ponteiro voltou pela borda, e para de injetar.
     pub(super) fn report_edge_return(&mut self, now: Timestamp, out: &mut CommandBatch) {
-        if self.config.role != Role::Client {
+        if self.phase != Phase::Receiving {
             return;
         }
         let position = self.local_screens.as_ref().map_or(
@@ -272,7 +279,7 @@ impl Session {
     }
 
     const fn is_injecting(&self) -> bool {
-        self.config.role.injects() && matches!(self.phase, Phase::Engaged)
+        matches!(self.phase, Phase::Receiving)
     }
 }
 

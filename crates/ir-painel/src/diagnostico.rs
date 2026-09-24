@@ -53,7 +53,7 @@ pub fn relatorio(estado: &Estado, extras: &Extras) -> String {
             ir_proto::version::CURRENT,
             extras.par_versao
         ),
-        format!("papel: {:?}", estado.papel),
+        format!("política: {:?}", estado.politica),
         format!("fase: {}", extras.fase),
         format!("pausa: {:?}", estado.pausa),
         format!("rota: {}", extras.rota),
@@ -64,7 +64,8 @@ pub fn relatorio(estado: &Estado, extras: &Extras) -> String {
             "tela de bloqueio permitida ao par: {}",
             estado.bloqueio_permitido
         ),
-        format!("agente pronto: {}", estado.agente_pronto),
+        format!("recebe teclado e mouse: {}", estado.agente_pronto),
+        format!("lê o próprio teclado e mouse: {}", estado.captura_pronta),
         format!("desktops do agente: {}", extras.desktops),
         format!("pares gravados: {}", extras.pares_gravados),
         format!("par: {}", extras.alcance),

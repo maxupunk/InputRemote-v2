@@ -16,12 +16,9 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use ir_proto::peer::{Capabilities, MachineName, PrivilegedInputLevel};
 use ir_proto::screens::ScreenLayout;
-use ir_session::{LocalIdentity, Role};
+use ir_session::{LocalIdentity, Policy};
 use tokio::sync::{mpsc, watch};
 use tracing::info;
-// Só o caminho sem agente (Linux) relata backend de entrada indisponível.
-#[cfg(not(windows))]
-use tracing::warn;
 
 use crate::actor::{CaptureRx, Daemon, Entradas, Parts};
 use ir_transporte::Endereco;
@@ -84,12 +81,12 @@ async fn subir_e_rodar(
     parada: watch::Receiver<bool>,
     sistema: mpsc::UnboundedReceiver<ir_servico::EventoDoSistema>,
 ) -> Result<()> {
-    let (dir, cfg, identity, role, edge) = carregar()?;
+    let (dir, cfg, identity, politica, edge) = carregar()?;
     let screen = tamanho_da_tela(&cfg);
     let maquina = ir_transporte::maquina_da_chave(&identity.public());
     let abertos = ir_transporte::abrir(cfg.port, &identity, maquina).await?;
 
-    let (capturer, injector, capture_rx, captura) = build_io(role);
+    let (capturer, injector, capture_rx, captura) = build_io();
     let identidade = identidade_local(&identity);
 
     let canais = abrir_canais()?;
@@ -101,7 +98,7 @@ async fn subir_e_rodar(
     let arquivos = arquivos::abrir(&cfg, &dir, &identity, &canais.avisos, &abertos.descoberta);
 
     let mut daemon = Daemon::new(Parts {
-        session: actor::nova_sessao(role, edge, identidade.clone(), cfg.papel_escolhido_em),
+        session: actor::nova_sessao(politica, edge, identidade.clone(), cfg.borda_escolhida_em),
         rede: abertos.rede,
         radio: abertos.radio,
         reabridor: Some(abertos.reabridor),
@@ -147,19 +144,19 @@ fn carregar() -> Result<(
     std::path::PathBuf,
     config::Config,
     Arc<ir_crypto::Identity>,
-    Role,
+    Policy,
     ir_proto::screens::Edge,
 )> {
     let dir = config::data_dir();
     let mut cfg = config::load_config(&dir).context("carregando configuração")?;
     let identity = Arc::new(config::load_identity(&dir).context("carregando identidade")?);
-    let role = config::papel_na_subida(&mut cfg, &dir, ir_input::capture_supported())?;
+    let politica = config::politica_na_subida(&mut cfg, &dir, ir_input::capture_supported())?;
     let edge = cfg.edge()?;
     info!(
-        "InputRemote — papel {role}, impressão digital {}",
+        "InputRemote — {politica}, impressão digital {}",
         identity.fingerprint()
     );
-    Ok((dir, cfg, identity, role, edge))
+    Ok((dir, cfg, identity, politica, edge))
 }
 
 /// Tamanho de tela: da plataforma quando ela sabe, senão da configuração.
@@ -170,9 +167,8 @@ fn tamanho_da_tela(cfg: &config::Config) -> (u32, u32) {
 /// Dá partida no ator: as telas, a primeira tentativa de conexão e o agente.
 fn dar_partida(daemon: &mut Daemon, screen: (u32, u32)) {
     feed_screens(daemon, screen);
-    // No Linux com o teclado aqui, o injetor abre também, e o serviço passa a conduzir o cursor.
-    let papel = daemon.session.role();
-    let _ = daemon.garantir_entrada_local(papel);
+    // No Linux a captura e o injetor abrem os dois, e o serviço passa a conduzir o cursor.
+    let _ = daemon.garantir_entrada_local();
     daemon.anunciar_radio_proprio();
     daemon.anunciar_abertura();
     daemon.verificar_economia();
@@ -230,48 +226,20 @@ type Io = (
     mpsc::UnboundedSender<ir_input::CaptureEvent>,
 );
 
-/// Liga o backend de entrada conforme o papel.
+/// O canal por onde a captura chega ao ator.
 ///
-/// A falha de um backend **não** derruba o serviço. Rodando como serviço na sessão 0, a captura e
-/// a injeção diretas não alcançam a sessão do usuário — é para isso que existe o agente ([05,
-/// §5](../../../docs/05-windows.md)). Enquanto o agente não entra, o serviço fica de pé mesmo
-/// assim: o canal de controle funciona, o pareamento pela interface funciona, e só a passagem de
-/// teclado e mouse é que espera o agente. Um serviço que caísse por não capturar nada seria o
-/// pior dos mundos — nem sobe, nem diz por quê.
-fn build_io(role: Role) -> Io {
+/// Os backends de entrada não abrem aqui: quem os abre é o ator, na partida
+/// (`garantir_entrada_local`), porque é ele quem sabe o que falta e tenta de novo. A falha de um
+/// backend **não** derruba o serviço: no Windows, na sessão 0, a captura e a injeção são do agente
+/// ([05, §5](../../../docs/05-windows.md)); no Linux, sem captura a máquina ainda é controlada, e
+/// sem injeção ainda controla. Um serviço que caísse por não capturar nada seria o pior dos mundos
+/// — nem sobe, nem diz por quê.
+fn build_io() -> Io {
     let (cap_tx, cap_rx) = mpsc::unbounded_channel();
-    // O ator guarda um emissor: é por ele que a captura começa se a máquina virar servidor depois.
+    // O ator guarda um emissor: é por ele que a captura começa quando abrir.
     let para_o_ator = cap_tx.clone();
-    #[cfg(windows)]
-    {
-        // No Windows quem captura e injeta é o **agente**, na sessão do usuário. O serviço não
-        // toca em entrada: na sessão 0 ele não enxerga o teclado de ninguém, e um backend local
-        // aqui competiria com o do agente e duplicaria cada evento.
-        let _ = role;
-        segurar_canal(cap_tx);
-        (None, None, cap_rx, para_o_ator)
-    }
-    #[cfg(not(windows))]
-    if role == Role::Server {
-        match fundo::capturar(&cap_tx) {
-            Ok(capturer) => (Some(capturer), None, cap_rx, para_o_ator),
-            Err(error) => {
-                warn!(%error, "captura local indisponível; a passagem de entrada aguarda o agente");
-                segurar_canal(cap_tx);
-                (None, None, cap_rx, para_o_ator)
-            }
-        }
-    } else {
-        let injector = match ir_input::open_injector() {
-            Ok(injector) => Some(injector),
-            Err(error) => {
-                warn!(%error, "injeção local indisponível; a passagem de entrada aguarda o agente");
-                None
-            }
-        };
-        segurar_canal(cap_tx);
-        (None, injector, cap_rx, para_o_ator)
-    }
+    segurar_canal(cap_tx);
+    (None, None, cap_rx, para_o_ator)
 }
 
 /// Segura o emissor de captura numa tarefa, para o canal não fechar quando ninguém captura.

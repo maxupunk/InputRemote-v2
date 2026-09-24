@@ -25,14 +25,17 @@ pub enum Control {
     HelloAck(Greeting),
     /// O arranjo de telas de quem envia, sempre que ele muda.
     Screens(ScreenLayout),
-    /// De que lado fica o par, do ponto de vista de quem envia.
+    /// De que lado fica o par, do ponto de vista de quem envia, e quando isso foi escolhido.
     ///
-    /// Só o servidor envia — ao estabelecer a sessão e a cada troca —, porque a borda é dele: é
-    /// ele quem tem o teclado e o mouse. O cliente usa a borda oposta, e um anúncio que chegue ao
-    /// servidor é ignorado.
+    /// Os dois lados enviam — ao estabelecer a sessão e a cada troca —, e qualquer um dos dois pode
+    /// mudar a posição na própria tela. As duas bordas precisam ser opostas; se não forem, vale a
+    /// escolha mais recente, e no empate a do menor `MachineId` (ADR-0014).
     EdgeConfig {
         /// A borda desta tela que dá para a tela do par.
         peer_edge: Edge,
+        /// Quando a borda foi escolhida, em milissegundos desde 1970 no relógio de quem envia;
+        /// `0` quando nunca foi escolhida pela tela.
+        chosen_at: u64,
     },
     /// O controle passou para o par.
     ///
@@ -134,39 +137,14 @@ pub enum Control {
     /// Quem tem o teclado bloqueou a própria tela: o outro computador, que ele controlava, não pode
     /// ficar aberto para quem passar por ele.
     LockScreen,
-    /// O papel de quem envia, e quando ele foi escolhido. Desde a versão 5.
+    /// Quem envia retoma o controle: o próprio teclado ou mouse foi usado enquanto o par o
+    /// controlava. Desde a versão 6.
     ///
-    /// Os dois computadores escolhem o papel cada um na sua tela, e nada garantia que combinassem:
-    /// dois com o teclado brigavam pela borda, dois controlados ficavam parados. Cada ponta anuncia
-    /// o seu ao estabelecer; se colidirem, vale a escolha mais recente, e a outra ponta passa ao
-    /// papel complementar sozinha.
-    Role {
-        /// O papel de quem envia.
-        role: PeerRole,
-        /// Quando ele foi escolhido, em milissegundos desde 1970 no relógio de quem envia; `0`
-        /// quando nunca foi escolhido pela tela.
-        chosen_at: u64,
-    },
-}
-
-/// O papel de uma máquina na sessão.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PeerRole {
-    /// Tem o teclado e o mouse, e controla o par.
-    Server,
-    /// É controlada pelo par.
-    Client,
-}
-
-impl PeerRole {
-    /// O papel que combina com este.
-    #[must_use]
-    pub const fn complement(self) -> Self {
-        match self {
-            Self::Server => Self::Client,
-            Self::Client => Self::Server,
-        }
-    }
+    /// É o "quem mexe por último, manda" do controle simétrico
+    /// ([ADR-0014](../../../../docs/adr/0014-controle-simetrico.md)): o par, que mandava a entrada
+    /// dele para cá, para de mandar e volta a usar a própria tela. Também é a resposta a um
+    /// `EnterScreen` que esta máquina não aceita.
+    Reclaim,
 }
 
 /// A economia de energia do Wi-Fi de uma máquina.

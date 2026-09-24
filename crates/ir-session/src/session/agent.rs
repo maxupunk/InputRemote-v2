@@ -7,8 +7,8 @@ use ir_proto::message::Message;
 use ir_proto::screens::ScreenLayout;
 
 use super::Session;
-use crate::config::Role;
 use crate::event::{Command, CommandBatch};
+use crate::phase::Phase;
 use crate::time::Timestamp;
 
 impl Session {
@@ -49,11 +49,11 @@ impl Session {
             return;
         }
         self.release_everything(out);
-        match self.config.role {
+        match self.phase {
             // Devolve o controle: sem agente não há como injetar, e segurar o ponteiro do
             // usuário do outro lado seria pior.
-            Role::Client => self.report_edge_return(now, out),
-            Role::Server => {
+            Phase::Receiving => self.report_edge_return(now, out),
+            Phase::Sending => {
                 self.send(
                     now,
                     Message::Input(ir_proto::message::InputMessage::ReleaseAll),
@@ -61,6 +61,7 @@ impl Session {
                 );
                 self.hand_control_back(out);
             }
+            _ => {}
         }
     }
 

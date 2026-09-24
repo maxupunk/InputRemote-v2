@@ -18,12 +18,11 @@ use ir_proto::carrier::Carrier;
 use ir_proto::ids::MachineId;
 use ir_proto::peer::{Capabilities, MachineName};
 use ir_proto::screens::Edge;
-use ir_session::{LocalIdentity, Role};
+use ir_session::{LocalIdentity, Policy};
 use tokio::sync::broadcast;
 
 use super::{Daemon, Parts, nova_sessao};
 use crate::config::Config;
-use crate::config::texto_do_papel;
 use ir_transporte::{Endereco, Transporte};
 
 /// Um diretório por teste, para dois testes não gravarem no mesmo arquivo.
@@ -121,7 +120,7 @@ pub(super) struct Bancada {
     pub(super) radio: Arc<TransporteDeMentira>,
 }
 
-/// Uma captura que não captura nada: para os testes do papel de servidor rodarem onde não há
+/// Uma captura que não captura nada: para os testes que controlam o outro rodarem onde não há
 /// teclado nem mouse para abrir, como o container do Linux.
 pub(super) struct CapturaDeMentira;
 
@@ -131,13 +130,10 @@ impl ir_input::Capturer for CapturaDeMentira {
 }
 
 impl Bancada {
-    /// Um serviço no papel dado, com o par à direita e nenhum par gravado.
-    pub(super) fn nova(papel: Role) -> Self {
+    /// Um serviço com o par à direita e nenhum par gravado.
+    pub(super) fn nova() -> Self {
         let dir = diretorio();
-        let config = Config {
-            role: texto_do_papel(papel).to_owned(),
-            ..Config::default()
-        };
+        let config = Config::default();
         let rede = TransporteDeMentira::novo(Carrier::Udp);
         let radio = TransporteDeMentira::novo(Carrier::Rfcomm);
         let (avisos, _) = broadcast::channel(16);
@@ -149,7 +145,7 @@ impl Bancada {
             // A bancada exercita o ator, e o canal de arquivos não faz parte dele.
             arquivos: ir_transferencia::Pedidos::desligada(),
             descoberta: ir_transporte::Descoberta::desligada(),
-            session: nova_sessao(papel, Edge::Right, identidade(), None),
+            session: nova_sessao(Policy::Both, Edge::Right, identidade(), None),
             rede: Arc::clone(&rede) as Arc<dyn Transporte>,
             radio: Some(Arc::clone(&radio) as Arc<dyn Transporte>),
             reabridor: None,

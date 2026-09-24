@@ -14,8 +14,7 @@ use ir_proto::input::{
     Button, HidUsage, InputState, Modifiers, PointerDelta, PointerPosition, WheelDelta,
 };
 use ir_proto::message::{
-    Control, Feedback, Greeting, InputMessage, Message, NetworkPowerSaving, PeerRole,
-    PointerMessage,
+    Control, Feedback, Greeting, InputMessage, Message, NetworkPowerSaving, PointerMessage,
 };
 use ir_proto::peer::{Capabilities, ClipboardCapabilities, MachineName, PrivilegedInputLevel};
 use ir_proto::screens::{Edge, ScreenLayout};
@@ -64,6 +63,7 @@ fn greeting() -> Greeting {
             bulk_transfer: true,
             privileged_input: PrivilegedInputLevel::LockScreen,
             secure_attention: false,
+            declines_control: false,
         },
     }
 }
@@ -116,7 +116,7 @@ fn control_vectors() -> Vec<Vector> {
         v(
             "hello",
             control(Control::Hello(greeting()), 1),
-            "0000050102030405060708090a0b0c0d0e0f100762616e63616461010101010200010000",
+            "0000060102030405060708090a0b0c0d0e0f100762616e6361646101010101020000010000",
         ),
         v(
             "screens",
@@ -131,10 +131,11 @@ fn control_vectors() -> Vec<Vector> {
             control(
                 Control::EdgeConfig {
                     peer_edge: Edge::Right,
+                    chosen_at: 1_790_000_000_000,
                 },
                 3,
             ),
-            "000301030000",
+            "00030180d8c1a28c34030000",
         ),
         v(
             "reach",
@@ -162,7 +163,7 @@ fn control_vectors() -> Vec<Vector> {
 }
 
 /// Canal 0 — o que entrou nas versões 4 e 5: Ctrl+Alt+Del, desktop protegido, bloquear junto e o
-/// papel anunciado.
+/// controle retomado.
 fn control_vectors_v4() -> Vec<Vector> {
     vec![
         v(
@@ -182,16 +183,10 @@ fn control_vectors_v4() -> Vec<Vector> {
             "0011170000",
         ),
         v(
-            "role",
-            // Versão 5: o papel de quem envia, e quando foi escolhido.
-            control(
-                Control::Role {
-                    role: PeerRole::Client,
-                    chosen_at: 1_790_000_000_000,
-                },
-                24,
-            ),
-            "00120180d8c1a28c34180000",
+            "reclaim",
+            // Versão 6: quem estava sendo controlado retoma o controle.
+            control(Control::Reclaim, 24),
+            "0012180000",
         ),
     ]
 }

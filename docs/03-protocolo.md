@@ -217,8 +217,8 @@ Nomes definitivos vivem em `ir-proto`. Este é o contrato.
 | `Hello` | versão do protocolo, id da máquina, nome, capacidades |
 | `HelloAck` | versão acordada, capacidades do par |
 | `ScreenLayout` | monitores: id, retângulo, escala, monitor primário |
-| `EdgeConfig` | a borda do servidor que dá para o cliente. Só o servidor envia, ao estabelecer e a cada troca; o cliente usa a oposta, e o servidor ignora um que receba. Trocar a borda não refaz a sessão (log 24) |
-| `EnterScreen` | o controle passou para o par: posição de entrada, borda, estado de modificadores |
+| `EdgeConfig{peer_edge, chosen_at}` | de que lado fica o par, do ponto de vista de quem envia, e quando isso foi escolhido na tela. Os dois lados enviam, ao estabelecer e a cada troca; as bordas precisam ser opostas, e se não forem vale a escolha mais recente — no empate, o menor `MachineId`. Trocar a borda não refaz a sessão (log 24, [ADR-0014](adr/0014-controle-simetrico.md)) |
+| `EnterScreen` | o controle passou para o par: posição de entrada, borda, estado de modificadores. Qualquer um dos dois envia; se os dois enviarem ao mesmo tempo, cede quem tem o `MachineId` maior e passa a receber |
 | `LeaveScreen` | o controle voltou: posição de saída, borda |
 | `StateSnapshot` | conjunto completo de teclas e botões pressionados (§7) |
 | `Ping` / `Pong` | carimbo monotônico, para latência e detecção de queda |
@@ -229,8 +229,8 @@ Nomes definitivos vivem em `ir-proto`. Este é o contrato.
 | `DisableNetworkPowerSaving` | peça que o par desligue a economia de energia do Wi-Fi dele — e nada mais sobre a configuração da máquina. Só vai para um par da versão 3 |
 | `SecureAttention` | gere Ctrl+Alt+Del aí. O de verdade o Windows intercepta antes de qualquer gancho; o lado que controla o pede com Ctrl+Alt+End, e quem recebe só obedece se o administrador de lá permitir ([05, §4.3](05-windows.md)). Só vai para um par da versão 4 |
 | `ProtectedDesktop{refused}` | se quem envia está recusando digitação num desktop protegido (tela de bloqueio, UAC) por falta de permissão do administrador — quem digita precisa saber por que o teclado parou ([04, §6](04-seguranca.md)). Só vai para um par da versão 4 |
-| `LockScreen` | bloqueie a tela aí: quem tem o teclado bloqueou a própria, e a máquina que ele controlava não pode ficar aberta. Só com "bloquear juntos" ligado, e só para um par da versão 4 |
-| `Role{role, chosen_at}` | o papel de quem envia e quando foi escolhido na tela (ms desde 1970; `0` se nunca). Cada ponta anuncia ao estabelecer; se os papéis colidirem, vale a escolha mais recente — no empate, o menor `MachineId` — e a outra ponta passa ao complementar sozinha, grava o horário do par e refaz a sessão. Só vai para um par da versão 5 ([log 46](logs/46-os-papeis-que-combinam-sozinhos.md)) |
+| `LockScreen` | bloqueie a tela aí: quem envia bloqueou a própria, e a outra não pode ficar aberta. Só com "bloquear juntos" ligado, e só obedecido por quem aceita ser controlado |
+| `Reclaim` | quem envia retoma o controle: o teclado ou o mouse dele foi usado enquanto o par o controlava, e o par para de mandar. Também é a resposta a um `EnterScreen` que quem envia não aceita. Desde a versão 6 ([ADR-0014](adr/0014-controle-simetrico.md)) |
 
 ### Canal 1 — Entrada confiável
 
@@ -275,9 +275,11 @@ Este é o mecanismo que garante a meta "zero teclas presas em 10.000 travessias"
 ## 8. Versionamento
 
 `Hello` carrega `protocol_version: u16`. Vale a menor versão entre as duas pontas. A versão
-corrente é a 5 e a mínima aceita é a 2: o que a 3 acrescenta (`NetworkPower`,
-`DisableNetworkPowerSaving`), o que a 4 acrescenta (`SecureAttention`, `ProtectedDesktop`,
-`LockScreen`) e o que a 5 acrescenta (`Role`) só é enviado a um par que a fale. Se a
+corrente é a 6, e é também a mínima aceita: a 6 trocou os papéis fixos pelo controle simétrico
+([ADR-0014](adr/0014-controle-simetrico.md)) — `Role` saiu, `Reclaim` entrou, `EdgeConfig` leva
+o horário da escolha e `Capabilities` diz se a ponta recusa ser controlada —, e conversar com uma
+ponta de papel fixo exigiria manter os dois modelos vivos. Sem versão lançada, os dois computadores
+atualizam juntos; um par antigo é recusado na negociação com o motivo. Se a
 diferença for maior que uma versão maior, a sessão é recusada com mensagem explícita.
 
 Regra deliberadamente estrita: **mensagem desconhecida em canal confiável derruba o

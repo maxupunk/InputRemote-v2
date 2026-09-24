@@ -1,12 +1,12 @@
-//! A borda de travessia: o servidor decide, o cliente acompanha.
+//! A borda de travessia: dos dois lados, a escolha mais recente vale (ADR-0014).
 //!
 //! No teste físico (log 24), cada máquina tinha a própria escolha de borda. O usuário trocou dos
-//! dois lados, as duas ficaram com `left`, e a volta passou a sair pelo lado errado do cliente. E
-//! cada troca derrubava a sessão, com um adeus que ainda mandava o par não reconectar.
+//! dois lados, as duas ficaram com `left`, e a volta passou a sair pelo lado errado. Depois a borda
+//! passou a ser só do servidor; sem papel fixo, qualquer um dos dois escolhe, e o outro passa a
+//! usar a oposta. Trocar a borda ajusta a sessão em uso, sem derrubá-la.
 //!
-//! A regra agora: **a fonte de verdade é o servidor**, que tem o teclado e o mouse. O cliente usa
-//! sempre a borda oposta à dele — se o cliente fica à esquerda do servidor, o servidor fica à
-//! direita do cliente —, e trocar a borda ajusta a sessão em uso, sem derrubá-la.
+//! Na bancada, `server` é o computador A (identificador 1) e `client` o B (identificador 2): nomes
+//! de posição, não de papel.
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
 mod common;
@@ -28,15 +28,30 @@ fn disconnections(pair: &Pair, side: Side) -> usize {
         .count()
 }
 
-/// As bordas que um lado anunciou ter passado a usar — o que o serviço grava.
+/// As bordas que um lado passou a usar porque o par escolheu — o que o serviço grava e conta.
 fn edges_adopted(pair: &Pair, side: Side) -> Vec<Edge> {
     pair.notices(side)
         .iter()
         .filter_map(|notice| match notice {
-            Notice::EdgeChanged { edge } => Some(*edge),
+            Notice::EdgeAdopted { edge, .. } => Some(*edge),
             _ => None,
         })
         .collect()
+}
+
+/// As bordas escolhidas na própria tela.
+fn edges_chosen(pair: &Pair, side: Side) -> Vec<Edge> {
+    pair.notices(side)
+        .iter()
+        .filter_map(|notice| match notice {
+            Notice::EdgeChanged { edge, .. } => Some(*edge),
+            _ => None,
+        })
+        .collect()
+}
+
+fn set_edge(pair: &mut Pair, side: Side, edge: Edge, chosen_at: u64) {
+    pair.feed(side, Input::SetPeerEdge { edge, chosen_at });
 }
 
 fn connected() -> Pair {
@@ -48,41 +63,40 @@ fn connected() -> Pair {
 }
 
 #[test]
-fn the_client_takes_the_opposite_of_the_servers_edge_when_the_session_starts() {
-    // A bancada do log 24: as duas máquinas tinham gravado `left`.
+fn two_edges_never_chosen_agree_by_the_smaller_identifier() {
+    // A bancada do log 24: as duas máquinas tinham gravado `left`, nenhuma escolhida pela tela.
     let mut pair = Pair::with_edges(Edge::Left, Edge::Left);
     pair.connect(Carrier::Udp);
 
-    assert_eq!(pair.client.phase(), Phase::Ready);
+    assert_eq!(
+        pair.server.peer_edge(),
+        Edge::Left,
+        "o menor identificador fica"
+    );
     assert_eq!(
         pair.client.peer_edge(),
         Edge::Right,
-        "o cliente fica à esquerda do servidor, então o servidor fica à direita do cliente"
+        "B fica à esquerda de A, então A fica à direita de B"
     );
-    assert_eq!(
-        edges_adopted(&pair, Side::Client),
-        vec![Edge::Right],
-        "o serviço do cliente precisa saber que borda gravar"
-    );
+    assert_eq!(edges_adopted(&pair, Side::Client), vec![Edge::Right]);
+    assert!(edges_adopted(&pair, Side::Server).is_empty());
 }
 
 #[test]
-fn a_client_that_already_agrees_has_nothing_to_save() {
+fn edges_that_already_agree_have_nothing_to_save() {
     let mut pair = Pair::matched();
     pair.connect(Carrier::Udp);
 
     assert_eq!(pair.client.peer_edge(), Edge::Left);
-    assert!(
-        edges_adopted(&pair, Side::Client).is_empty(),
-        "sem mudança, nada a gravar a cada conexão"
-    );
+    assert!(edges_adopted(&pair, Side::Client).is_empty());
+    assert!(edges_adopted(&pair, Side::Server).is_empty());
 }
 
 #[test]
-fn changing_the_edge_on_the_server_keeps_the_session_up() {
+fn changing_the_edge_on_one_side_keeps_the_session_up_and_the_other_follows() {
     let mut pair = connected();
 
-    pair.feed(Side::Server, Input::SetPeerEdge(Edge::Left));
+    set_edge(&mut pair, Side::Server, Edge::Left, 100);
     for _ in 0..20 {
         pair.advance(100);
     }
@@ -91,24 +105,50 @@ fn changing_the_edge_on_the_server_keeps_the_session_up() {
     assert_eq!(
         pair.client.peer_edge(),
         Edge::Right,
-        "o cliente acompanha sem ninguém mexer nele"
+        "o outro acompanha sem ninguém mexer nele"
     );
     assert_eq!(pair.server.phase(), Phase::Ready);
     assert_eq!(pair.client.phase(), Phase::Ready);
-    assert_eq!(
-        disconnections(&pair, Side::Server),
-        0,
-        "trocar a borda não é motivo para derrubar a sessão"
-    );
+    assert_eq!(disconnections(&pair, Side::Server), 0);
     assert_eq!(disconnections(&pair, Side::Client), 0);
-    assert_eq!(edges_adopted(&pair, Side::Server), vec![Edge::Left]);
+    assert_eq!(edges_chosen(&pair, Side::Server), vec![Edge::Left]);
     assert_eq!(edges_adopted(&pair, Side::Client), vec![Edge::Right]);
+}
+
+#[test]
+fn either_side_may_choose_and_the_other_follows() {
+    // O que antes era proibido: o computador que "era controlado" também escolhe.
+    let mut pair = connected();
+
+    set_edge(&mut pair, Side::Client, Edge::Top, 100);
+
+    assert_eq!(pair.client.peer_edge(), Edge::Top);
+    assert_eq!(
+        pair.server.peer_edge(),
+        Edge::Bottom,
+        "A fica abaixo de B, então B fica abaixo de A"
+    );
+    assert_eq!(edges_adopted(&pair, Side::Server), vec![Edge::Bottom]);
+}
+
+#[test]
+fn when_both_change_the_latest_choice_wins() {
+    let mut pair = connected();
+    set_edge(&mut pair, Side::Server, Edge::Top, 200);
+    set_edge(&mut pair, Side::Client, Edge::Right, 300);
+
+    assert_eq!(
+        pair.client.peer_edge(),
+        Edge::Right,
+        "a escolha mais recente fica"
+    );
+    assert_eq!(pair.server.peer_edge(), Edge::Left);
 }
 
 #[test]
 fn after_the_change_the_new_edge_is_the_one_that_crosses() {
     let mut pair = connected();
-    pair.feed(Side::Server, Input::SetPeerEdge(Edge::Left));
+    set_edge(&mut pair, Side::Server, Edge::Left, 100);
 
     // A direita, que era a borda antiga, agora prende o ponteiro.
     pair.feed(
@@ -127,12 +167,12 @@ fn after_the_change_the_new_edge_is_the_one_that_crosses() {
     );
     assert_eq!(
         pair.server.phase(),
-        Phase::Engaged,
+        Phase::Sending,
         "a borda nova atravessa"
     );
-    assert_eq!(pair.client.phase(), Phase::Engaged);
+    assert_eq!(pair.client.phase(), Phase::Receiving);
 
-    // A volta sai pela borda oposta do cliente: a direita dele.
+    // A volta sai pela borda oposta do outro lado: a direita dele.
     pair.feed(
         Side::Server,
         Input::LocalPointer(PointerDelta { dx: 5000, dy: 0 }),
@@ -141,12 +181,12 @@ fn after_the_change_the_new_edge_is_the_one_that_crosses() {
     assert_eq!(
         pair.server.phase(),
         Phase::Ready,
-        "o controle volta pela direita do cliente"
+        "o controle volta pela direita do outro"
     );
 }
 
 #[test]
-fn changing_the_edge_while_controlling_the_client_hands_control_back_first() {
+fn changing_the_edge_while_controlling_hands_control_back_first() {
     let mut pair = connected();
     pair.feed(
         Side::Server,
@@ -159,10 +199,10 @@ fn changing_the_edge_while_controlling_the_client_hands_control_back_first() {
             pressed: true,
         },
     );
-    assert_eq!(pair.client.phase(), Phase::Engaged);
+    assert_eq!(pair.client.phase(), Phase::Receiving);
     pair.clear_log();
 
-    pair.feed(Side::Server, Input::SetPeerEdge(Edge::Left));
+    set_edge(&mut pair, Side::Server, Edge::Left, 100);
 
     assert_eq!(
         pair.server.phase(),
@@ -182,7 +222,7 @@ fn changing_the_edge_while_controlling_the_client_hands_control_back_first() {
     let released = pair.index_of_release(Side::Client).expect("soltou");
     let adopted = pair
         .index_of(Side::Client, |command| {
-            matches!(command, Command::Notify(Notice::EdgeChanged { .. }))
+            matches!(command, Command::Notify(Notice::EdgeAdopted { .. }))
         })
         .expect("acompanhou a borda nova");
     assert!(
@@ -194,23 +234,10 @@ fn changing_the_edge_while_controlling_the_client_hands_control_back_first() {
 }
 
 #[test]
-fn the_client_does_not_choose_the_edge() {
+fn an_older_announcement_does_not_undo_a_newer_choice() {
+    // Um anúncio atrasado, ou de alguém que escolheu antes, não desfaz o que se escolheu aqui.
     let mut pair = connected();
-
-    pair.feed(Side::Client, Input::SetPeerEdge(Edge::Top));
-
-    assert_eq!(
-        pair.client.peer_edge(),
-        Edge::Left,
-        "quem decide é o servidor"
-    );
-    assert!(edges_adopted(&pair, Side::Client).is_empty());
-}
-
-#[test]
-fn the_server_does_not_take_an_edge_from_the_client() {
-    // Proteção: um cliente de outra versão, ou mal-intencionado, não muda por onde o teclado sai.
-    let mut pair = connected();
+    set_edge(&mut pair, Side::Server, Edge::Left, 500);
     pair.advance(210);
     let epoch = pair
         .commands(Side::Client)
@@ -219,25 +246,27 @@ fn the_server_does_not_take_an_edge_from_the_client() {
             Command::Send { frame, .. } => Some(frame.epoch),
             _ => None,
         })
-        .expect("o heartbeat do cliente mostra a época da sessão");
+        .expect("o heartbeat do outro lado mostra a época da sessão");
     let seq = pair.client.next_sequence(ChannelId::Control);
-    let forged = Frame::new(
+    let stale = Frame::new(
         Message::Control(Control::EdgeConfig {
             peer_edge: Edge::Top,
+            chosen_at: 100,
         }),
         seq,
     )
     .in_epoch(epoch);
+    pair.clear_log();
 
     pair.feed(
         Side::Server,
         Input::Received {
             carrier: Carrier::Udp,
-            frame: forged,
+            frame: stale,
         },
     );
 
-    assert_eq!(pair.server.peer_edge(), Edge::Right);
+    assert_eq!(pair.server.peer_edge(), Edge::Left);
     assert!(edges_adopted(&pair, Side::Server).is_empty());
 }
 

@@ -6,7 +6,6 @@ use ir_proto::channel::ChannelId;
 use ir_proto::frame::{Frame, Sequence};
 use ir_proto::message::{Control, Feedback, Message};
 
-use crate::config::Role;
 use crate::event::{Command, CommandBatch, Notice};
 use crate::phase::Phase;
 use crate::reliability::{Delivery, ReliableChannels};
@@ -149,14 +148,14 @@ impl Session {
             Control::Screens(layout) => {
                 self.peer_screens = Desktop::from_layout(&layout);
             }
-            Control::EdgeConfig { peer_edge } => self.on_edge_config(peer_edge, out),
+            Control::EdgeConfig {
+                peer_edge,
+                chosen_at,
+            } => self.on_edge_config(now, peer_edge, chosen_at, out),
+            // A borda de entrada é informativa: a posição já diz onde entrar.
             Control::EnterScreen {
-                entering_edge,
-                position,
-                state,
-            } => {
-                self.on_enter_screen(entering_edge, position, &state, out);
-            }
+                position, state, ..
+            } => self.on_enter_screen(now, position, &state, out),
             Control::LeaveScreen { .. } => self.on_leave_screen(out),
             Control::StateSnapshot { state, position } => {
                 self.on_snapshot(&state, position, out);
@@ -169,17 +168,18 @@ impl Session {
             Control::Reach { radio } => Self::on_reach(radio, out),
             Control::NetworkPower(state) => Self::on_peer_network_power(state, out),
             Control::DisableNetworkPowerSaving => Self::on_network_power_fix_requested(out),
-            Control::Role { role, chosen_at } => self.on_peer_role(role, chosen_at, out),
-            // Só o controlado gera Ctrl+Alt+Del; pedido ao contrário é engano do par, e ignorado.
-            // Quem gera o Ctrl+Alt+Del, e decide se pode, é a periferia do controlado.
-            Control::SecureAttention if self.config.role == crate::config::Role::Client => {
+            Control::Reclaim => self.on_peer_reclaim(out),
+            // Só quem aceita ser controlado gera Ctrl+Alt+Del a pedido do par. Quem gera, e decide
+            // se pode, é a periferia daqui.
+            Control::SecureAttention if self.config.policy.receives() => {
                 out.push(Command::SecureAttention);
             }
             Control::ProtectedDesktop { refused } => {
                 out.push(Command::Notify(Notice::PeerProtectedDesktop { refused }));
             }
-            // Só quem é controlado bloqueia a pedido; o contrário seria o par trancando quem digita.
-            Control::LockScreen if self.config.role == crate::config::Role::Client => {
+            // Só quem aceita ser controlado bloqueia a pedido; o contrário seria o par trancando
+            // uma máquina que nunca comanda.
+            Control::LockScreen if self.config.policy.receives() => {
                 out.push(Command::LockScreen);
             }
             Control::Error { code, fatal } => {
@@ -202,7 +202,7 @@ impl Session {
             Feedback::EmergencyRelease => {
                 // O usuário pediu socorro do outro lado. Retomar o controle é o certo: ele
                 // está com um teclado que não responde onde espera.
-                if self.config.role == Role::Server && self.phase == Phase::Engaged {
+                if self.phase == Phase::Sending {
                     self.hand_control_back(out);
                 }
             }
@@ -219,14 +219,8 @@ impl Session {
     /// saída de que o usuário precisa quando alguma coisa deu errado e ele não sabe o quê, e
     /// por isso não depende de resposta do par: age local primeiro, avisa depois.
     pub(super) fn on_emergency(&mut self, now: Timestamp, out: &mut CommandBatch) {
-        if self.phase != Phase::Engaged {
-            // Mesmo sem sessão em uso, soltar é barato e é o que o usuário pediu.
-            self.release_everything(out);
-            return;
-        }
-
-        match self.config.role {
-            Role::Server => {
+        match self.phase {
+            Phase::Sending => {
                 self.send(
                     now,
                     Message::Input(ir_proto::message::InputMessage::ReleaseAll),
@@ -234,10 +228,10 @@ impl Session {
                 );
                 self.hand_control_back(out);
             }
-            Role::Client => {
-                self.send(now, Message::Feedback(Feedback::EmergencyRelease), out);
-                self.report_edge_return(now, out);
-            }
+            // Quem está nesta tela pediu socorro: o controle fica aqui, e o par solta tudo.
+            Phase::Receiving => self.reclaim(now, out),
+            // Mesmo sem sessão em uso, soltar é barato e é o que o usuário pediu.
+            _ => self.release_everything(out),
         }
     }
 }
