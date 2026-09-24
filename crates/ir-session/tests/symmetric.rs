@@ -301,3 +301,55 @@ fn losing_the_link_while_being_used_releases_what_the_other_held() {
     assert!(pair.client.input_state().is_released());
     assert!(pair.any(Side::Client, is::release_all));
 }
+
+#[test]
+fn a_locked_computer_that_refuses_is_a_wall_until_it_unlocks() {
+    // O relato do log 52: o Linux na tela de bloqueio, sem a permissão, e o cursor do Windows
+    // atravessava para ficar preso lá, sem efeito nenhum.
+    let mut pair = connected();
+    pair.feed(Side::Client, Input::LocalProtectedDesktop(true));
+    push(&mut pair, Side::Server, 5000);
+    assert_eq!(pair.server.phase(), Phase::Ready, "a borda é parede");
+    assert_eq!(pair.client.phase(), Phase::Ready);
+
+    pair.feed(Side::Client, Input::LocalProtectedDesktop(false));
+    push(&mut pair, Side::Server, 5000);
+    assert_eq!(
+        pair.server.phase(),
+        Phase::Sending,
+        "desbloqueado, atravessa de novo"
+    );
+}
+
+#[test]
+fn locking_while_being_used_sends_the_cursor_home() {
+    let mut pair = a_controls_b();
+    pair.feed(Side::Client, Input::LocalProtectedDesktop(true));
+    assert_eq!(pair.client.phase(), Phase::Ready);
+    assert_eq!(
+        pair.server.phase(),
+        Phase::Ready,
+        "A não fica mandando ao nada"
+    );
+    assert!(
+        pair.any(Side::Server, is::unsuppress),
+        "e o mouse de A volta a ser de A"
+    );
+}
+
+#[test]
+fn a_computer_that_reconnects_while_locked_still_refuses() {
+    let mut pair = connected();
+    pair.feed(Side::Client, Input::LocalProtectedDesktop(true));
+    pair.set_delivery(false);
+    pair.advance(1100);
+    assert_eq!(pair.server.phase(), Phase::Offline);
+    pair.set_delivery(true);
+    pair.connect(Carrier::Udp);
+    push(&mut pair, Side::Server, 5000);
+    assert_eq!(
+        pair.server.phase(),
+        Phase::Ready,
+        "a sessão nova também sabe"
+    );
+}

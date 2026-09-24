@@ -72,7 +72,7 @@ fn gravar_par(bancada: &mut Bancada) {
         addr: None,
         radio: None,
         nome: None,
-        tela_de_bloqueio: false,
+        recusa_tela_de_bloqueio: false,
     }];
 }
 

@@ -60,7 +60,7 @@ mod tests {
             addr: Some("10.0.0.2:52525".to_owned()),
             radio: None,
             nome: None,
-            tela_de_bloqueio: false,
+            recusa_tela_de_bloqueio: false,
         }];
     }
 

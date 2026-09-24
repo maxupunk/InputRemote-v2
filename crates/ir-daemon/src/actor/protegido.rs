@@ -25,7 +25,7 @@ impl Daemon {
         self.config
             .peers
             .first()
-            .is_some_and(|par| par.tela_de_bloqueio)
+            .is_some_and(crate::config::PinnedPeer::permite_tela_de_bloqueio)
     }
 
     /// Passou a recusar, ou voltou a aceitar, digitação no desktop protegido: o par fica sabendo.
@@ -156,12 +156,33 @@ impl Daemon {
         nova
     }
 
+    /// Com a permissão valendo, a política do Windows que deixa o serviço gerar Ctrl+Alt+Del vem
+    /// junto — sozinha, sem ninguém ter de passar pelas Preferências (log 53). O valor de antes fica
+    /// gravado, para ser devolvido se a permissão for desligada.
+    #[cfg(windows)]
+    pub(crate) fn alinhar_politica_de_atencao(&mut self) {
+        if !self.protegido_permitido() {
+            return;
+        }
+        let nova = self.politica_de_atencao(self.config.clone(), true);
+        if nova.politica_de_atencao_anterior != self.config.politica_de_atencao_anterior {
+            let _ = self.persistir(nova);
+        }
+    }
+
+    /// Fora do Windows, o Ctrl+Alt+Del é só um acorde, e não há política a ligar.
+    #[cfg(not(windows))]
+    #[allow(clippy::unused_self)]
+    pub(crate) const fn alinhar_politica_de_atencao(&mut self) {}
+
     /// O `logind` disse se a tela desta máquina está bloqueada, ou no login (Linux).
+    ///
+    /// Sem a permissão, o par fica sabendo **na hora**, e não só depois da primeira tecla barrada:
+    /// antes o cursor dele atravessava e ficava preso aqui, sem efeito nenhum (log 52). Sabendo, a
+    /// borda dele vira parede, e a tela dele diz por quê.
     pub(crate) fn on_tela_protegida(&mut self, protegida: bool) {
         self.tela_protegida = protegida;
-        if !protegida {
-            self.recusando_protegido(false);
-        }
+        self.recusando_protegido(protegida && !self.protegido_permitido());
     }
 }
 
@@ -178,7 +199,7 @@ mod tests {
             addr: None,
             radio: None,
             nome: None,
-            tela_de_bloqueio: permitido,
+            recusa_tela_de_bloqueio: !permitido,
         }];
     }
 
@@ -187,6 +208,23 @@ mod tests {
             usage: HidUsage(0x04),
             pressed,
         }
+    }
+
+    #[test]
+    fn a_recusa_e_anunciada_assim_que_a_tela_bloqueia_e_nao_so_na_primeira_tecla() {
+        // Log 52: sabendo antes, a borda do par vira parede, e o cursor dele não fica preso aqui.
+        let mut sem = Bancada::nova();
+        com_par(&mut sem, false);
+        sem.daemon.on_tela_protegida(true);
+        assert!(sem.daemon.recusa_protegido);
+
+        let mut com = Bancada::nova();
+        com_par(&mut com, true);
+        com.daemon.on_tela_protegida(true);
+        assert!(
+            !com.daemon.recusa_protegido,
+            "com a permissão, não há o que recusar"
+        );
     }
 
     #[test]

@@ -174,9 +174,7 @@ impl Session {
             Control::SecureAttention if self.config.policy.receives() => {
                 out.push(Command::SecureAttention);
             }
-            Control::ProtectedDesktop { refused } => {
-                out.push(Command::Notify(Notice::PeerProtectedDesktop { refused }));
-            }
+            Control::ProtectedDesktop { refused } => self.on_peer_protected_desktop(refused, out),
             // Só quem aceita ser controlado bloqueia a pedido; o contrário seria o par trancando
             // uma máquina que nunca comanda.
             Control::LockScreen if self.config.policy.receives() => {

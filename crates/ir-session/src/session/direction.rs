@@ -37,10 +37,23 @@ pub(crate) struct ReclaimWatch {
     travelled: i32,
 }
 
+/// Quem está numa tela protegida (bloqueio, login, UAC) recusando o que vem do outro.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Refusals {
+    /// O par recusa o que vem daqui. Enquanto recusa, a borda que dá para ele é parede:
+    /// atravessar só deixaria o cursor preso lá, sem efeito nenhum.
+    pub(super) peer: bool,
+    /// Esta máquina recusa o que vem do par. Guardado para o par da próxima sessão também saber,
+    /// e para recusar uma travessia que chegue mesmo assim.
+    pub(super) here: bool,
+}
+
 impl Session {
-    /// Se a entrada daqui pode atravessar agora: a política deixa, e o par aceita ser controlado.
+    /// Se a entrada daqui pode atravessar agora: a política deixa, o par aceita ser controlado, e
+    /// ele não está numa tela protegida que recusa o que vem daqui.
     pub(super) fn may_cross(&self) -> bool {
         self.config.policy.sends()
+            && !self.refusals.peer
             && self
                 .peer
                 .as_ref()
@@ -123,6 +136,31 @@ impl Session {
         }
         self.hand_control_back(out);
         out.push(Command::Notify(Notice::ControlReclaimed { here: false }));
+    }
+
+    /// O par passou a recusar, ou voltou a aceitar, o que vem daqui — a tela dele bloqueou sem a
+    /// permissão de digitar ali. Com o cursor lá, ele volta para cá: mandar ao nada não serve.
+    pub(super) fn on_peer_protected_desktop(&mut self, refused: bool, out: &mut CommandBatch) {
+        self.refusals.peer = refused;
+        if refused && self.phase == Phase::Sending {
+            self.hand_control_back(out);
+        }
+        out.push(Command::Notify(Notice::PeerProtectedDesktop { refused }));
+    }
+
+    /// A tela daqui passou a recusar o par, ou voltou a aceitá-lo. Se ele estava usando esta tela,
+    /// o controle volta a cada um — e o par fica sabendo, para a borda dele virar parede.
+    pub(super) fn on_local_refusal(
+        &mut self,
+        now: Timestamp,
+        refused: bool,
+        out: &mut CommandBatch,
+    ) {
+        self.refusals.here = refused;
+        if refused {
+            self.reclaim(now, out);
+        }
+        self.on_local_protected_desktop(now, refused, out);
     }
 
     /// Os dois atravessaram ao mesmo tempo, e o par entregou o controle a esta máquina enquanto

@@ -169,6 +169,7 @@ fn dar_partida(daemon: &mut Daemon, screen: (u32, u32)) {
     feed_screens(daemon, screen);
     // No Linux a captura e o injetor abrem os dois, e o serviço passa a conduzir o cursor.
     let _ = daemon.garantir_entrada_local();
+    daemon.alinhar_politica_de_atencao();
     daemon.anunciar_radio_proprio();
     daemon.anunciar_abertura();
     daemon.verificar_economia();

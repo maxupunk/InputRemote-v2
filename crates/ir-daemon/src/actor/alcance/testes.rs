@@ -29,7 +29,7 @@ fn pareado_pela_rede() -> Bancada {
         addr: Some(rede().to_string()),
         radio: None,
         nome: None,
-        tela_de_bloqueio: false,
+        recusa_tela_de_bloqueio: false,
     }];
     bancada.daemon.alcance.anotar(rede());
     bancada
@@ -188,7 +188,7 @@ fn a_configuracao_antiga_com_endereco_de_radio_vale_como_radio() {
         addr: Some("AC:50:DE:47:EB:28".to_owned()),
         radio: None,
         nome: None,
-        tela_de_bloqueio: false,
+        recusa_tela_de_bloqueio: false,
     }];
     let alcance = super::da_configuracao(&bancada.daemon.config);
     assert_eq!(

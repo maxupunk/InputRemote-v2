@@ -177,9 +177,9 @@ impl Daemon {
     /// encerra a recusa do desktop protegido.
     fn on_desktop_mudou(&mut self, nome: &str) {
         info!(nome, "o desktop de entrada mudou");
-        if nome.eq_ignore_ascii_case("Default") {
-            self.recusando_protegido(false);
-        } else if self.session.phase() == ir_session::Phase::Sending {
+        let protegido = !nome.eq_ignore_ascii_case("Default");
+        self.on_tela_protegida(protegido);
+        if protegido && self.session.phase() == ir_session::Phase::Sending {
             info!("a tela daqui bloqueou com o controle no par: devolvendo e soltando tudo");
             self.drive(Input::EmergencyRelease);
         }
@@ -187,11 +187,7 @@ impl Daemon {
 
     /// Conta ao agente se o par pode digitar na tela de bloqueio e no UAC.
     pub(crate) fn contar_ao_agente_a_permissao(&self) {
-        let permitido = self
-            .config
-            .peers
-            .first()
-            .is_some_and(|par| par.tela_de_bloqueio);
+        let permitido = self.protegido_permitido();
         if let Some(agente) = self.comandos_do_agente() {
             let _ = agente.send(ComandoDoAgente::PermitirDesktopProtegido(permitido));
         }

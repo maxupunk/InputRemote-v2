@@ -128,6 +128,9 @@ pub struct Session {
 
     /// Enquanto o par usa esta tela, o que o daqui mexeu — para retomar ([`direction`]).
     pub(super) reclaim_watch: direction::ReclaimWatch,
+
+    /// Quem está numa tela protegida recusando o outro ([`direction`]).
+    pub(super) refusals: direction::Refusals,
 }
 
 impl Session {
@@ -162,6 +165,7 @@ impl Session {
             wins: CarrierWins::default(),
             local_power: None,
             reclaim_watch: direction::ReclaimWatch::default(),
+            refusals: direction::Refusals::default(),
         }
     }
 
@@ -221,9 +225,7 @@ impl Session {
             Input::LocalRadio(radio) => self.on_local_radio(now, radio, out),
             Input::LocalNetworkPower(state) => self.on_local_network_power(now, state, out),
             Input::SecureAttention => self.request_secure_attention(now, out),
-            Input::LocalProtectedDesktop(refused) => {
-                self.on_local_protected_desktop(now, refused, out);
-            }
+            Input::LocalProtectedDesktop(refused) => self.on_local_refusal(now, refused, out),
             Input::LockEdge(locked) => self.edge_locked = locked,
             Input::LockPeerScreen => self.request_peer_lock(now, out),
             Input::DisablePeerNetworkPowerSaving => {

@@ -234,7 +234,7 @@ impl Daemon {
         }
         let mut nova = self.config.clone();
         if let Some(par) = nova.peers.first_mut() {
-            par.tela_de_bloqueio = permitir;
+            par.recusa_tela_de_bloqueio = !permitir;
         }
         #[cfg(windows)]
         let nova = self.politica_de_atencao(nova, permitir);
@@ -242,6 +242,9 @@ impl Daemon {
         if resposta == Resposta::Feito {
             tracing::info!(permitir, "digitação do par na tela de bloqueio");
             self.contar_ao_agente_a_permissao();
+            // Com a tela já protegida, a recusa muda na hora: o par deixa de ter a parede.
+            let protegida = self.tela_protegida;
+            self.on_tela_protegida(protegida);
             let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
         }
         resposta

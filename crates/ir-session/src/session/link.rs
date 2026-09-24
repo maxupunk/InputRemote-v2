@@ -95,6 +95,7 @@ impl Session {
     ) {
         self.route = Some(super::Route::Single(carrier));
         self.peer = None;
+        self.refusals.peer = false;
         self.last_pointer_rx = None;
         // Sequências zeradas: uma herdada da sessão anterior faria o par descartar as
         // primeiras mensagens da nova.
@@ -197,7 +198,11 @@ impl Session {
             let layout = desktop.to_layout();
             self.send(now, Message::Control(Control::Screens(layout)), out);
         }
-        // E a borda, que é do servidor: o cliente passa a usar a oposta (`edge`).
+        // Se a tela daqui recusa o par agora, ele precisa saber antes de atravessar.
+        if self.refusals.here {
+            self.on_local_protected_desktop(now, true, out);
+        }
+        // E a borda: se as duas não forem opostas, vale a escolha mais recente (`edge`).
         self.announce_edge(now, out);
     }
 
@@ -239,6 +244,7 @@ impl Session {
         self.route = None;
         self.last_pointer_rx = None;
         self.peer = None;
+        self.refusals.peer = false;
         self.peer_screens = None;
         self.pending_pointer = ir_proto::input::PointerDelta::ZERO;
         self.seqs.reset();

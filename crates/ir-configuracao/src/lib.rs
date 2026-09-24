@@ -119,12 +119,24 @@ pub struct PinnedPeer {
     /// Antes a tela dizia "computador pareado", que parecia defeito.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nome: Option<String>,
-    /// Se este par pode digitar na tela de bloqueio e nos pedidos de permissão daqui.
+    /// Se este par está **proibido** de digitar na tela de bloqueio e nos pedidos de permissão
+    /// daqui.
     ///
-    /// Por par e desligado por padrão ([04, §6](../../../docs/04-seguranca.md)): quem liga é um
-    /// administrador desta máquina, pela janela.
-    #[serde(default)]
-    pub tela_de_bloqueio: bool,
+    /// Grava-se a recusa, e não a permissão, porque o padrão é permitir: os dois computadores
+    /// controlam um ao outro também na tela de bloqueio (log 53, [04, §6](../../../docs/04-seguranca.md)).
+    /// O par só existe depois da comparação dos seis dígitos nas duas telas. Quem quiser proibir
+    /// desliga pela janela. Um arquivo antigo tinha `tela_de_bloqueio`, desligado por padrão — ele é
+    /// ignorado, e o par passa a poder.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub recusa_tela_de_bloqueio: bool,
+}
+
+impl PinnedPeer {
+    /// Se este par pode digitar na tela de bloqueio e nos pedidos de permissão daqui.
+    #[must_use]
+    pub const fn permite_tela_de_bloqueio(&self) -> bool {
+        !self.recusa_tela_de_bloqueio
+    }
 }
 
 impl Default for Config {
@@ -319,61 +331,4 @@ pub fn decode_key(text: &str) -> Option<PublicKey> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
-mod tests {
-    use super::*;
-
-    fn pasta(rotulo: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("ir-config-{rotulo}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
-    #[test]
-    fn a_identidade_gerada_volta_igual_na_proxima_subida() {
-        let dir = pasta("identidade");
-        let primeira = load_identity(&dir).unwrap();
-        let segunda = load_identity(&dir).unwrap();
-        assert_eq!(primeira.public(), segunda.public());
-        assert!(!dir.join("identity.key.tmp").exists());
-        std::fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn a_chave_nasce_so_do_dono_e_uma_aberta_e_fechada() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = pasta("modo");
-        let _ = load_identity(&dir).unwrap();
-        let chave = dir.join("identity.key");
-        let modo = |c: &Path| std::fs::metadata(c).unwrap().permissions().mode() & 0o777;
-        assert_eq!(modo(&chave), 0o600);
-
-        std::fs::set_permissions(&chave, std::fs::Permissions::from_mode(0o644)).unwrap();
-        let _ = load_identity(&dir).unwrap();
-        assert_eq!(
-            modo(&chave),
-            0o600,
-            "uma chave aberta por versão antiga é fechada"
-        );
-        std::fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn um_arquivo_de_antes_do_controle_simetrico_sobe_com_os_dois_controlando() {
-        let antigo = "role = \"client\"\npeer_edge = \"left\"\nport = 52525\n\
-                      screen_width = 1920\nscreen_height = 1080\npeers = []\n";
-        let config: Config = toml::from_str(antigo).unwrap();
-        assert_eq!(config.policy().unwrap(), Policy::Both);
-    }
-
-    #[test]
-    fn a_configuracao_padrao_e_criada_e_relida() {
-        let dir = pasta("config");
-        let criada = load_config(&dir).unwrap();
-        let relida = load_config(&dir).unwrap();
-        assert_eq!(criada.politica, relida.politica);
-        std::fs::remove_dir_all(&dir).unwrap();
-    }
-}
+mod tests;

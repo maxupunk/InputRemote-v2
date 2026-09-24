@@ -51,6 +51,7 @@ pub mod input;
 pub mod limits;
 pub mod message;
 pub mod peer;
+pub mod route;
 pub mod screens;
 pub mod version;
 

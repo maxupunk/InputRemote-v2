@@ -27,9 +27,9 @@ pub const SAUDE_RUIM: i32 = 3;
 ///
 /// Sem isto o teclado simplesmente parava de funcionar lá, e a pessoa não tinha como saber se era
 /// defeito ou proteção.
-pub const AVISO_DO_BLOQUEIO_DO_PAR: &str = "O outro computador está na tela de bloqueio, e o que \
-     você digita daqui não chega lá: a digitação na tela de bloqueio não foi permitida nele. Um \
-     administrador de lá pode ligar em Preferências.";
+pub const AVISO_DO_BLOQUEIO_DO_PAR: &str = "O outro computador está na tela de bloqueio, e não \
+     aceita o teclado e o mouse daqui ali: o cursor fica deste lado até ele ser desbloqueado. Para \
+     desbloqueá-lo daqui, ligue \"Tela de bloqueio: Permitir\" nas Preferências dele.";
 
 /// Traduz o estado publicado para o que a janela desenha.
 #[must_use]

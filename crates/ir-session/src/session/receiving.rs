@@ -30,9 +30,10 @@ impl Session {
         if !self.phase.is_established() {
             return;
         }
-        if !self.config.policy.receives() {
-            // Esta máquina não é controlada. O par não devia ter atravessado — ele sabe pelo
-            // `Hello` —, mas se atravessou, a resposta é devolver, e não deixá-lo mandando ao nada.
+        if !self.config.policy.receives() || self.refusals.here {
+            // Esta máquina não é controlada, ou está numa tela protegida que recusa o par. Ele não
+            // devia ter atravessado — sabe pelo `Hello` e pelo `ProtectedDesktop` —, mas se
+            // atravessou, a resposta é devolver, e não deixá-lo mandando ao nada.
             self.send(now, Message::Control(Control::Reclaim), out);
             return;
         }

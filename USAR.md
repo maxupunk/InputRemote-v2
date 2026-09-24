@@ -90,9 +90,13 @@ de recebidos (Preferências mostra qual), que se limpa sozinha.
 
 ### Tela de bloqueio
 
-No Windows, com o pacote assinado e confiado, o teclado e o mouse chegam também à tela de bloqueio,
-ao Ctrl+Alt+Del e ao prompt de elevação. Se o administrador não permitir, a janela diz isso, e o
-outro computador sabe que não deve atravessar enquanto esta tela estiver bloqueada.
+Os dois controlam um ao outro também na tela de bloqueio, sem configurar nada: dá para digitar a
+senha de um computador com o teclado do outro. No Windows, isso exige o pacote assinado e o
+certificado confiado, e vale também para o Ctrl+Alt+Del e o prompt de elevação.
+
+Para proibir, mude **Tela de bloqueio** para **Não permitir** nas Preferências do computador que não
+deve ser desbloqueado de longe. Enquanto ele estiver bloqueado, a borda do outro vira parede, e a
+tela do outro explica por quê.
 
 ## 4. Quando algo não vai bem
 

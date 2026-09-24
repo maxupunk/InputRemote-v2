@@ -228,15 +228,25 @@ permissões distintas. A interface nunca pode mandar `Inject`, em nenhuma circun
 
 ## 6. Política de tela de bloqueio
 
-Digitar na tela de bloqueio é opcional e granular. Padrão: **desligado**.
+Digitar na tela de bloqueio é por par e pode ser desligado. Padrão: **ligado para o par
+pareado** ([log 53](logs/53-os-dois-tambem-na-tela-de-bloqueio.md)).
 
-- opção da instalação: "permitir controle na tela de bloqueio e em prompts de elevação";
-- opção **por par**: cada máquina pareada tem essa permissão concedida separadamente;
-- opção independente: "permitir Ctrl+Alt+Del" (exige a política `SoftwareSASGeneration`
-  do Windows — ver [05](05-windows.md));
-- quando desligada, o cliente ignora entrada enquanto o desktop for `Winlogon` e informa
-  ao servidor, que mostra na interface por que o teclado parou de funcionar. Ele **NÃO
-  DEVE** falhar em silêncio — foi assim que o v1 gerou perguntas sem resposta.
+> **Revisto em 2026-09-24.** O padrão era desligado. Com o controle simétrico
+> ([ADR-0014](adr/0014-controle-simetrico.md)), os dois computadores controlam um ao outro, e o
+> dono dos dois pediu que isso valesse também na tela de bloqueio, sem configurar nada. O que
+> sustenta o padrão ligado é o pareamento: o par só existe depois da comparação dos seis dígitos
+> nas duas telas (§3.2), e só ele — com a chave fixada — chega à tela de bloqueio daqui. Quem
+> quiser proibir desliga em Preferências, e a recusa fica gravada.
+
+- opção **por par**: cada máquina pareada tem essa permissão separadamente; grava-se a **recusa**
+  (`recusa_tela_de_bloqueio`), e um arquivo antigo, que gravava a permissão desligada, sobe
+  permitindo;
+- no Windows, a permissão liga junto a política `SoftwareSASGeneration`, que deixa o serviço
+  gerar o Ctrl+Alt+Del pedido pelo par — o valor anterior fica gravado e volta se a permissão for
+  desligada (ver [05](05-windows.md));
+- quando desligada, a máquina recusa entrada enquanto a tela estiver protegida e avisa o par **na
+  hora em que a tela bloqueia**: a borda dele vira parede, e a interface dele diz por quê e o que
+  fazer. Ela **NÃO DEVE** falhar em silêncio — foi assim que o v1 gerou perguntas sem resposta.
 
 Controle adicional recomendado, ligado por padrão: **o cliente só aceita entrada na tela
 de bloqueio se o servidor declarar que está desbloqueado**. Se o notebook do servidor foi

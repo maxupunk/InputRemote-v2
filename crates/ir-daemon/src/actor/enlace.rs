@@ -171,7 +171,9 @@ impl Daemon {
             // Par novo, identidade nova: o rádio dele chega de novo pelo `Control::Reach`.
             radio: None,
             nome: None,
-            tela_de_bloqueio: false,
+            // Os dois controlam um ao outro também na tela de bloqueio (log 53): o par acabou de
+            // passar pela comparação dos seis dígitos nas duas telas.
+            recusa_tela_de_bloqueio: false,
         };
         self.config.peers = vec![pinned];
         if let Err(error) = self.gravador.gravar_e_esperar(&self.config) {
@@ -179,6 +181,8 @@ impl Daemon {
         } else {
             info!("par gravado");
         }
+        self.contar_ao_agente_a_permissao();
+        self.alinhar_politica_de_atencao();
         // Arquivos passam a valer com este par agora, e não depois de reiniciar o serviço.
         self.arquivos
             .trocar_destino(crate::arquivos::destino(&self.config));
@@ -259,7 +263,7 @@ mod tests {
             addr: None,
             radio: None,
             nome: None,
-            tela_de_bloqueio: false,
+            recusa_tela_de_bloqueio: false,
         }];
     }
 
