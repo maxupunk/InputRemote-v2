@@ -71,3 +71,7 @@ quê. Um registro que se reescreve não é registro.
 | 44 | 2026-09-22 | [O Wi-Fi que cochilava, o botão que o acorda, e o rádio que não reabria depois de atualizar](docs/logs/44-o-wifi-que-cochilava.md) |
 | 45 | 2026-09-23 | [A varredura implementada: o caminho de arquivo que saía da pasta, a chave que todos liam, e a tela de bloqueio que faltava](docs/logs/45-a-varredura-implementada.md) |
 | 46 | 2026-09-23 | [Os papéis que combinam sozinhos, a pausa que não era pausa, e a pasta de rede que não atravessava](docs/logs/46-os-papeis-que-combinam-sozinhos.md) |
+| 47 | 2026-09-23 | [O servidor que não lia o teclado, e a tela que mandava levar o ponteiro até a borda](docs/logs/47-o-servidor-que-nao-lia-o-teclado.md) |
+| 48 | 2026-09-23 | [O touchpad que a captura não via](docs/logs/48-o-touchpad-que-a-captura-nao-via.md) |
+| 49 | 2026-09-23 | [O Windows que recusava tudo em silêncio, e a travessia que vinha antes da borda](docs/logs/49-o-windows-que-recusava-tudo.md) |
+| 50 | 2026-09-23 | [O cursor que o serviço conduz](docs/logs/50-o-cursor-que-o-servico-conduz.md) |

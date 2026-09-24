@@ -153,7 +153,7 @@ fn carregar() -> Result<(
     let dir = config::data_dir();
     let mut cfg = config::load_config(&dir).context("carregando configuração")?;
     let identity = Arc::new(config::load_identity(&dir).context("carregando identidade")?);
-    let role = actor::papel_na_subida(&mut cfg, &dir)?;
+    let role = config::papel_na_subida(&mut cfg, &dir, ir_input::capture_supported())?;
     let edge = cfg.edge()?;
     info!(
         "InputRemote — papel {role}, impressão digital {}",
@@ -170,6 +170,9 @@ fn tamanho_da_tela(cfg: &config::Config) -> (u32, u32) {
 /// Dá partida no ator: as telas, a primeira tentativa de conexão e o agente.
 fn dar_partida(daemon: &mut Daemon, screen: (u32, u32)) {
     feed_screens(daemon, screen);
+    // No Linux com o teclado aqui, o injetor abre também, e o serviço passa a conduzir o cursor.
+    let papel = daemon.session.role();
+    let _ = daemon.garantir_entrada_local(papel);
     daemon.anunciar_radio_proprio();
     daemon.anunciar_abertura();
     daemon.verificar_economia();

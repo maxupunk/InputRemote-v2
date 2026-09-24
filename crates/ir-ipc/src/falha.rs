@@ -85,6 +85,12 @@ pub enum Falha {
     /// A ferramenta do sistema recusou a mudança.
     #[error("o sistema recusou a mudança")]
     SistemaRecusou,
+    /// Pediu-se o teclado para este computador, e ele não consegue ler o teclado e o mouse locais.
+    ///
+    /// Sem esta, a troca era aceita e a máquina virava a que tem o teclado sem ter o que capturar:
+    /// o ponteiro ia até a borda e nada acontecia (log 47).
+    #[error("este computador não consegue ler o teclado e o mouse ligados a ele")]
+    SemCaptura,
 }
 
 impl Falha {
@@ -129,6 +135,14 @@ impl Falha {
                 "Abra o InputRemote no outro computador e confira se os dois estão na mesma rede. \
                  Se ele não aparecer na lista, digite o endereço dele."
             }
+            _ => self.o_que_fazer_nas_mais_novas(),
+        }
+    }
+
+    /// O que fazer nas falhas que entraram depois da varredura de melhorias (log 45) — separadas só
+    /// para cada função caber no limite de tamanho ([09, §1](../../../docs/09-padroes-de-codigo.md)).
+    const fn o_que_fazer_nas_mais_novas(self) -> &'static str {
+        match self {
             Self::SemBluetooth => {
                 "Ligue o Bluetooth nas configurações do sistema, ou pareie pela rede local. O \
                  InputRemote percebe o rádio sozinho quando ele liga."
@@ -147,6 +161,12 @@ impl Falha {
                 "Veja o registro do serviço para o motivo, ou faça a mudança pelas configurações \
                  do sistema."
             }
+            Self::SemCaptura => {
+                "Instale a versão mais nova do InputRemote neste computador e tente de novo. \
+                 Enquanto isso, deixe o teclado com o outro computador."
+            }
+            // As de cima já responderam em `o_que_fazer`.
+            _ => "",
         }
     }
 }
@@ -175,6 +195,7 @@ mod tests {
             Falha::ParDesatualizado,
             Falha::EnderecoInvalido,
             Falha::SistemaRecusou,
+            Falha::SemCaptura,
         ];
         for falha in falhas {
             assert!(!falha.to_string().is_empty(), "{falha:?} sem descrição");
@@ -214,6 +235,7 @@ mod tests {
             (Falha::ParDesatualizado, 14),
             (Falha::EnderecoInvalido, 15),
             (Falha::SistemaRecusou, 16),
+            (Falha::SemCaptura, 17),
         ];
         for (falha, indice) in esperado {
             let bytes = postcard::to_allocvec(&falha).expect("serializa");

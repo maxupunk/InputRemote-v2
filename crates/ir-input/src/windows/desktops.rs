@@ -201,14 +201,22 @@ fn servir(nome: &'static str, recebidos: &Receiver<Pedido>, pronta: &SyncSender<
     unsafe { CloseDesktop(desktop) }.ok();
 }
 
+/// O acesso com que cada desktop é aberto.
+///
+/// `DESKTOP_JOURNALPLAYBACK` é o direito que o `SendInput` exige do desktop da thread. Sem ele o
+/// sistema recusa todo evento (devolve 0) — foi o que deixou o Windows controlado com o cursor
+/// parado, recebendo tudo do par e injetando nada (log 49).
+const ACESSO_AO_DESKTOP: u32 = DESKTOP_READOBJECTS.0
+    | DESKTOP_WRITEOBJECTS.0
+    | windows::Win32::System::StationsAndDesktops::DESKTOP_JOURNALPLAYBACK.0
+    | windows::Win32::System::StationsAndDesktops::DESKTOP_SWITCHDESKTOP.0;
+
 /// Abre o desktop e prende a thread corrente a ele.
 fn prender_a(nome: &str) -> Option<HDESK> {
     let texto = HSTRING::from(nome);
-    let acesso = DESKTOP_READOBJECTS.0
-        | DESKTOP_WRITEOBJECTS.0
-        | windows::Win32::System::StationsAndDesktops::DESKTOP_SWITCHDESKTOP.0;
     // SAFETY: `texto` termina em nulo e vive até o fim da chamada.
-    let desktop = unsafe { OpenDesktopW(&texto, DESKTOP_CONTROL_FLAGS(0), false, acesso) }.ok()?;
+    let desktop =
+        unsafe { OpenDesktopW(&texto, DESKTOP_CONTROL_FLAGS(0), false, ACESSO_AO_DESKTOP) }.ok()?;
     // SAFETY: `desktop` é um handle válido que acabou de abrir, e esta thread ainda não tem janela.
     if unsafe { SetThreadDesktop(desktop) }.is_err() {
         // SAFETY: o handle não chegou a ser usado.
@@ -267,6 +275,41 @@ mod tests {
             "sem thread para ele, a área de trabalho"
         );
         assert_eq!(escolher(&["Winlogon"], "Outro", |a| a), None);
+    }
+
+    #[test]
+    fn o_desktop_abre_com_o_direito_que_o_sendinput_exige() {
+        let exigido = windows::Win32::System::StationsAndDesktops::DESKTOP_JOURNALPLAYBACK.0;
+        assert_eq!(ACESSO_AO_DESKTOP & exigido, exigido);
+    }
+
+    /// Move o cursor de verdade: só à mão, `--ignored`.
+    #[test]
+    #[ignore = "mexe no cursor de quem roda"]
+    #[allow(clippy::unwrap_used)]
+    fn o_ponteiro_injetado_chega_a_area_de_trabalho() {
+        use ir_proto::input::PointerPosition;
+        use windows::Win32::Foundation::POINT;
+        use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+        let mut injetor = InjetorPorDesktop::novo().unwrap();
+        eprintln!(
+            "entrada={:?} threads={:?}",
+            nome_do_desktop_de_entrada(),
+            injetor.desktops()
+        );
+        for (x, y) in [(8000u16, 8000u16), (40000, 30000)] {
+            injetor
+                .inject(InjectEvent::Pointer(PointerPosition {
+                    monitor: ir_proto::ids::MonitorId(0),
+                    x,
+                    y,
+                }))
+                .unwrap();
+            std::thread::sleep(Duration::from_millis(50));
+            let mut ponto = POINT::default();
+            unsafe { GetCursorPos(&raw mut ponto) }.unwrap();
+            eprintln!("pedido ({x}, {y}) -> cursor ({}, {})", ponto.x, ponto.y);
+        }
     }
 
     #[test]

@@ -21,9 +21,9 @@ use ir_proto::screens::Edge;
 use ir_session::{LocalIdentity, Role};
 use tokio::sync::broadcast;
 
-use super::papel::texto_do_papel;
 use super::{Daemon, Parts, nova_sessao};
 use crate::config::Config;
+use crate::config::texto_do_papel;
 use ir_transporte::{Endereco, Transporte};
 
 /// Um diretório por teste, para dois testes não gravarem no mesmo arquivo.
@@ -119,6 +119,15 @@ pub(super) struct Bancada {
     pub(super) rede: Arc<TransporteDeMentira>,
     /// O transporte de rádio, presente nesta bancada para o Bluetooth ser testável sem rádio.
     pub(super) radio: Arc<TransporteDeMentira>,
+}
+
+/// Uma captura que não captura nada: para os testes do papel de servidor rodarem onde não há
+/// teclado nem mouse para abrir, como o container do Linux.
+pub(super) struct CapturaDeMentira;
+
+impl ir_input::Capturer for CapturaDeMentira {
+    fn set_suppress(&self, _on: bool) {}
+    fn warp_pointer(&self, _x: i32, _y: i32) {}
 }
 
 impl Bancada {

@@ -177,7 +177,11 @@ impl Daemon {
         }
     }
 
-    fn warp(&self, position: ir_proto::input::PointerPosition) {
+    fn warp(&mut self, position: ir_proto::input::PointerPosition) {
+        // No Linux conduzindo, a sessão já pôs o modelo na posição; o cursor real vai junto.
+        if self.levar_cursor() {
+            return;
+        }
         if let Some(agente) = self.comandos_do_agente() {
             // A posição vai **normalizada**, e quem a converte em pixels é o agente: o tamanho
             // da tela do usuário só é conhecido de dentro da sessão dele.

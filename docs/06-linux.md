@@ -124,23 +124,31 @@ servidor. A resposta, em ordem:
    Assim ele conhece a posição do cursor porque é ele quem a produz. O custo é
    implementar a curva de aceleração do ponteiro local, e por isso não entra na Fase 1.
 
-### 3.4. O que está implementado: `evdev` sem curva
+### 3.4. O que está implementado: `evdev` com o cursor conduzido
 
 > **Implementado com a varredura de melhorias ([log 45](logs/45-a-varredura-implementada.md)),
-> antes do portal.** O Linux já pode ser o lado que tem o teclado, por uma forma reduzida do modo
-> `evdev` do item 3 acima (`ir-input/src/linux/captura.rs`):
+> antes do portal.** O Linux já pode ser o lado que tem o teclado, pelo modo `evdev` do item 3
+> acima (`ir-input/src/linux/captura.rs`):
 
-- com o controle aqui, os dispositivos continuam entregando ao compositor, e o serviço só **ouve**
-  os deltas crus, para o modelo de ponteiro da sessão;
+- com o controle aqui, o mouse e o touchpad ficam tomados e o serviço move o cursor do compositor
+  pelo ponteiro virtual absoluto; o teclado segue direto para o compositor (log 50, abaixo);
 - ao atravessar, o serviço faz `EVIOCGRAB` em todo teclado e mouse físico, e o compositor para de
   ver qualquer coisa — é a supressão; ao voltar, solta;
 - os dispositivos virtuais do próprio produto ficam de fora (senão a injeção como cliente voltaria
-  como captura), e um teclado espetado depois entra sozinho, pela releitura a cada 2 s.
+  como captura), e um teclado espetado depois entra sozinho, pela releitura a cada 2 s;
+- o touchpad de notebook manda a posição do dedo, e não deslocamento: `linux/touchpad.rs` o traduz —
+  deslocamento enquanto há dedo, rolagem de dois dedos, toque leve como clique
+  ([log 48](logs/48-o-touchpad-que-a-captura-nao-via.md));
+- a unidade do systemd libera `char-input` só para leitura; sem isso, o `DeviceAllow` do `uinput`
+  negava os dispositivos de entrada ([log 47](logs/47-o-servidor-que-nao-lia-o-teclado.md)).
 
-O que isto não resolve: sem a posição que o compositor deu ao cursor, o modelo da sessão diverge
-dele pela aceleração, e a travessia pela borda acontece perto do ponto certo, não exatamente nele.
-O atalho Ctrl+Alt+Shift+Espaço atravessa na hora, sem borda. O caminho exato continua sendo o
-portal (§3.1), que segue por fazer.
+**O serviço conduz o cursor** ([log 50](logs/50-o-cursor-que-o-servico-conduz.md)). Sem a posição
+que o compositor dá ao cursor, o modelo da sessão divergia dele pela aceleração, e a travessia vinha
+no meio da tela. Agora, com o teclado aqui, o mouse e o touchpad ficam tomados também com o controle
+local, e o serviço põe o cursor do compositor exatamente no modelo pelo ponteiro virtual absoluto
+(`actor/cursor.rs`), com uma curva de aceleração própria (`linux/aceleracao.rs`). A condução vence
+em 3 s sem renovação, e os dispositivos voltam sozinhos ao compositor. O portal `InputCapture`
+continua sendo o caminho que não toma dispositivo nenhum.
 
 ## 4. Onde a entrada é roteada
 

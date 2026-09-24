@@ -101,6 +101,15 @@ impl Session {
         self.pointer
     }
 
+    /// Onde o ponteiro está, normalizado no monitor em que está — a forma que o injetor absoluto
+    /// recebe. `None` sem arranjo de telas.
+    #[must_use]
+    pub fn pointer_position(&self) -> Option<ir_proto::input::PointerPosition> {
+        self.local_screens
+            .as_ref()
+            .map(|desktop| desktop.to_position(self.pointer))
+    }
+
     /// A posição do ponteiro em coordenadas cruas, para a periferia que não conhece `Point`.
     #[must_use]
     pub const fn pointer_xy(&self) -> (i32, i32) {

@@ -19,6 +19,23 @@ use crate::session::Session;
 use crate::time::Timestamp;
 
 impl Session {
+    /// Começa o ponteiro encostado no lado **oposto** à borda de travessia, no meio dele.
+    ///
+    /// Para quem não sabe onde o cursor real está — o Linux, onde o compositor não conta e a
+    /// captura só vê deslocamentos. Semeado no meio, o modelo podia estar à frente do cursor e
+    /// atravessar com ele longe da borda; do lado oposto, o erro cai sempre para o lado seguro: a
+    /// travessia vem depois de o cursor chegar, nunca antes. A primeira volta do par realinha os
+    /// dois (log 49).
+    pub fn seed_pointer_away_from_edge(&mut self) {
+        let Some(desktop) = self.local_screens.as_ref() else {
+            return;
+        };
+        let longe = desktop
+            .bounds()
+            .point_along(self.config.peer_edge.opposite(), u16::MAX / 2);
+        self.pointer = desktop.nearest_valid(longe);
+    }
+
     /// O usuário escolheu a borda. Só o servidor escolhe; no cliente, o pedido não muda nada.
     pub(super) fn on_set_peer_edge(&mut self, now: Timestamp, edge: Edge, out: &mut CommandBatch) {
         if self.config.role != Role::Server || edge == self.config.peer_edge {

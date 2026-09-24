@@ -24,6 +24,12 @@ Environment=RUST_LOG=info
 # bloqueio e no console (docs/06-linux.md, secao 2). E por isso que este servico e privilegiado:
 # quem injeta entrada precisa deste dispositivo.
 DeviceAllow=/dev/uinput rw
+# E para ser a maquina que tem o teclado: a captura le teclado e mouse fisicos em
+# /dev/input/event* e os toma (EVIOCGRAB) enquanto o controle esta no par (docs/06-linux.md,
+# secao 3.4). So leitura: o EVIOCGRAB funciona assim. Sem esta linha, o DeviceAllow acima nega
+# todo o resto, e a captura nao abria nenhum dispositivo -- a maquina virava servidor sem ter o
+# que capturar (log 47).
+DeviceAllow=char-input r
 
 # Endurecimento do que nao e necessario. Nao ha como ser mais restritivo sem perder o uinput.
 NoNewPrivileges=yes

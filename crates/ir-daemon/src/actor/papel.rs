@@ -16,9 +16,6 @@
 //! borda é do servidor: só ele escolhe, a sessão em uso ajusta a borda e avisa o cliente, e o
 //! cliente grava a oposta.
 
-use std::path::Path;
-
-use anyhow::Result;
 use ir_ipc::{Aviso, Falha, Resposta};
 // A produção pergunta o portador em uso ao ator; só os testes nomeiam um portador à mão.
 #[cfg(test)]
@@ -28,36 +25,7 @@ use ir_session::{Input, LinkDown, LocalIdentity, Phase, Role, Session, SessionCo
 use tracing::{info, warn};
 
 use super::Daemon;
-use crate::config::Config;
-
-/// Se esta máquina pode assumir `papel`, sabendo se a plataforma captura a entrada local.
-///
-/// Só o servidor depende de captura: é ele quem tem o teclado. Ser controlado funciona em toda
-/// plataforma que injeta.
-const fn papel_sustentado(papel: Role, captura: bool) -> bool {
-    match papel {
-        Role::Server => captura,
-        Role::Client => true,
-    }
-}
-
-/// O texto de configuração para um papel.
-pub(super) const fn texto_do_papel(papel: Role) -> &'static str {
-    match papel {
-        Role::Server => "server",
-        Role::Client => "client",
-    }
-}
-
-/// O texto de configuração para uma borda.
-const fn edge_para_texto(edge: Edge) -> &'static str {
-    match edge {
-        Edge::Left => "left",
-        Edge::Right => "right",
-        Edge::Top => "top",
-        Edge::Bottom => "bottom",
-    }
-}
+use crate::config::{edge_para_texto, papel_sustentado, texto_do_papel};
 
 /// Uma sessão nova, desconectada, com este papel, esta borda e esta identidade.
 ///
@@ -88,33 +56,6 @@ fn agora_em_ms() -> u64 {
         .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
 
-/// O papel com que o serviço sobe, corrigindo um gravado que a plataforma não sustenta.
-///
-/// Sem isto, um servidor gravado num Linux subia num papel em que nada funciona, e nada dizia por
-/// quê. Recusar-se a subir seria pior — o `systemd` o reiniciaria em laço. Então ele sobe como
-/// cliente, registra em nível alto o que não aplicou, e corrige o arquivo para a janela e a
-/// configuração dizerem a mesma coisa.
-///
-/// # Errors
-///
-/// Erro se o papel gravado não for texto reconhecido.
-pub(crate) fn papel_na_subida(config: &mut Config, dir: &Path) -> Result<Role> {
-    let gravado = config.session_role()?;
-    if papel_sustentado(gravado, ir_input::capture_supported()) {
-        return Ok(gravado);
-    }
-    warn!(
-        gravado = texto_do_papel(gravado),
-        "o papel gravado não funciona nesta plataforma, que não captura a entrada local; subindo \
-         como cliente e corrigindo a configuração"
-    );
-    texto_do_papel(Role::Client).clone_into(&mut config.role);
-    if let Err(erro) = config.save(dir) {
-        warn!(%erro, "não foi possível corrigir o papel gravado; ele volta na próxima subida");
-    }
-    Ok(Role::Client)
-}
-
 impl Daemon {
     /// Troca o papel desta máquina, e a troca já vale.
     pub(super) fn trocar_papel(&mut self, papel: Role) -> Resposta {
@@ -129,6 +70,15 @@ impl Daemon {
         }
         if papel == self.session.role() {
             return Resposta::Feito;
+        }
+        // Antes de gravar: aceitar e só depois descobrir que a captura não sobe deixava a máquina
+        // com o teclado sem ter o que capturar, e o ponteiro parado na borda (log 47).
+        if papel == Role::Server && !self.garantir_entrada_local(papel) {
+            warn!(
+                papel = texto,
+                "troca de papel recusada: a captura local não abriu"
+            );
+            return Resposta::Falha(Falha::SemCaptura);
         }
         let mut nova = self.config.clone();
         texto.clone_into(&mut nova.role);
@@ -156,6 +106,15 @@ impl Daemon {
                 papel = texto,
                 "o outro computador tem o mesmo papel, mas esta plataforma não sustenta o outro"
             );
+            return;
+        }
+        if papel == Role::Server && !self.garantir_entrada_local(papel) {
+            // Os dois ficam com o mesmo papel; a tela daqui diz por quê e o que fazer.
+            warn!(
+                papel = texto,
+                "o outro computador trocou de papel, mas a entrada local não abriu"
+            );
+            let _ = self.avisos.send(Aviso::Falhou(Falha::SemCaptura));
             return;
         }
         let mut nova = self.config.clone();
@@ -241,7 +200,7 @@ impl Daemon {
         if let Some(arranjo) = self.ultimo_arranjo.clone() {
             self.drive(Input::LocalScreens(arranjo));
         }
-        self.garantir_entrada_local(papel);
+        let _ = self.garantir_entrada_local(papel);
 
         // Com o enlace seguro de pé, o aperto de mão recomeça já com o papel novo. O cursor real
         // e o modelo da sessão nova precisam começar no mesmo ponto.
@@ -265,36 +224,75 @@ impl Daemon {
     ///
     /// Quem subiu como servidor num Linux não abriu injetor nenhum, e voltar a cliente sem abrir
     /// um deixaria a máquina controlada sem ter como ser controlada.
+    ///
+    /// Devolve se a entrada que o papel precisa está aberta.
     #[cfg(not(windows))]
-    fn garantir_entrada_local(&mut self, papel: Role) {
-        if papel == Role::Server {
-            if self.capturer.is_none() {
-                match crate::fundo::capturar(&self.captura) {
-                    Ok(capturador) => {
-                        info!("captura ligada para o papel de servidor");
-                        self.capturer = Some(capturador);
-                    }
-                    Err(erro) => warn!(%erro, "captura local indisponível no papel de servidor"),
+    pub(crate) fn garantir_entrada_local(&mut self, papel: Role) -> bool {
+        let pronta = self.abrir_entrada_local(papel);
+        self.ajustar_conducao();
+        pronta
+    }
+
+    /// Abre o que o papel precisa. O injetor serve aos dois: o cliente digita o que vem do par, e o
+    /// servidor conduz o cursor daqui com ele ([`super::cursor`]).
+    #[cfg(not(windows))]
+    fn abrir_entrada_local(&mut self, papel: Role) -> bool {
+        if papel == Role::Server && self.capturer.is_none() {
+            match crate::fundo::capturar(&self.captura) {
+                Ok(capturador) => {
+                    info!("captura ligada para o papel de servidor");
+                    self.capturer = Some(capturador);
                 }
+                Err(erro) => warn!(%erro, "captura local indisponível no papel de servidor"),
             }
-            return;
         }
-        if self.injector.is_some() {
-            return;
-        }
-        match ir_input::open_injector() {
-            Ok(injetor) => {
-                info!("injetor aberto para o papel de cliente");
-                self.injector = Some(injetor);
+        if self.injector.is_none() {
+            match ir_input::open_injector() {
+                Ok(injetor) => {
+                    info!("injetor aberto");
+                    self.injector = Some(injetor);
+                }
+                Err(erro) => warn!(%erro, "injeção local indisponível"),
             }
-            Err(erro) => warn!(%erro, "injeção local indisponível no papel de cliente"),
+        }
+        match papel {
+            Role::Server => self.capturer.is_some(),
+            Role::Client => self.injector.is_some(),
         }
     }
+
+    /// Com o teclado aqui e a captura parada, tenta de novo — em silêncio até conseguir.
+    ///
+    /// A captura que falhou na subida (o teclado USB que ainda não tinha aparecido, uma permissão
+    /// dada depois) ficava parada até reiniciar o serviço. Agora a máquina se recupera sozinha, e a
+    /// tela sai do aviso quando a captura sobe (log 47).
+    #[cfg(not(windows))]
+    pub(super) fn recuperar_captura(&mut self) {
+        if self.session.role() != Role::Server || self.capturer.is_some() {
+            return;
+        }
+        match crate::fundo::capturar(&self.captura) {
+            Ok(capturador) => {
+                info!("captura ligada: este computador voltou a poder ter o teclado");
+                self.capturer = Some(capturador);
+                self.ajustar_conducao();
+                let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
+            }
+            Err(erro) => tracing::debug!(%erro, "a captura ainda não abre"),
+        }
+    }
+
+    /// No Windows quem captura é o agente, e quem o traz de volta é o laço do agente.
+    #[cfg(windows)]
+    #[allow(clippy::unused_self)]
+    pub(super) const fn recuperar_captura(&mut self) {}
 
     /// No Windows quem captura e injeta é o agente, qualquer que seja o papel.
     #[cfg(windows)]
     #[allow(clippy::unused_self)]
-    fn garantir_entrada_local(&mut self, _papel: Role) {}
+    pub(crate) const fn garantir_entrada_local(&mut self, _papel: Role) -> bool {
+        true
+    }
 }
 
 #[cfg(test)]

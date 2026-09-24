@@ -1,13 +1,24 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+use std::path::Path;
+
+use crate::config::Config;
+
 use ir_session::{Command, Notice};
 
 use super::*;
-use crate::actor::bancada::{Bancada, Diretorio, diretorio};
+use crate::actor::bancada::{Bancada, CapturaDeMentira, Diretorio, diretorio};
 
 fn daemon(papel: Role) -> (Daemon, Diretorio) {
     let bancada = Bancada::nova(papel);
     (bancada.daemon, bancada.dir)
+}
+
+/// Um serviço que consegue capturar, para poder virar o que tem o teclado em qualquer máquina.
+fn capaz_de_capturar(papel: Role) -> (Daemon, Diretorio) {
+    let (mut daemon, dir) = daemon(papel);
+    daemon.capturer = Some(Box::new(CapturaDeMentira));
+    (daemon, dir)
 }
 
 fn gravado(dir: &Path) -> String {
@@ -16,7 +27,7 @@ fn gravado(dir: &Path) -> String {
 
 #[test]
 fn o_papel_que_o_par_escolheu_depois_e_adotado_gravado_e_contado() {
-    let (mut daemon, dir) = daemon(Role::Client);
+    let (mut daemon, dir) = capaz_de_capturar(Role::Client);
     let mut avisos = daemon.avisos.subscribe();
     daemon.out.push(Command::Notify(Notice::AdoptRole {
         role: Role::Server,
@@ -45,7 +56,7 @@ fn adotar_o_papel_que_ja_tem_nao_refaz_nada() {
 
 #[test]
 fn trocar_o_papel_pela_tela_grava_quando() {
-    let (mut daemon, _dir) = daemon(Role::Client);
+    let (mut daemon, _dir) = capaz_de_capturar(Role::Client);
     assert_eq!(daemon.trocar_papel(Role::Server), Resposta::Feito);
     assert!(daemon.config.papel_escolhido_em.is_some_and(|t| t > 0));
 }
@@ -158,7 +169,8 @@ fn na_subida_um_servidor_sem_captura_vira_cliente_e_o_arquivo_e_corrigido() {
         role: texto_do_papel(Role::Server).to_owned(),
         ..Config::default()
     };
-    let papel = papel_na_subida(&mut config, &dir).expect("papel reconhecido");
+    let papel = crate::config::papel_na_subida(&mut config, &dir, ir_input::capture_supported())
+        .expect("papel reconhecido");
     if ir_input::capture_supported() {
         assert_eq!(papel, Role::Server, "onde há captura, o gravado vale");
     } else {

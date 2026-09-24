@@ -101,3 +101,27 @@ fn o_agente_que_sai_deixa_de_receber_e_a_janela_fica_sabendo() {
     }
     assert!(mudou >= 2, "pronto e encerrado aparecem na janela");
 }
+
+#[test]
+fn a_recusa_na_area_de_trabalho_aparece_na_tela_e_some_quando_para() {
+    // O log 49: o sistema recusava toda injeção, o par dizia "controlando", e esta tela não dizia
+    // nada.
+    let mut bancada = Bancada::nova(Role::Client);
+    pronto(&mut bancada);
+    assert!(bancada.daemon.estado().agente_pronto);
+
+    bancada.daemon.on_fato(FatoDoAgente::InjecaoRecusada {
+        desktop: "Default".to_owned(),
+    });
+    assert!(!bancada.daemon.estado().agente_pronto, "a tela avisa");
+    assert!(
+        !bancada.daemon.recusa_protegido,
+        "a área de trabalho não é o desktop protegido"
+    );
+
+    // Sem recusa por mais de alguns segundos, a injeção voltou a passar.
+    bancada.daemon.injecao_recusada =
+        std::time::Instant::now().checked_sub(std::time::Duration::from_secs(6));
+    bancada.daemon.esquecer_recusa_antiga();
+    assert!(bancada.daemon.estado().agente_pronto);
+}

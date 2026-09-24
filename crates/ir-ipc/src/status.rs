@@ -299,6 +299,20 @@ impl Estado {
             },
             (LinkState::Conectando, Some(par)) => format!("Conectando a {}…", par.nome),
             (LinkState::Conectando, None) => "Conectando…".to_owned(),
+            // "Leve o ponteiro até a borda" com a captura parada mandava fazer o que não ia dar
+            // certo; o porquê está no impedimento, logo abaixo (log 47).
+            (LinkState::Pronto, Some(par)) if !self.agente_pronto => {
+                format!(
+                    "Conectado a {}, mas o teclado e o mouse não atravessam.",
+                    par.nome
+                )
+            }
+            (LinkState::Pronto, Some(par)) if self.papel == Papel::Cliente => {
+                format!(
+                    "Conectado a {}. O teclado e o mouse de lá controlam este.",
+                    par.nome
+                )
+            }
             (LinkState::Pronto, Some(par)) => {
                 format!("Conectado a {}. Leve o ponteiro até a borda.", par.nome)
             }
@@ -316,11 +330,22 @@ impl Estado {
     /// é a mesma coisa que não mostrar nenhum.
     #[must_use]
     pub fn impedimento(&self) -> Option<&'static str> {
+        // Qual lado falhou depende do papel: quem tem o teclado precisa **ler** o daqui, quem é
+        // controlado precisa **digitar** o que vem de lá. "O componente que digita" no computador
+        // que tem o teclado apontava para o lugar errado (log 47).
         if !self.agente_pronto {
-            return Some(
-                "O componente que digita nesta máquina não está pronto. \
-                 Teclado e mouse remotos não vão funcionar.",
-            );
+            return Some(match self.papel {
+                Papel::Servidor => {
+                    "Este computador não consegue ler o teclado e o mouse ligados a ele, então \
+                     não controla o outro. Instale a versão mais nova do InputRemote aqui, ou \
+                     deixe o teclado com o outro computador em Preferências."
+                }
+                Papel::Cliente => {
+                    "Este computador não consegue receber o teclado e o mouse do outro. Instale \
+                     a versão mais nova do InputRemote aqui; se continuar, veja o diagnóstico em \
+                     Preferências."
+                }
+            });
         }
         // A tela de bloqueio não entra aqui: ela é opcional e vem desligada por padrão
         // ([04, §6](../../../docs/04-seguranca.md)). Tratá-la como impedimento deixava o

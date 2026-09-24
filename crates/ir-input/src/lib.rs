@@ -149,6 +149,14 @@ pub trait Capturer: Send {
     /// Usado para prender o cursor no ponto de saída enquanto o controle está no par, e para
     /// devolvê-lo na borda certa ao voltar ([05, §5.2](../../../docs/05-windows.md)).
     fn warp_pointer(&self, x: i32, y: i32);
+
+    /// Liga, renova ou desliga a condução do cursor: com ela, o mouse e o touchpad ficam tomados
+    /// também com o controle aqui, e quem move o cursor local é o serviço, injetando.
+    ///
+    /// Só no Linux, onde o compositor não diz onde o cursor está (log 50). Ligada, precisa ser
+    /// renovada a cada segundo; sem renovação, os dispositivos voltam ao sistema sozinhos. Onde a
+    /// plataforma conta a posição do cursor, não há o que conduzir.
+    fn conduzir_o_cursor(&self, _on: bool) {}
 }
 
 /// O tamanho da tela primária em pixels, quando a plataforma sabe informar.

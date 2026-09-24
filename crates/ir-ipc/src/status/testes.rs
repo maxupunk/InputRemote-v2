@@ -32,7 +32,29 @@ fn o_agente_ausente_e_o_impedimento_mais_grave() {
     estado.nivel_privilegiado = Nivel::Nenhum;
     estado.bloqueio_permitido = false;
     let frase = estado.impedimento().expect("há impedimento");
-    assert!(frase.contains("digita nesta máquina"), "{frase}");
+    assert!(frase.contains("receber o teclado e o mouse"), "{frase}");
+}
+
+#[test]
+fn quem_tem_o_teclado_e_nao_captura_ouve_o_problema_certo_e_o_que_fazer() {
+    // O relato do log 47: o Linux com o teclado dizia "o componente que digita", e o ponteiro
+    // parava na borda sem que nada explicasse que era a leitura do teclado daqui que faltava.
+    let mut estado = cliente_pronto();
+    estado.papel = Papel::Servidor;
+    estado.agente_pronto = false;
+    estado.enlace = LinkState::Pronto;
+    estado.par = Some(ParConhecido {
+        maquina: Maquina([1; 16]),
+        nome: Nome::coagido("SAMSUNG"),
+        recursos: Recursos::default(),
+        conectado: true,
+    });
+    let frase = estado.impedimento().expect("há impedimento");
+    assert!(frase.contains("ler o teclado e o mouse"), "{frase}");
+    assert!(frase.contains("deixe o teclado com o outro"), "{frase}");
+    let resumo = estado.resumo();
+    assert!(!resumo.contains("Leve o ponteiro"), "{resumo}");
+    assert!(resumo.contains("não atravessam"), "{resumo}");
 }
 
 #[test]

@@ -240,3 +240,17 @@ fn the_server_does_not_take_an_edge_from_the_client() {
     assert_eq!(pair.server.peer_edge(), Edge::Right);
     assert!(edges_adopted(&pair, Side::Server).is_empty());
 }
+
+#[test]
+fn sem_posicao_real_o_ponteiro_comeca_do_lado_oposto_a_borda() {
+    // O Linux não sabe onde o cursor está. Semeado no meio, o modelo atravessava com o cursor real
+    // longe da borda (log 49); do lado oposto, a travessia só vem depois dele.
+    let mut pair = Pair::matched();
+    pair.server.seed_pointer_away_from_edge();
+    let (x, y) = pair.server.pointer_xy();
+    assert!(
+        x <= 1,
+        "a borda do par é a direita: começa encostado na esquerda ({x})"
+    );
+    assert!((500..580).contains(&y), "no meio da altura: {y}");
+}

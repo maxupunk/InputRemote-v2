@@ -26,11 +26,11 @@ mod agente;
 mod alcance;
 #[cfg(test)]
 mod bancada;
+mod cursor;
 mod discagem;
 mod energia;
 mod enlace;
 mod estado;
-mod gravador;
 mod papel;
 mod parada;
 mod pareamento;
@@ -40,7 +40,7 @@ mod pedidos;
 mod protegido;
 mod sistema;
 
-pub(crate) use papel::{nova_sessao, papel_na_subida};
+pub(crate) use papel::nova_sessao;
 use pareamento::Pareamento;
 pub(crate) use partes::{DeFundo, Entradas, Parts};
 pub(crate) use sistema::EventoDoSistema;
@@ -74,7 +74,7 @@ pub(crate) struct Daemon {
     pub(crate) data_dir: std::path::PathBuf,
     pub(crate) config: Config,
     /// Grava a configuração fora do laço, em ordem ([`gravador`]).
-    pub(crate) gravador: gravador::Gravador,
+    pub(crate) gravador: crate::config::Gravador,
     /// O pareamento em andamento, do código na tela até o fim ([`pareamento`]).
     ///
     /// Vai além do clique em "São iguais": até o outro lado responder, a reconexão não disca por
@@ -137,6 +137,14 @@ pub(crate) struct Daemon {
     pub(crate) desktops_do_agente: Vec<String>,
     /// Se esta máquina está recusando digitação do par no desktop protegido ([`protegido`]).
     pub(crate) recusa_protegido: bool,
+    /// Quando o sistema recusou por último uma injeção na área de trabalho, se foi há pouco.
+    ///
+    /// Enquanto houver recusa recente, a tela diz que esta máquina não recebe o teclado e o mouse
+    /// do outro. Antes a recusa ia só para o registro: o par dizia "controlando" e o cursor daqui
+    /// ficava parado, sem nada explicar (log 49).
+    pub(crate) injecao_recusada: Option<std::time::Instant>,
+    /// O cursor que o serviço conduz, no Linux ([`cursor`]).
+    pub(crate) cursor: cursor::Conducao,
     /// Se o par disse que recusa digitação daqui no desktop protegido dele.
     pub(crate) par_recusa_protegido: bool,
     /// Se a tela desta máquina está bloqueada ou no login, pelo `logind` (Linux).
@@ -204,11 +212,16 @@ impl Daemon {
             self.reconnect_if_needed();
             self.garantir_agente();
             self.anunciar_abertura();
+            self.esquecer_recusa_antiga();
+        }
+        if self.ticks.is_multiple_of(RECONNECT_TICKS * 3) {
+            self.recuperar_captura();
         }
         self.drive(Input::Tick);
         self.notar_estado();
         if self.ticks.is_multiple_of(SUPRESSAO_TICKS) {
             self.renovar_supressao();
+            self.renovar_conducao();
         }
         if self.ticks.is_multiple_of(PLACAR_TICKS) {
             self.registrar_placar();
@@ -309,13 +322,16 @@ impl Daemon {
                 self.on_absolute_pointer(x, y);
                 return;
             }
-            CaptureEvent::PointerMotion { dx, dy } => Input::LocalPointer(PointerDelta { dx, dy }),
+            CaptureEvent::PointerMotion { dx, dy } => {
+                self.semear_longe_da_borda();
+                Input::LocalPointer(PointerDelta { dx, dy })
+            }
             CaptureEvent::Wheel(delta) => Input::LocalWheel(delta),
             CaptureEvent::Key { usage, pressed } => Input::LocalKey { usage, pressed },
             CaptureEvent::Button { button, pressed } => Input::LocalButton { button, pressed },
             _ => return,
         };
-        self.drive(input);
+        self.capturado(event, input);
     }
 
     /// O cursor real está nesta posição absoluta (controle local).
@@ -333,6 +349,19 @@ impl Daemon {
         let (dx, dy) = (x - px, y - py);
         if dx != 0 || dy != 0 {
             self.drive(Input::LocalPointer(PointerDelta { dx, dy }));
+        }
+    }
+
+    /// Sem saber onde o cursor real está (o Linux), o ponteiro da sessão começa longe da borda
+    /// (log 49). No Windows o agente conta a posição real ([`Self::on_absolute_pointer`]).
+    fn semear_longe_da_borda(&mut self) {
+        if cfg!(windows) || !self.seed_pointer {
+            return;
+        }
+        self.seed_pointer = false;
+        // Conduzindo, o modelo é o cursor: semeá-lo em outro lugar faria o cursor saltar.
+        if !self.cursor.ligada {
+            self.session.seed_pointer_away_from_edge();
         }
     }
 

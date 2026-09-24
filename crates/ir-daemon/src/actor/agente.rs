@@ -76,8 +76,10 @@ impl Daemon {
                 return;
             }
             FatoDoAgente::InjecaoRecusada { desktop } => {
-                warn!(desktop, "a injeção do agente foi recusada");
-                if !desktop.eq_ignore_ascii_case("Default") {
+                if desktop.eq_ignore_ascii_case("Default") {
+                    self.injecao_recusada_na_area_de_trabalho();
+                } else {
+                    warn!(desktop, "a injeção do agente foi recusada");
                     self.recusando_protegido(true);
                 }
                 return;
@@ -89,6 +91,29 @@ impl Daemon {
             _ => return,
         };
         self.drive(input);
+    }
+
+    /// O sistema recusou uma injeção na área de trabalho: a tela passa a dizer, e o registro anota
+    /// só a mudança — uma recusa por evento inundava o registro sem explicar nada a ninguém.
+    fn injecao_recusada_na_area_de_trabalho(&mut self) {
+        let nova = self.injecao_recusada.is_none();
+        self.injecao_recusada = Some(std::time::Instant::now());
+        if nova {
+            warn!("o sistema está recusando o teclado e o mouse que o par manda");
+            let _ = self.avisos.send(ir_ipc::Aviso::EstadoMudou(self.estado()));
+        }
+    }
+
+    /// Sem recusa há alguns segundos, a injeção voltou a passar: a tela sai do aviso.
+    pub(super) fn esquecer_recusa_antiga(&mut self) {
+        let antiga = self
+            .injecao_recusada
+            .is_some_and(|quando| quando.elapsed() > std::time::Duration::from_secs(5));
+        if antiga {
+            info!("o sistema voltou a aceitar o teclado e o mouse do par");
+            self.injecao_recusada = None;
+            let _ = self.avisos.send(ir_ipc::Aviso::EstadoMudou(self.estado()));
+        }
     }
 
     /// O agente conectou e está pronto para capturar e injetar.

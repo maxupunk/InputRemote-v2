@@ -27,7 +27,18 @@ impl Session {
         delta: PointerDelta,
         out: &mut CommandBatch,
     ) {
-        if self.config.role != Role::Server || !self.phase.is_established() {
+        if self.config.role != Role::Server {
+            return;
+        }
+        if !self.phase.is_established() {
+            // Sem par não há travessia, mas o ponteiro local anda: onde o serviço conduz o cursor
+            // (Linux, log 50), é esta a posição que ele desenha, conectado ou não.
+            if let Some(desktop) = self.local_screens.as_ref() {
+                self.pointer = desktop.nearest_valid(ir_geometry::Point::new(
+                    self.pointer.x.saturating_add(delta.dx),
+                    self.pointer.y.saturating_add(delta.dy),
+                ));
+            }
             return;
         }
 

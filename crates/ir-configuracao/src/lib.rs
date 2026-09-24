@@ -19,6 +19,12 @@
     )
 )]
 
+mod gravador;
+mod papel;
+
+pub use gravador::Gravador;
+pub use papel::{edge_para_texto, papel_na_subida, papel_sustentado, texto_do_papel};
+
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};

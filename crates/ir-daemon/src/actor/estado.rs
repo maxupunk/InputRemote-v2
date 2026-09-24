@@ -74,7 +74,7 @@ impl Daemon {
     /// O que esta máquina tem para digitar e capturar.
     fn entrada(&self) -> Entrada<'_> {
         Entrada {
-            agente_pronto: self.agente_pronto,
+            agente_pronto: self.agente_pronto && self.injecao_recusada.is_none(),
             injeta_direto: self.injector.is_some(),
             captura_direto: self.capturer.is_some(),
             desktops_do_agente: &self.desktops_do_agente,

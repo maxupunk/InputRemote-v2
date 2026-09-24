@@ -1,7 +1,7 @@
 //! As gravações da configuração, numa thread própria e **em ordem**.
 //!
 //! Gravar é escrever um arquivo temporário, `sync_all` e renomear — num disco lento, dezenas de
-//! milissegundos. O laço do serviço bate a cada 5 ms com o controle no par, e três gravações
+//! milissegundos. O laço do serviço (`ir-daemon`) bate a cada 5 ms com o controle no par, e três gravações
 //! acontecem justamente com a sessão de pé: o endereço do rádio do par, o nome dele e a borda que o
 //! servidor anunciou. Feitas ali, elas eram um tranco no ponteiro logo depois de conectar.
 //!
@@ -14,7 +14,7 @@ use std::thread;
 
 use tracing::warn;
 
-use crate::config::Config;
+use crate::Config;
 
 /// Um pedido de gravação: o que gravar e, se alguém espera, por onde responder.
 struct Pedido {
@@ -25,14 +25,15 @@ struct Pedido {
 
 /// A fila de gravação da configuração.
 #[derive(Debug, Clone)]
-pub(crate) struct Gravador {
+pub struct Gravador {
     fila: Sender<Pedido>,
     pasta: PathBuf,
 }
 
 impl Gravador {
     /// Sobe a thread que grava em `pasta`.
-    pub(crate) fn novo(pasta: PathBuf) -> Self {
+    #[must_use]
+    pub fn novo(pasta: PathBuf) -> Self {
         let (fila, chegam) = mpsc::channel();
         let destino = pasta.clone();
         let criada = thread::Builder::new()
@@ -46,7 +47,7 @@ impl Gravador {
     }
 
     /// Grava sem esperar. Uma falha fica no registro: quem pede já adotou o valor na memória.
-    pub(crate) fn gravar(&self, config: &Config) {
+    pub fn gravar(&self, config: &Config) {
         let pedido = Pedido {
             config: Some(config.clone()),
             resposta: None,
@@ -64,7 +65,7 @@ impl Gravador {
     /// # Errors
     ///
     /// Os da gravação.
-    pub(crate) fn gravar_e_esperar(&self, config: &Config) -> anyhow::Result<()> {
+    pub fn gravar_e_esperar(&self, config: &Config) -> anyhow::Result<()> {
         let (resposta, volta) = mpsc::channel();
         let pedido = Pedido {
             config: Some(config.clone()),
@@ -78,9 +79,8 @@ impl Gravador {
             .unwrap_or_else(|_| Err(anyhow::anyhow!("a thread de gravação caiu")))
     }
 
-    /// Nos testes: espera tudo o que já foi pedido chegar ao disco.
-    #[cfg(test)]
-    pub(crate) fn esperar(&self) {
+    /// Espera tudo o que já foi pedido chegar ao disco.
+    pub fn esperar(&self) {
         let (resposta, volta) = mpsc::channel();
         // A fila é em ordem: quando a resposta deste chega, os anteriores já foram gravados.
         let barreira = Pedido {
@@ -128,7 +128,7 @@ mod tests {
         }
         config.port = 4242;
         gravador.gravar_e_esperar(&config).unwrap();
-        assert_eq!(crate::config::load_config(&pasta).unwrap().port, 4242);
+        assert_eq!(crate::load_config(&pasta).unwrap().port, 4242);
         let _ = std::fs::remove_dir_all(pasta);
     }
 }
