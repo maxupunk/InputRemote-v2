@@ -9,20 +9,26 @@ sem nunca disputar espaço com o ponteiro.
 
 Windows e Linux/Wayland. Escrito em Rust.
 
-> **Estado: nível N1 implementado.** O teclado e o mouse atravessam de um computador para o
-> outro na sessão desbloqueada, com pareamento cifrado e comparação de um código de seis dígitos
-> nas duas telas. Os três processos existem — serviço, agente de sessão e interface —, a janela
-> pareia pelo próprio serviço, e os instaladores dos dois sistemas saem num comando.
+> **Estado: provado entre duas máquinas de verdade** — um Windows 11 e um Fedora 44, com os
+> instaladores deste repositório. Os dois computadores controlam um ao outro: quem mexe no próprio
+> mouse ou teclado manda, sem papel fixo de servidor e cliente. Bluetooth e rede funcionam ao mesmo
+> tempo, com pareamento cifrado e comparação de um código de seis dígitos nas duas telas. Texto,
+> arquivos e imagens atravessam copiando e colando.
 >
-> **O primeiro teste entre duas máquinas de verdade ainda não foi feito.** O que já foi
-> exercitado, e o que falta, está em [USAR.md](USAR.md) e em
-> [PROGRESSO.md](PROGRESSO.md); a tela de bloqueio (N2/N3) continua pendente.
+> **Tela de bloqueio:** no **Fedora**, o Windows digita na tela de bloqueio (N2), e o Fedora
+> bloqueado continua controlando o Windows. No **Windows**, digitar na tela de bloqueio ainda
+> depende de o certificado do instalador ser confiado na máquina (o aviso abaixo).
+>
+> O que foi provado em bancada, e o que falta, está em [USAR.md](USAR.md),
+> [PROGRESSO.md](PROGRESSO.md) e no [registro](LOG.md) — o mais recente é o
+> [log 54](docs/logs/54-uma-regra-em-um-lugar.md). Ainda não provado em hardware: o ponteiro com
+> dois monitores numa mesma máquina.
 
 > ⚠ **Risco aberto e conhecido.** Em janeiro de 2026 o Windows passou a recusar entrada
 > injetada nas telas de credencial, salvo de teclado físico, de aplicação com UIAccess ou
 > de aplicação com integridade elevada. O desenho deste projeto se enquadra na terceira
-> categoria — e reforça a segunda —, mas isso ainda **não foi provado em hardware**. É a
-> PoC-1, e ela é bloqueante do produto inteiro.
+> categoria — e reforça a segunda —, mas **no Windows** isso ainda não foi provado em hardware:
+> é a PoC-1. No Linux, a tela de bloqueio do GNOME já recebe o que vem do outro computador.
 > Contexto em [docs/05-windows.md §4.4](docs/05-windows.md).
 
 Duas consequências práticas disso, para quem for compilar:
@@ -47,24 +53,35 @@ Se a tela de login não for alcançável num sistema, entrega-se N2 ali, com a l
 escrita — e não se bloqueia o resto. O que não é aceitável é o usuário descobrir o limite
 na hora em que precisa dele. Ver [docs/01](docs/01-visao-e-escopo.md).
 
-## O que muda em relação ao InputRemote 1
+## Por que Bluetooth e rede ao mesmo tempo
 
-Este é um projeto novo, não uma refatoração. **Nenhuma linha do v1 é reaproveitada.**
-Ele chegou a 23.500 linhas com 35% delas em dois arquivos, misturando interface, máquina
-de estados, transporte e plataforma no mesmo processo. O que ele fazia bem está preservado
-aqui como requisito; o que o tornou impossível de manter está documentado em
-[docs/00-licoes-do-v1.md](docs/00-licoes-do-v1.md), proibido por regra em
-[docs/09-padroes-de-codigo.md](docs/09-padroes-de-codigo.md) e listado nominalmente em
-[docs/11-nao-legado.md](docs/11-nao-legado.md).
+O teclado e o mouse não dependem do Wi-Fi. Quando os dois computadores têm Bluetooth, ele é o
+caminho preferido, e a rede local entra junto como segundo caminho — a **rota dupla**. Cada
+tecla segue pelos dois, e vale a que chegar primeiro.
 
-Quatro diferenças estruturais:
+- **Estabilidade.** O Bluetooth é uma ligação direta entre as duas máquinas: não passa pelo
+  roteador, não disputa banda com downloads e não sofre com a economia de energia da placa de
+  Wi-Fi, que faz o ponteiro travar e voltar.
+- **O acesso não cai quando a rede muda.** Trocar de Wi-Fi, reiniciar o roteador, mudar o IP ou
+  ficar sem rede não interrompe o controle: o Bluetooth continua, e a rede volta a somar quando
+  reaparece. É o que permite, por exemplo, usar o teclado de um computador para reconfigurar a
+  rede do outro.
+- **E o inverso também.** Sem Bluetooth, ou com o rádio fora de alcance, a rede local assume
+  sozinha, sem ninguém precisar escolher.
 
-| | InputRemote 1 | InputRemote 2 |
-|---|---|---|
-| Processos | um só (GUI + captura + rede + Bluetooth) | três: serviço privilegiado, agente de sessão, interface |
-| Tela de bloqueio | fora de escopo | requisito central — o serviço sobe com a máquina |
-| Criptografia | SPAKE2 + TLS/QUIC, um caminho por transporte | Noise, um caminho só sobre Bluetooth, UDP e TCP |
-| Lógica de produto | acoplada ao ciclo da GUI | núcleo *sans-io*, testável sem hardware |
+Arquivos e imagens, que são grandes, vão sempre pela rede (TCP), em conexão própria, para nunca
+atrasar o ponteiro.
+
+## Arquitetura
+
+| | |
+|---|---|
+| Processos | três: serviço privilegiado, agente de sessão, interface |
+| Tela de bloqueio | requisito central — o serviço sobe com a máquina |
+| Criptografia | Noise, um caminho só sobre Bluetooth, UDP e TCP |
+| Lógica de produto | núcleo *sans-io*, testável sem hardware |
+
+As regras de código estão em [docs/09-padroes-de-codigo.md](docs/09-padroes-de-codigo.md).
 
 ## Como gerar os instaladores
 
@@ -97,5 +114,4 @@ Comece pelo [índice](docs/00-indice.md).
 
 ## Licença
 
-MIT, com a exceção documentada em [docs/07-stack-e-dependencias.md](docs/07-stack-e-dependencias.md)
-sobre o licenciamento do Slint na interface.
+[MIT](LICENSE).
