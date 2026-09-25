@@ -30,7 +30,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.0-dev"
 edition = "2024"
 rust-version = "1.90"
 authors = ["InputRemote contributors"]
@@ -39,28 +39,28 @@ repository = "https://github.com/inputremote/inputremote"
 
 [workspace.dependencies]
 # Núcleo puro — sem E/S. Ver docs/02-arquitetura.md §2.
-ir-proto = { path = "crates/ir-proto", version = "0.1.0" }
-ir-geometry = { path = "crates/ir-geometry", version = "0.1.0" }
-ir-confiabilidade = { path = "crates/ir-confiabilidade", version = "0.1.0" }
-ir-area = { path = "crates/ir-area", version = "0.1.0" }
-ir-session = { path = "crates/ir-session", version = "0.1.0" }
-ir-crypto = { path = "crates/ir-crypto", version = "0.1.0" }
-ir-ipc = { path = "crates/ir-ipc", version = "0.1.0" }
-ir-net = { path = "crates/ir-net", version = "0.1.0" }
-ir-bt = { path = "crates/ir-bt", version = "0.1.0" }
-ir-transporte = { path = "crates/ir-transporte", version = "0.1.0" }
-ir-files = { path = "crates/ir-files", version = "0.1.0" }
-ir-acesso = { path = "crates/ir-acesso", version = "0.1.0" }
-ir-transferencia = { path = "crates/ir-transferencia", version = "0.1.0" }
-ir-clip = { path = "crates/ir-clip", version = "0.1.0" }
-ir-input = { path = "crates/ir-input", version = "0.1.0" }
-ir-processo = { path = "crates/ir-processo", version = "0.1.0" }
-ir-sessao = { path = "crates/ir-sessao", version = "0.1.0" }
-ir-canais = { path = "crates/ir-canais", version = "0.1.0" }
-ir-energia = { path = "crates/ir-energia", version = "0.1.0" }
-ir-configuracao = { path = "crates/ir-configuracao", version = "0.1.0" }
-ir-servico = { path = "crates/ir-servico", version = "0.1.0" }
-ir-painel = { path = "crates/ir-painel", version = "0.1.0" }
+ir-proto = { path = "crates/ir-proto", version = "0.1.0-dev" }
+ir-geometry = { path = "crates/ir-geometry", version = "0.1.0-dev" }
+ir-confiabilidade = { path = "crates/ir-confiabilidade", version = "0.1.0-dev" }
+ir-area = { path = "crates/ir-area", version = "0.1.0-dev" }
+ir-session = { path = "crates/ir-session", version = "0.1.0-dev" }
+ir-crypto = { path = "crates/ir-crypto", version = "0.1.0-dev" }
+ir-ipc = { path = "crates/ir-ipc", version = "0.1.0-dev" }
+ir-net = { path = "crates/ir-net", version = "0.1.0-dev" }
+ir-bt = { path = "crates/ir-bt", version = "0.1.0-dev" }
+ir-transporte = { path = "crates/ir-transporte", version = "0.1.0-dev" }
+ir-files = { path = "crates/ir-files", version = "0.1.0-dev" }
+ir-acesso = { path = "crates/ir-acesso", version = "0.1.0-dev" }
+ir-transferencia = { path = "crates/ir-transferencia", version = "0.1.0-dev" }
+ir-clip = { path = "crates/ir-clip", version = "0.1.0-dev" }
+ir-input = { path = "crates/ir-input", version = "0.1.0-dev" }
+ir-processo = { path = "crates/ir-processo", version = "0.1.0-dev" }
+ir-sessao = { path = "crates/ir-sessao", version = "0.1.0-dev" }
+ir-canais = { path = "crates/ir-canais", version = "0.1.0-dev" }
+ir-energia = { path = "crates/ir-energia", version = "0.1.0-dev" }
+ir-configuracao = { path = "crates/ir-configuracao", version = "0.1.0-dev" }
+ir-servico = { path = "crates/ir-servico", version = "0.1.0-dev" }
+ir-painel = { path = "crates/ir-painel", version = "0.1.0-dev" }
 
 postcard = { version = "1.1", default-features = false, features = ["alloc"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
