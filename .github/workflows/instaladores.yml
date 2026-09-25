@@ -142,11 +142,19 @@ jobs:
       - name: Checkout do repositório
         uses: actions/checkout@v4
 
-      - name: Baixar instaladores gerados
+      - name: Baixar instalador Windows
+        if: needs.windows.result == 'success'
         uses: actions/download-artifact@v4
         with:
+          name: instalador-windows
           path: dist
-          merge-multiple: true
+
+      - name: Baixar pacote Fedora
+        if: needs.fedora.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: pacote-fedora
+          path: dist
 
       - name: Gerar SHA256SUMS, MANIFESTO.txt e Resumo da Ação
         run: |
