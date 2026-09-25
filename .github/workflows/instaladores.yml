@@ -1,0 +1,233 @@
+# Workflow de empacotamento e geração de instaladores.
+# Conforme docs/10-testes-e-validacao.md §8:
+# "Tag de lançamento | tudo acima, mais empacotamento, assinatura e .sha256"
+#
+# Produz:
+#   - Windows: instalador MSI (WiX 3.14), assinado com certificado de teste
+#   - Fedora: pacote RPM para Fedora 44, gerado dentro do container oficial
+#   - Checksums SHA256 e MANIFESTO.txt consolidado
+#   - Publicação automática em GitHub Releases (em tags 'v*' ou sob demanda)
+
+name: Instaladores
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      alvo:
+        description: 'Qual instalador gerar'
+        required: true
+        default: 'todos'
+        type: choice
+        options:
+          - 'todos'
+          - 'windows'
+          - 'fedora'
+      publicar_release:
+        description: 'Criar ou atualizar GitHub Release com os instaladores'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    name: Instalador Windows (MSI)
+    runs-on: windows-latest
+    if: github.event_name != 'workflow_dispatch' || inputs.alvo == 'todos' || inputs.alvo == 'windows'
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Cache das ferramentas (WiX 3.14)
+        uses: actions/cache@v4
+        with:
+          path: empacotar/ferramentas
+          key: ${{ runner.os }}-wix314-binaries
+
+      - name: Cache de compilação Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/release/incremental
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-release-
+
+      - name: Gerar instalador MSI do Windows
+        shell: powershell
+        run: |
+          .\empacotar\empacotar.ps1 -Alvo Windows
+
+      - name: Upload do artefato Windows (MSI)
+        uses: actions/upload-artifact@v4
+        with:
+          name: instalador-windows
+          path: |
+            dist/*.msi
+            dist/MANIFESTO.txt
+          if-no-files-found: error
+
+  fedora:
+    name: Pacote Fedora (RPM)
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch' || inputs.alvo == 'todos' || inputs.alvo == 'fedora'
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache e compilação da imagem Docker do Fedora
+        uses: docker/build-push-action@v6
+        with:
+          context: empacotar/linux
+          file: empacotar/linux/Dockerfile
+          load: true
+          tags: inputremote-fedora44:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Cache do Cargo registry para RPM
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/cargo-fedora-cache
+          key: ${{ runner.os }}-fedora-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-fedora-cargo-
+
+      - name: Gerar RPM dentro do container Fedora
+        run: |
+          mkdir -p dist "${{ runner.temp }}/cargo-fedora-cache"
+          # O repositório entra somente leitura (/fonte:ro) e o RPM sai em dist (/saida).
+          # O cache do cargo acelera as compilações subsequentes sem poluir a árvore.
+          docker run --rm \
+            -v "${{ github.workspace }}:/fonte:ro" \
+            -v "${{ github.workspace }}/dist:/saida" \
+            -v "${{ runner.temp }}/cargo-fedora-cache:/opt/cargo/registry" \
+            inputremote-fedora44:latest \
+            bash /fonte/empacotar/linux/construir-rpm.sh
+
+          sudo chown -R $USER:$USER dist/ "${{ runner.temp }}/cargo-fedora-cache"
+
+      - name: Upload do artefato Fedora (RPM)
+        uses: actions/upload-artifact@v4
+        with:
+          name: pacote-fedora
+          path: |
+            dist/*.rpm
+          if-no-files-found: error
+
+  publicar:
+    name: Consolidar e Publicar
+    runs-on: ubuntu-latest
+    needs: [windows, fedora]
+    if: always() && !cancelled() && (needs.windows.result == 'success' || needs.fedora.result == 'success')
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Baixar instaladores gerados
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Gerar SHA256SUMS, MANIFESTO.txt e Resumo da Ação
+        run: |
+          cd dist
+          sha256sum *.msi *.rpm > SHA256SUMS.txt 2>/dev/null || true
+
+          versao=$(grep -m1 '^version' ../Cargo.toml | cut -d '"' -f2)
+          commit=$(git rev-parse --short HEAD)
+          data=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+
+          {
+            echo "InputRemote $versao"
+            echo "commit: $commit"
+            echo "montado em: $data"
+            echo ""
+            echo "CONTEUDO"
+            for f in *.msi *.rpm; do
+              [ -e "$f" ] || continue
+              tamanho=$(ls -lh "$f" | awk '{print $5}')
+              hash=$(sha256sum "$f" | awk '{print $1}')
+              echo "  $f  ($tamanho)"
+              echo "    sha256 $hash"
+            done
+            echo ""
+            echo "O RPM nao e assinado com GPG. Assinar exige uma chave do projeto, e uma chave"
+            echo "gerada pelo empacotador nao provaria nada a quem instala."
+          } > MANIFESTO.txt
+
+          echo "## 📦 Instaladores do InputRemote Gerados com Sucesso" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Arquivo | Tamanho | SHA256 |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|---|" >> $GITHUB_STEP_SUMMARY
+          for f in *.msi *.rpm; do
+            [ -e "$f" ] || continue
+            tamanho=$(ls -lh "$f" | awk '{print $5}')
+            hash=$(sha256sum "$f" | awk '{print $1}')
+            echo "| \`$f\` | $tamanho | \`$hash\` |" >> $GITHUB_STEP_SUMMARY
+          done
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f MANIFESTO.txt ]; then
+            echo "<details><summary>Visualizar MANIFESTO.txt</summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            cat MANIFESTO.txt >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload de todos os instaladores consolidados
+        uses: actions/upload-artifact@v4
+        with:
+          name: todos-instaladores
+          path: |
+            dist/*.msi
+            dist/*.rpm
+            dist/SHA256SUMS.txt
+            dist/MANIFESTO.txt
+
+      - name: Determinar Tag do Release
+        id: release-info
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publicar_release == true)
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            VERSION=$(grep -m1 '^version' Cargo.toml | cut -d '"' -f2)
+            TAG="v${VERSION}-build.${{ github.run_number }}"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Publicar GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publicar_release == true)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release-info.outputs.tag }}
+          name: InputRemote ${{ steps.release-info.outputs.tag }}
+          files: |
+            dist/*.msi
+            dist/*.rpm
+            dist/SHA256SUMS.txt
+            dist/MANIFESTO.txt
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, '-dev') || contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}

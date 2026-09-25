@@ -4,18 +4,11 @@
 %global debug_package %{nil}
 %global _build_id_links none
 
-# A versao de desenvolvimento nao vira `Version`, porque RPM nao aceita `-` ali. Vai para
-# `Release` com o prefixo `0.`, que e a convencao de pre-lancamento: assim 0.1.0-0.1.dev ordena
-# **antes** de 0.1.0-1, e o dia do lancamento a atualizacao acontece sozinha.
-%global versao_do_projeto 0.1.0-dev
+%global versao_do_projeto 0.1.0
 
 Name:           inputremote
 Version:        0.1.0
-# O carimbo vem de `construir-rpm.sh`, e existe por um motivo concreto: enquanto a versao de
-# desenvolvimento nao muda, dois pacotes diferentes teriam a mesma NEVR -- e `dnf install` sobre
-# uma NEVR ja instalada nao faz nada, sai com sucesso e deixa o pacote velho no lugar. O sintoma e
-# "instalei e continua igual", que e o pior tipo de falha: silenciosa e com cara de sucesso.
-Release:        0.1.dev%{?carimbo}%{?dist}
+Release:        1%{?carimbo}%{?dist}
 Summary:        Compartilha teclado e mouse entre dois computadores
 
 License:        MIT
@@ -217,6 +210,9 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %{_datadir}/icons/hicolor/*/apps/%{name}.png
 
 %changelog
+* Fri Sep 25 2026 InputRemote <inputremote@example.invalid> - 0.1.0-1
+- Primeiro lancamento oficial (0.1.0).
+
 * Sat Sep 19 2026 InputRemote <inputremote@example.invalid> - 0.1.0-0.1.dev
 - Copiar e colar deixa de ser mudo: o ajudante conta na notificacao do sistema o que esta sendo
   copiado, quando termina e por que nao atravessou.
