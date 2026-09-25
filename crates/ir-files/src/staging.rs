@@ -31,6 +31,20 @@ use crate::error::{FileError, Result};
 /// caminho e o que põe a nova no lugar.
 const ANTERIOR: &str = "anterior-do-inputremote";
 
+/// O começo do nome de toda montagem dentro da pasta de recebidos.
+///
+/// Começa com ponto para o gerenciador de arquivos não a mostrar, e diz que está parcial.
+const PREFIXO_DA_MONTAGEM: &str = ".parcial-";
+
+/// Se uma entrada da pasta de recebidos, pelo nome, é uma montagem em curso — e não uma entrega.
+///
+/// A faxina precisa saber: tratar a montagem como entrega fazia "Limpar agora" apagar a cópia que
+/// ainda estava chegando, e somava ao espaço ocupado o que nem tinha chegado inteiro.
+#[must_use]
+pub fn e_montagem(nome: &str) -> bool {
+    nome.starts_with(PREFIXO_DA_MONTAGEM)
+}
+
 /// Uma árvore a meio caminho, que se apaga sozinha se não for publicada.
 #[derive(Debug)]
 pub struct Staging {
@@ -48,7 +62,7 @@ impl Staging {
         tokio::fs::create_dir_all(recebidos)
             .await
             .map_err(|erro| FileError::io(recebidos, erro))?;
-        let raiz = recebidos.join(format!(".parcial-{}", id.0));
+        let raiz = recebidos.join(format!("{PREFIXO_DA_MONTAGEM}{}", id.0));
         // Uma montagem anterior pode ter ficado para trás se o processo foi morto sem `Drop` —
         // um `kill -9`, uma queda de energia. Recomeçar do zero é o único estado conhecido.
         if tokio::fs::metadata(&raiz).await.is_ok() {
@@ -155,13 +169,9 @@ impl Staging {
     /// [`FileError::Io`] se o `rename` falhar.
     pub async fn publicar(mut self, recebidos: &Path, nome: &str) -> Result<PathBuf> {
         let alvo = recebidos.join(nome);
-        let anterior = afastar_anterior(&alvo).await?;
-        tokio::fs::rename(&self.raiz, &alvo)
-            .await
-            .map_err(|erro| FileError::io(&alvo, erro))?;
+        trocar(&self.raiz, &alvo).await?;
         // Só depois de o `rename` ter dado certo. Se ele falhar, o `Drop` ainda tem de limpar.
         self.publicado = true;
-        apagar(anterior).await;
         Ok(alvo)
     }
 
@@ -189,15 +199,26 @@ impl Staging {
             .filter(|nome| !nome.is_empty())
             .ok_or(FileError::Violacao("entrada sem nome para publicar"))?;
         let alvo = recebidos.join(nome);
-        let anterior = afastar_anterior(&alvo).await?;
-        tokio::fs::rename(&origem, &alvo)
-            .await
-            .map_err(|erro| FileError::io(&alvo, erro))?;
+        trocar(&origem, &alvo).await?;
         // `publicado` fica falso de propósito: o que saiu foi o conteúdo, e a casca da montagem
         // ainda tem de ser recolhida.
-        apagar(anterior).await;
         Ok(alvo)
     }
+}
+
+/// Põe `origem` no lugar de `alvo`: afasta a entrega anterior de mesmo nome, renomeia, e só então
+/// apaga a anterior.
+///
+/// # Errors
+///
+/// [`FileError::Io`] se o `rename` falhar — e aí a anterior, afastada, fica no lugar dela.
+async fn trocar(origem: &Path, alvo: &Path) -> Result<()> {
+    let anterior = afastar_anterior(alvo).await?;
+    tokio::fs::rename(origem, alvo)
+        .await
+        .map_err(|erro| FileError::io(alvo, erro))?;
+    apagar(anterior).await;
+    Ok(())
 }
 
 /// Tira do caminho a entrega anterior de mesmo nome, e diz para onde ela foi.
@@ -230,18 +251,51 @@ async fn afastar_anterior(alvo: &Path) -> Result<Option<PathBuf>> {
     Ok(Some(afastado))
 }
 
-/// Apaga o que foi afastado, seja arquivo ou árvore. Falhar aqui só deixa lixo, e o serviço tem
-/// quem o recolha depois (`ir_transferencia::faxina`).
+/// Apaga o que foi afastado. Falhar aqui só deixa lixo, e o serviço tem quem o recolha depois
+/// (`ir_transferencia::faxina`).
 async fn apagar(caminho: Option<PathBuf>) {
-    let Some(caminho) = caminho else { return };
-    if tokio::fs::metadata(&caminho)
+    if let Some(caminho) = caminho {
+        let _ = remover(&caminho).await;
+    }
+}
+
+/// Apaga um caminho da pasta de recebidos, seja arquivo ou árvore inteira.
+///
+/// Público porque a faxina apaga as mesmas coisas que a publicação afasta: uma regra só para
+/// "apagar uma entrega".
+///
+/// # Errors
+///
+/// O erro do sistema ao apagar.
+pub async fn remover(caminho: &Path) -> std::io::Result<()> {
+    if tokio::fs::symlink_metadata(caminho)
         .await
         .is_ok_and(|dados| dados.is_dir())
     {
-        let _ = tokio::fs::remove_dir_all(&caminho).await;
-        return;
+        tokio::fs::remove_dir_all(caminho).await
+    } else {
+        tokio::fs::remove_file(caminho).await
     }
-    let _ = tokio::fs::remove_file(&caminho).await;
+}
+
+/// Apaga as montagens que um serviço morto no meio de uma cópia deixou na pasta de recebidos, e
+/// diz quantas eram.
+///
+/// Só na subida, quando nenhuma cópia pode estar em curso: durante a sessão a montagem é de quem
+/// está recebendo, e a faxina não a toca ([`e_montagem`]). Sem isto, a de um processo morto só
+/// saía se viesse outra cópia de mesmo identificador — ou seja, nunca.
+pub async fn recolher_orfas(recebidos: &Path) -> usize {
+    let Ok(mut leitura) = tokio::fs::read_dir(recebidos).await else {
+        return 0;
+    };
+    let mut recolhidas = 0;
+    while let Ok(Some(item)) = leitura.next_entry().await {
+        let orfa = item.file_name().to_str().is_some_and(e_montagem);
+        if orfa && remover(&item.path()).await.is_ok() {
+            recolhidas += 1;
+        }
+    }
+    recolhidas
 }
 
 impl Drop for Staging {

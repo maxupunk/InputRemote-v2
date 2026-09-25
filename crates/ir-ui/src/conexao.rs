@@ -22,7 +22,7 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use ir_ipc::codec::{self, PREFIXO};
+use ir_ipc::codec;
 use ir_ipc::{Aviso, Falha, ParaInterface, Pedido, Resposta};
 
 use crate::conector::Conector;
@@ -209,9 +209,7 @@ impl Conexao {
 
 /// Escreve um pedido e espera a resposta dele. `None` se o canal não serve mais.
 fn trocar(canal: &mut Canal, pedido: &Pedido) -> Option<Resposta> {
-    let quadro = codec::codificar(pedido).ok()?;
-    canal.escrita.write_all(&quadro).ok()?;
-    canal.escrita.flush().ok()?;
+    codec::escrever_em(&mut canal.escrita, pedido).ok()?;
     canal.respostas.recv_timeout(ESPERA).ok()
 }
 
@@ -233,7 +231,7 @@ fn iniciar_leitor(
 ) {
     std::thread::spawn(move || {
         loop {
-            match ler_quadro(&mut leitura) {
+            match codec::ler_de::<ParaInterface, _>(&mut leitura) {
                 Ok(Some(ParaInterface::Resposta(resposta))) => {
                     if respostas.send(resposta).is_err() {
                         break;
@@ -252,24 +250,4 @@ fn iniciar_leitor(
         }
         vivo.store(false, Ordering::Relaxed);
     });
-}
-
-/// Lê um quadro com prefixo de tamanho, bloqueante. `Ok(None)` no fim limpo do fluxo.
-fn ler_quadro(leitura: &mut impl Read) -> std::io::Result<Option<ParaInterface>> {
-    let mut prefixo = [0u8; PREFIXO];
-    if let Err(erro) = leitura.read_exact(&mut prefixo) {
-        return if erro.kind() == std::io::ErrorKind::UnexpectedEof {
-            Ok(None)
-        } else {
-            Err(erro)
-        };
-    }
-    // O tamanho é conferido contra o limite antes de alocar.
-    let tamanho = codec::tamanho_anunciado(&prefixo)
-        .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))?;
-    let mut corpo = vec![0u8; tamanho];
-    leitura.read_exact(&mut corpo)?;
-    codec::decodificar(&corpo)
-        .map(Some)
-        .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))
 }

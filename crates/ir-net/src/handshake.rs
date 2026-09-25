@@ -7,7 +7,9 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use ir_crypto::{Handshake, Identity, PublicKey, Transport};
+use ir_crypto::enlace::concluir;
+pub use ir_crypto::enlace::{ConnectMode, Established};
+use ir_crypto::{Handshake, Identity};
 use tokio::net::UdpSocket;
 
 use crate::error::{NetError, Result};
@@ -36,38 +38,6 @@ struct Reenvio<'a> {
     prazo: Duration,
 }
 
-/// O que dizer ao par ao iniciar: parear do zero, ou reconectar com a chave dele fixada.
-#[derive(Debug, Clone, Copy)]
-pub enum ConnectMode {
-    /// Primeiro pareamento.
-    Pair,
-    /// Reconexão, com a chave estática do par fixada.
-    Reconnect(PublicKey),
-    /// Troca de chaves de um enlace que está de pé, com a mesma chave do par.
-    Rekey(PublicKey),
-}
-
-impl ConnectMode {
-    const fn wire_mode(self) -> Mode {
-        match self {
-            Self::Pair => Mode::Pair,
-            Self::Reconnect(_) => Mode::Reconnect,
-            Self::Rekey(_) => Mode::Rekey,
-        }
-    }
-}
-
-/// O resultado de um handshake bem-sucedido.
-#[derive(Debug)]
-pub struct Established {
-    /// O transporte cifrado, pronto para quadros.
-    pub transport: Transport,
-    /// A chave estática que o par apresentou.
-    pub peer_static: PublicKey,
-    /// O código de 6 dígitos, presente só no pareamento.
-    pub code: Option<[u8; 6]>,
-}
-
 /// Conduz o handshake como iniciador, contra `peer`.
 ///
 /// # Errors
@@ -80,13 +50,8 @@ pub async fn drive_initiator(
     identity: &Identity,
     mode: ConnectMode,
 ) -> Result<Established> {
-    let handshake = match mode {
-        ConnectMode::Pair => Handshake::pair_initiator(identity)?,
-        ConnectMode::Reconnect(peer_key) | ConnectMode::Rekey(peer_key) => {
-            Handshake::reconnect_initiator(identity, peer_key)?
-        }
-    };
-    run_desde(socket, peer, handshake, mode.wire_mode(), None).await
+    let handshake = mode.iniciar(identity)?;
+    run_desde(socket, peer, handshake, mode.modo(), None).await
 }
 
 /// Conduz o handshake como respondedor, a partir do primeiro datagrama já recebido.
@@ -105,10 +70,7 @@ pub async fn drive_responder(
     first: &[u8],
 ) -> Result<Established> {
     let (mode, message) = wire::parse_handshake(first).ok_or(NetError::Malformed)?;
-    let mut handshake = match mode {
-        Mode::Pair => Handshake::pair_responder(identity)?,
-        Mode::Reconnect | Mode::Rekey => Handshake::reconnect_responder(identity)?,
-    };
+    let mut handshake = mode.responder(identity)?;
     handshake.read_message(message)?;
     run_desde(socket, peer, handshake, mode, Some(first)).await
 }
@@ -122,8 +84,7 @@ async fn run_desde(
     mode: Mode,
     primeiro: Option<&[u8]>,
 ) -> Result<Established> {
-    let is_pairing = matches!(mode, Mode::Pair);
-    let prazo = if is_pairing {
+    let prazo = if mode == Mode::Pair {
         PAREAMENTO_ESPERA
     } else {
         STEP_TIMEOUT
@@ -154,24 +115,7 @@ async fn run_desde(
         }
     }
 
-    if !handshake.is_finished() {
-        return Err(NetError::Crypto(ir_crypto::CryptoError::NotFinished));
-    }
-
-    let peer_static = handshake
-        .remote_static()
-        .ok_or(NetError::Crypto(ir_crypto::CryptoError::Handshake))?;
-    let code = if is_pairing {
-        handshake.pairing_code().ok()
-    } else {
-        None
-    };
-    let transport = handshake.into_transport()?;
-    Ok(Established {
-        transport,
-        peer_static,
-        code,
-    })
+    Ok(concluir(handshake)?)
 }
 
 /// Espera a próxima mensagem do par até o prazo, reenviando a nossa a cada [`STEP_TIMEOUT`].

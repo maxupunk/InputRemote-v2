@@ -2655,13 +2655,13 @@ dependencies = [
  "anyhow",
  "blake3",
  "ir-clip",
+ "ir-geometry",
  "ir-input",
  "ir-ipc",
+ "ir-processo",
  "ir-proto",
  "serde",
  "tracing",
- "tracing-appender",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -2755,6 +2755,7 @@ dependencies = [
  "ir-configuracao",
  "ir-crypto",
  "ir-energia",
+ "ir-geometry",
  "ir-input",
  "ir-ipc",
  "ir-painel",
@@ -2776,6 +2777,9 @@ dependencies = [
 [[package]]
 name = "ir-energia"
 version = "0.1.0-dev"
+dependencies = [
+ "ir-processo",
+]
 
 [[package]]
 name = "ir-files"
@@ -2800,6 +2804,7 @@ name = "ir-input"
 version = "0.1.0-dev"
 dependencies = [
  "evdev",
+ "ir-geometry",
  "ir-proto",
  "libc",
  "thiserror 2.0.20",
@@ -2841,6 +2846,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ir-processo"
+version = "0.1.0-dev"
+dependencies = [
+ "anyhow",
+ "tracing-appender",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "ir-proto"
 version = "0.1.0-dev"
 dependencies = [
@@ -2855,11 +2869,10 @@ version = "0.1.0-dev"
 dependencies = [
  "anyhow",
  "ir-acesso",
+ "ir-processo",
  "ir-sessao",
  "tokio",
  "tracing",
- "tracing-appender",
- "tracing-subscriber",
  "windows-service",
 ]
 
@@ -2868,6 +2881,7 @@ name = "ir-sessao"
 version = "0.1.0-dev"
 dependencies = [
  "anyhow",
+ "ir-processo",
  "tokio",
  "tracing",
  "windows 0.62.2",

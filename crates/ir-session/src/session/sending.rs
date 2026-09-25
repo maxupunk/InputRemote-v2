@@ -262,14 +262,24 @@ impl Session {
         }
 
         let fraction = self.fraction_on_peer(edge, position);
-        self.send(
-            now,
-            Message::Control(Control::LeaveScreen {
-                leaving_edge: edge,
-                position,
-            }),
-            out,
-        );
+        self.leave_peer_screen(now, (edge, position), fraction, out);
+    }
+
+    /// A volta normal: avisa o par de que o ponteiro saiu da tela dele, pela borda e na posição
+    /// dadas — ele solta tudo e para de injetar — e traz o controle para esta máquina, na fração
+    /// dada da borda.
+    pub(super) fn leave_peer_screen(
+        &mut self,
+        now: Timestamp,
+        (leaving_edge, position): (Edge, PointerPosition),
+        fraction: u16,
+        out: &mut CommandBatch,
+    ) {
+        let message = Control::LeaveScreen {
+            leaving_edge,
+            position,
+        };
+        self.send(now, Message::Control(message), out);
         self.take_control_back(fraction, out);
     }
 
@@ -302,16 +312,34 @@ impl Session {
 
     /// Devolve o controle para esta máquina, soltando tudo e liberando a entrada local.
     ///
-    /// Usado no retorno normal, na emergência, na troca de portador e na queda. É o mesmo
-    /// caminho nos quatro casos de propósito: um caminho de liberação por situação é como se
-    /// esquece um deles.
+    /// Usado no retorno normal, na emergência, na troca de portador e na retomada pelo par. É o
+    /// mesmo caminho em todos de propósito: um caminho de liberação por situação é como se esquece
+    /// um deles. A queda usa a mesma liberação ([`Self::release_local_hold`]), sem a mudança de
+    /// fase, que lá é para `Offline`.
     pub(super) fn hand_control_back(&mut self, out: &mut CommandBatch) {
+        self.release_local_hold(out);
+        if self.phase == Phase::Sending && self.move_to(Phase::Ready, out) {
+            out.push(Command::Notify(Notice::ControlMoved { remote: false }));
+        }
+    }
+
+    /// Larga o controle do par às pressas: manda o par soltar tudo — as subidas do que desceu lá
+    /// podem nunca chegar — e devolve o controle para cá.
+    ///
+    /// É a emergência e a perda do agente que capturava: nos dois casos, quem segurava as teclas
+    /// do outro lado não vai mais soltá-las.
+    pub(super) fn abandon_control(&mut self, now: Timestamp, out: &mut CommandBatch) {
+        self.send(now, Message::Input(InputMessage::ReleaseAll), out);
+        self.hand_control_back(out);
+    }
+
+    /// Solta o que esta máquina segura e devolve a entrada local a ela.
+    ///
+    /// Solta tudo, local e logicamente; descarta o movimento ainda não despachado; e tira a
+    /// supressão. Tirar a supressão sem estar suprimindo é inofensivo, como o `ReleaseAll`.
+    pub(super) fn release_local_hold(&mut self, out: &mut CommandBatch) {
         self.release_everything(out);
         self.pending_pointer = PointerDelta::ZERO;
         out.push(Command::SuppressLocalInput(false));
-        if self.phase == Phase::Sending {
-            self.phase = Phase::Ready;
-            out.push(Command::Notify(Notice::ControlMoved { remote: false }));
-        }
     }
 }

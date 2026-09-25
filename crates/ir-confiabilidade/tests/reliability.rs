@@ -5,28 +5,11 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
-use ir_confiabilidade::time::{Millis, Timestamp};
+mod common;
+
+use common::{CEILING, FLOOR, at, frame};
 use ir_confiabilidade::{Delivery, Receiver, SendOutcome, Sender, TimeoutOutcome};
 use ir_proto::frame::{Frame, Sequence};
-use ir_proto::input::{HidUsage, Modifiers};
-use ir_proto::message::{InputMessage, Message};
-
-const FLOOR: Millis = Millis(20);
-const CEILING: Millis = Millis(1000);
-
-fn frame(seq: u32) -> Frame {
-    Frame::new(
-        Message::Input(InputMessage::KeyDown {
-            usage: HidUsage(0x04),
-            mods: Modifiers::NONE,
-        }),
-        Sequence(seq),
-    )
-}
-
-fn at(millis: u64) -> Timestamp {
-    Timestamp::from_millis(millis)
-}
 
 /// Entrega um quadro e devolve as sequências que saíram, na ordem.
 fn deliver(receiver: &mut Receiver, seq: u32) -> Vec<u32> {
@@ -155,18 +138,6 @@ fn the_receiver_works_across_the_sequence_wraparound() {
     );
     assert_eq!(deliver(&mut receiver, 1), vec![1]);
     assert_eq!(receiver.accept(Sequence(0), frame(0)), Delivery::Duplicate);
-}
-
-#[test]
-fn resetting_the_receiver_forgets_everything() {
-    let mut receiver = Receiver::new();
-    deliver(&mut receiver, 5);
-    receiver.accept(Sequence(9), frame(9));
-    receiver.reset();
-
-    assert!(receiver.ack_to_send().is_none());
-    assert_eq!(receiver.buffered(), 0);
-    assert_eq!(deliver(&mut receiver, 5), vec![5], "depois do reset é nova");
 }
 
 #[test]

@@ -40,7 +40,7 @@ impl Daemon {
         };
         let agora = Instant::now();
         for portador in [Carrier::Rfcomm, Carrier::Udp] {
-            let fixado = self.portador_fixado.map(ir_ipc::Portador::no_protocolo);
+            let fixado = self.config.fixado();
             if fixado.is_some_and(|fixado| fixado != portador)
                 || !self.alcance.pode_discar(portador, agora)
             {
@@ -63,18 +63,11 @@ impl Daemon {
 
     /// Procura o par na rede pela chave fixada, fora do ator; responde em [`Self::on_par_achado`].
     fn procurar_o_par_na_rede(&mut self, chave: ir_crypto::PublicKey, agora: Instant) {
-        // Sem runtime (os testes síncronos do ator) não há busca; o resto do serviço segue igual.
-        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
-            return;
-        };
         if !self.alcance.buscar_agora(agora) {
             return;
         }
-        let busca = self
-            .descoberta
-            .localizar(ir_transporte::maquina_da_chave(&chave));
-        let de_fundo = self.de_fundo.clone();
-        runtime.spawn(async move {
+        let busca = self.descoberta.localizar(chave.machine_id());
+        self.em_fundo_async(|de_fundo| async move {
             if let Some(endereco) = busca.await {
                 let _ = de_fundo.send(super::DeFundo::ParAchado(endereco));
             }
@@ -107,14 +100,18 @@ impl Daemon {
     /// discar o Bluetooth — e discar se ainda não há enlace.
     pub(crate) fn on_radio_do_par(&mut self, radio: RadioAddress) {
         let endereco = Endereco::do_radio(radio);
-        if self.alcance.endereco(Carrier::Rfcomm) != Some(endereco) {
+        let novo = self.alcance.endereco(Carrier::Rfcomm) != Some(endereco);
+        if novo {
             info!(%endereco, "o par contou o endereço do rádio dele");
             self.alcance.anotar(endereco);
-            if let Some(par) = self.config.peers.first_mut() {
-                par.radio = Some(endereco.to_string());
-                // Sem esperar: isto chega com a sessão recém-estabelecida, e o ponteiro já anda.
-                self.gravador.gravar(&self.config);
-            }
+        }
+        // Sem esperar: isto chega com a sessão recém-estabelecida, e o ponteiro já anda.
+        if novo && !self.config.peers.is_empty() {
+            self.gravar_ja(|config| {
+                if let Some(par) = config.peers.first_mut() {
+                    par.radio = Some(endereco.to_string());
+                }
+            });
         }
         self.discar_o_que_falta();
     }

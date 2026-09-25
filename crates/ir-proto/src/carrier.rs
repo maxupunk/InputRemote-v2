@@ -1,9 +1,9 @@
 //! Os três portadores, e o que cada um garante.
 //!
 //! O portador é o meio físico/lógico por onde o quadro viaja. O protocolo é o mesmo nos
-//! três — só a camada 0 muda (`docs/03-protocolo.md` §1). Este módulo existe para que o
-//! resto do produto raciocine sobre "stream confiável" ou "datagrama sem garantia" em vez
-//! de sobre RFCOMM, UDP ou TCP.
+//! três — só a camada 0 muda (`docs/03-protocolo.md` §1). Desde a versão 2 a sessão trata todo
+//! portador de entrada como datagrama, então o que distingue um do outro aqui é só o que cada um
+//! pode carregar e quanto cabe num quadro.
 
 use serde::{Deserialize, Serialize};
 
@@ -20,29 +20,7 @@ pub enum Carrier {
     Tcp,
 }
 
-/// O que o meio garante por si, antes de qualquer coisa que a aplicação acrescente.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Delivery {
-    /// Entrega confiável e ordenada pelo próprio meio.
-    ReliableStream,
-    /// Sem garantia: pode perder, duplicar e reordenar.
-    Datagram,
-}
-
 impl Carrier {
-    /// O que este portador garante por si.
-    ///
-    /// Sobre [`Delivery::ReliableStream`], a confiabilidade dos canais é grátis. Sobre
-    /// [`Delivery::Datagram`], ela é responsabilidade da aplicação
-    /// (`docs/03-protocolo.md` §4.1).
-    #[must_use]
-    pub const fn delivery(self) -> Delivery {
-        match self {
-            Self::Rfcomm | Self::Tcp => Delivery::ReliableStream,
-            Self::Udp => Delivery::Datagram,
-        }
-    }
-
     /// Máximo de texto claro que cabe num quadro deste portador.
     ///
     /// Para [`Carrier::Rfcomm`] este é o teto seguro; o valor efetivo é negociado no enlace
@@ -115,18 +93,6 @@ mod tests {
         // arquivo não compartilha portador com entrada, nunca.
         for carrier in ALL {
             assert!(!(carrier.carries_input() && carrier.carries_bulk()));
-        }
-    }
-
-    #[test]
-    fn only_udp_is_unreliable() {
-        for carrier in ALL {
-            let expected = if carrier == Carrier::Udp {
-                Delivery::Datagram
-            } else {
-                Delivery::ReliableStream
-            };
-            assert_eq!(carrier.delivery(), expected);
         }
     }
 

@@ -5,26 +5,17 @@
 //! **outro** computador —, então cada ponta anuncia o estado da própria placa, e a tela do par pode
 //! mostrar o aviso e o botão que pede para desligar.
 //!
-//! A sessão não mede nem muda nada: ela anuncia o que a periferia viu e repassa o que ouviu. E só
-//! fala disso com um par da versão 3 — um da versão 2 não decodificaria as mensagens.
+//! A sessão não mede nem muda nada: ela anuncia o que a periferia viu e repassa o que ouviu. As
+//! mensagens são da versão 3, anterior à mínima aceita, então vão a qualquer par com sessão de pé
+//! (`ir_proto::version::MIN_SUPPORTED`).
 
 use ir_proto::message::{Control, Message, NetworkPowerSaving};
-use ir_proto::version::NETWORK_POWER;
 
 use crate::event::{Command, CommandBatch, Notice};
 use crate::session::Session;
 use crate::time::Timestamp;
 
 impl Session {
-    /// Se o par entende as mensagens de economia de energia.
-    fn peer_speaks_network_power(&self) -> bool {
-        self.phase.is_established()
-            && self
-                .peer
-                .as_ref()
-                .is_some_and(|peer| peer.version >= NETWORK_POWER)
-    }
-
     /// A periferia viu como está a economia de energia do Wi-Fi daqui.
     ///
     /// Anuncia toda leitura, mudando ou não. A periferia lê a cada 30 s, e repetir custa uma
@@ -41,10 +32,10 @@ impl Session {
         self.announce_network_power(now, out);
     }
 
-    /// Conta ao par como está a placa daqui, se se sabe e se ele entende.
+    /// Conta ao par como está a placa daqui, se se sabe e se há sessão.
     pub(super) fn announce_network_power(&mut self, now: Timestamp, out: &mut CommandBatch) {
         if let Some(state) = self.local_power
-            && self.peer_speaks_network_power()
+            && self.phase.is_established()
         {
             self.send(now, Message::Control(Control::NetworkPower(state)), out);
         }
@@ -52,13 +43,13 @@ impl Session {
 
     /// O usuário pediu, daqui, que o par desligue a economia de energia do Wi-Fi dele.
     ///
-    /// Devolve se o pedido saiu: sem sessão, ou com um par que não entende, não há como pedir.
+    /// Devolve se o pedido saiu: sem sessão não há como pedir.
     pub(super) fn on_disable_peer_network_power(
         &mut self,
         now: Timestamp,
         out: &mut CommandBatch,
     ) -> bool {
-        if !self.peer_speaks_network_power() {
+        if !self.phase.is_established() {
             return false;
         }
         self.send(

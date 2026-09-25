@@ -9,7 +9,7 @@
 #![allow(unreachable_pub)]
 
 use evdev::Key;
-use ir_proto::input::HidUsage;
+use ir_proto::input::{Button, HidUsage};
 
 /// A tabela HID Usage → tecla do Linux. Uma linha por tecla, para nenhuma função ficar longa.
 const MAP: &[(u16, Key)] = &[
@@ -123,6 +123,34 @@ const MAP: &[(u16, Key)] = &[
     (0xE7, Key::KEY_RIGHTMETA),
 ];
 
+/// Os botões do ponteiro e as teclas do `evdev` que eles são. Uma tabela para os dois sentidos: a
+/// injeção (`uinput`) e a captura (`traducao`) tinham cada uma a sua.
+const BOTOES: &[(Button, Key)] = &[
+    (Button::Left, Key::BTN_LEFT),
+    (Button::Right, Key::BTN_RIGHT),
+    (Button::Middle, Key::BTN_MIDDLE),
+    (Button::Back, Key::BTN_SIDE),
+    (Button::Forward, Key::BTN_EXTRA),
+];
+
+/// A tecla do `evdev` que injeta este botão do ponteiro.
+#[must_use]
+pub fn button_to_key(button: Button) -> Option<Key> {
+    BOTOES
+        .iter()
+        .find(|(botao, _)| *botao == button)
+        .map(|(_, key)| *key)
+}
+
+/// O botão do ponteiro que esta tecla do `evdev` é, se for um — o caminho da captura.
+#[must_use]
+pub fn key_to_button(key: Key) -> Option<Button> {
+    BOTOES
+        .iter()
+        .find(|(_, tecla)| *tecla == key)
+        .map(|(botao, _)| *botao)
+}
+
 /// O código de tecla do Linux para um HID Usage, se houver correspondência.
 #[must_use]
 pub fn hid_to_key(usage: HidUsage) -> Option<Key> {
@@ -161,6 +189,15 @@ mod tests {
             let tecla = hid_to_key(usage).expect("mapeada");
             assert_eq!(key_to_hid(tecla), Some(usage), "{:#04x}", usage.get());
         }
+    }
+
+    #[test]
+    fn todo_botao_vai_e_volta_pela_mesma_tecla() {
+        for botao in Button::ALL {
+            let tecla = button_to_key(botao).expect("mapeado");
+            assert_eq!(key_to_button(tecla), Some(botao), "{botao:?}");
+        }
+        assert_eq!(key_to_button(Key::KEY_A), None, "tecla não é botão");
     }
 
     #[test]

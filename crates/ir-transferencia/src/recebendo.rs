@@ -15,7 +15,7 @@ use ir_transporte::dados::{Destinatario, Remetente};
 use tokio::sync::{Mutex, mpsc};
 use tracing::{debug, info, warn};
 
-use crate::sessao::{anunciar, responder, traduzir_recusa};
+use crate::sessao::{anunciar, anunciar_queda, responder, traduzir_recusa};
 
 /// Para onde o que chega vai, e sob que teto.
 ///
@@ -40,8 +40,6 @@ pub(crate) async fn receber(
     avisos: tokio::sync::broadcast::Sender<Aviso>,
 ) {
     let mut recepcao: Option<Box<Recepcao>> = None;
-    // O nome do que está chegando, para o andamento poder dizer de quê ele é.
-    let mut nome = String::new();
     // Quem recebe só contava no começo e no fim: a tela mostrava "0% de 2,1 GB" até acabar.
     let mut passo = crate::passo::Passo::novo();
     loop {
@@ -49,6 +47,11 @@ pub(crate) async fn receber(
             Ok(mensagem) => mensagem,
             Err(erro) => {
                 debug!(%erro, "o canal de arquivos encerrou a leitura");
+                // Só se havia cópia chegando; a montagem dela vai embora com o `Drop`.
+                let em_curso = recepcao
+                    .as_deref()
+                    .map(|aberta| (aberta.nome(), (aberta.escritos(), aberta.total())));
+                anunciar_queda(&avisos, Sentido::Recebendo, em_curso);
                 return;
             }
         };
@@ -65,11 +68,7 @@ pub(crate) async fn receber(
             total_bytes,
         } = mensagem
         {
-            let aberta = abrir(&remetente, &avisos, &deposito, (id, items, total_bytes)).await;
-            nome = aberta
-                .as_ref()
-                .map_or_else(String::new, |(_, nome)| nome.clone());
-            recepcao = aberta.map(|(recepcao, _)| recepcao);
+            recepcao = abrir(&remetente, &avisos, &deposito, (id, items, total_bytes)).await;
             passo = crate::passo::Passo::novo();
             continue;
         }
@@ -86,7 +85,13 @@ pub(crate) async fn receber(
             }
         } else if passo.passou() {
             let feitos = (aberta.escritos(), aberta.total());
-            anunciar(&avisos, Sentido::Recebendo, &nome, feitos, Fase::Andando);
+            anunciar(
+                &avisos,
+                Sentido::Recebendo,
+                aberta.nome(),
+                feitos,
+                Fase::Andando,
+            );
         }
     }
 }
@@ -105,18 +110,17 @@ async fn abrir(
     avisos: &tokio::sync::broadcast::Sender<Aviso>,
     deposito: &Deposito,
     manifesto: (TransferId, Vec<ir_proto::message::ManifestItem>, u64),
-) -> Option<(Box<Recepcao>, String)> {
+) -> Option<Box<Recepcao>> {
     let total = manifesto.2;
-    let nome = ir_files::publicacao::como_publicar(&manifesto.1);
-    let nome = match nome {
-        ir_files::Publicacao::Entrada(nome) | ir_files::Publicacao::Agrupadas(nome) => nome,
-    };
+    // Calculado aqui só para a recusa, que não abre recepção; a aceita traz o dela.
+    let nome = ir_files::publicacao::nome_da_entrega(&manifesto.1);
     match Recepcao::abrir(&deposito.pasta, manifesto, deposito.cota, None).await {
         Ok(Abertura::Aceita { recepcao, resposta }) => {
             info!(total, "recebendo arquivos");
             responder(remetente, resposta).await;
-            anunciar(avisos, Sentido::Recebendo, &nome, (0, total), Fase::Andando);
-            Some((recepcao, nome))
+            let nome = recepcao.nome();
+            anunciar(avisos, Sentido::Recebendo, nome, (0, total), Fase::Andando);
+            Some(recepcao)
         }
         Ok(Abertura::Recusada { resposta, motivo }) => {
             warn!(?motivo, "transferência recusada");
@@ -159,7 +163,7 @@ async fn aplicar(
             anunciar(
                 avisos,
                 Sentido::Recebendo,
-                "",
+                recepcao.nome(),
                 (recepcao.escritos(), recepcao.total()),
                 Fase::Parada(Motivo::Cancelada),
             );
@@ -184,7 +188,7 @@ async fn aplicar(
             anunciar(
                 avisos,
                 Sentido::Recebendo,
-                "",
+                recepcao.nome(),
                 (recepcao.escritos(), recepcao.total()),
                 Fase::Parada(motivo),
             );
@@ -196,15 +200,13 @@ async fn aplicar(
 /// Publica a árvore recebida, se ela estiver inteira.
 async fn publicar(recepcao: Recepcao, avisos: &tokio::sync::broadcast::Sender<Aviso>) {
     let (feitos, total) = (recepcao.escritos(), recepcao.total());
+    let nome = recepcao.nome().to_owned();
     match recepcao.concluir().await {
         Ok(destino) => {
             // O caminho completo vai para a interface porque é ele que permite abrir a pasta; para
             // o registro fica em `debug`, que é o teto de `docs/04` §7 para nome de arquivo.
             debug!(?destino, "arquivos recebidos");
             info!(bytes = feitos, "transferência concluída");
-            let nome = destino
-                .file_name()
-                .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
             anunciar(
                 avisos,
                 Sentido::Recebendo,

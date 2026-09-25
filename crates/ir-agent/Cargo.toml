@@ -15,15 +15,14 @@ path = "src/main.rs"
 
 [dependencies]
 ir-proto.workspace = true
+# Onde prender o ponteiro: a posição do protocolo em pixels do arranjo desta sessão.
+ir-geometry.workspace = true
 ir-ipc.workspace = true
 ir-input.workspace = true
 ir-clip.workspace = true
 serde.workspace = true
 tracing.workspace = true
-tracing-subscriber.workspace = true
-# O registro por fila, e um arquivo por dia no Windows: sem console, a saída padrão do agente e do
-# ajudante de clipboard não chega a lugar nenhum, e uma falha deles ficava invisível.
-tracing-appender.workspace = true
+ir-processo.workspace = true
 anyhow.workspace = true
 # O nome da imagem de clipboard em trânsito leva parte do resumo dela.
 blake3.workspace = true

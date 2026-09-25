@@ -13,7 +13,9 @@
 
 use core::time::Duration;
 
-use ir_crypto::{Handshake, Identity, PublicKey, Transport};
+use ir_crypto::enlace::concluir;
+pub use ir_crypto::enlace::{ConnectMode, Established};
+use ir_crypto::{Handshake, Identity};
 
 use crate::canal::{Canal, Quadros};
 use crate::error::{BtError, Result};
@@ -29,55 +31,57 @@ const PRAZO_DE_PASSO: Duration = Duration::from_secs(2);
 /// Teto de passos. Cobre `XX` (três mensagens) e `IK` (duas) com folga.
 const MAX_PASSOS: usize = 6;
 
-/// O que dizer ao par ao iniciar: parear do zero, ou reconectar com a chave dele fixada.
-#[derive(Debug, Clone, Copy)]
-pub enum ConnectMode {
-    /// Primeiro pareamento.
-    Pair,
-    /// Reconexão, com a chave estática do par fixada.
-    Reconnect(PublicKey),
-}
-
-impl ConnectMode {
-    const fn modo_no_fio(self) -> Mode {
-        match self {
-            Self::Pair => Mode::Pair,
-            Self::Reconnect(_) => Mode::Reconnect,
-        }
-    }
-
-    const fn e_pareamento(self) -> bool {
-        matches!(self, Self::Pair)
-    }
-}
-
-/// O resultado de um handshake bem-sucedido.
-#[derive(Debug)]
-pub struct Established {
-    /// O transporte cifrado, pronto para quadros.
-    pub transport: Transport,
-    /// A chave estática que o par apresentou.
-    pub peer_static: PublicKey,
-    /// O código de 6 dígitos, presente só no pareamento.
-    pub code: Option<[u8; 6]>,
-}
-
 /// Conduz o handshake como iniciador.
 ///
 /// # Errors
 ///
 /// [`BtError::HandshakeTimeout`] se o par não responder a tempo; [`BtError::Crypto`] se a
-/// criptografia recusar; [`BtError::Io`] em falha de socket.
+/// criptografia recusar; [`BtError::Io`] em falha de socket; [`BtError::Malformed`] se pedirem
+/// uma troca de chaves, que o rádio não faz.
 pub async fn conduzir_iniciador<C: Canal>(
     quadros: &mut Quadros<C>,
     identidade: &Identity,
     modo: ConnectMode,
 ) -> Result<Established> {
-    let handshake = match modo {
-        ConnectMode::Pair => Handshake::pair_initiator(identidade)?,
-        ConnectMode::Reconnect(chave) => Handshake::reconnect_initiator(identidade, chave)?,
-    };
-    conduzir(quadros, handshake, modo.modo_no_fio(), modo.e_pareamento()).await
+    if matches!(modo, ConnectMode::Rekey(_)) {
+        // A troca de chaves é só da rede; um enlace de rádio velho cai e é rediscado.
+        return Err(BtError::Malformed);
+    }
+    let handshake = modo.iniciar(identidade)?;
+    conduzir(quadros, handshake, modo.modo()).await
+}
+
+/// Espera o primeiro corpo de quem ligou, e lê dele o modo.
+///
+/// Separado de [`responder`] para quem atende poder recusar **antes** de qualquer criptografia:
+/// o modo vem em claro justamente para isso.
+///
+/// # Errors
+///
+/// [`BtError::HandshakeTimeout`] se o par emudecer; [`BtError::Malformed`] se o corpo não for um
+/// início de handshake — inclusive um pedido de troca de chaves, que o rádio não conhece.
+pub async fn esperar_inicio<C: Canal>(quadros: &mut Quadros<C>) -> Result<(Mode, Vec<u8>)> {
+    let primeiro = esperar(quadros).await?;
+    match wire::ler_handshake(&primeiro) {
+        Some((modo, mensagem)) if modo != Mode::Rekey => Ok((modo, mensagem.to_vec())),
+        _ => Err(BtError::Malformed),
+    }
+}
+
+/// Conduz o resto do handshake como respondedor, a partir do início já lido.
+///
+/// # Errors
+///
+/// Como [`conduzir_iniciador`].
+pub async fn responder<C: Canal>(
+    quadros: &mut Quadros<C>,
+    identidade: &Identity,
+    modo: Mode,
+    mensagem: &[u8],
+) -> Result<Established> {
+    let mut handshake = modo.responder(identidade)?;
+    handshake.read_message(mensagem)?;
+    conduzir(quadros, handshake, modo).await
 }
 
 /// Conduz o handshake como respondedor, esperando o par falar primeiro.
@@ -93,14 +97,8 @@ pub async fn conduzir_respondedor<C: Canal>(
     quadros: &mut Quadros<C>,
     identidade: &Identity,
 ) -> Result<Established> {
-    let primeiro = esperar(quadros).await?;
-    let (modo, mensagem) = wire::ler_handshake(&primeiro).ok_or(BtError::Malformed)?;
-    let mut handshake = match modo {
-        Mode::Pair => Handshake::pair_responder(identidade)?,
-        Mode::Reconnect => Handshake::reconnect_responder(identidade)?,
-    };
-    handshake.read_message(mensagem)?;
-    conduzir(quadros, handshake, modo, matches!(modo, Mode::Pair)).await
+    let (modo, mensagem) = esperar_inicio(quadros).await?;
+    responder(quadros, identidade, modo, &mensagem).await
 }
 
 /// O laço comum: alterna escrever e ler até o handshake terminar.
@@ -108,7 +106,6 @@ async fn conduzir<C: Canal>(
     quadros: &mut Quadros<C>,
     mut handshake: Handshake,
     modo: Mode,
-    e_pareamento: bool,
 ) -> Result<Established> {
     for _ in 0..MAX_PASSOS {
         if handshake.is_finished() {
@@ -125,24 +122,7 @@ async fn conduzir<C: Canal>(
             handshake.read_message(mensagem)?;
         }
     }
-
-    if !handshake.is_finished() {
-        return Err(BtError::Crypto(ir_crypto::CryptoError::NotFinished));
-    }
-
-    let peer_static = handshake
-        .remote_static()
-        .ok_or(BtError::Crypto(ir_crypto::CryptoError::Handshake))?;
-    let code = if e_pareamento {
-        handshake.pairing_code().ok()
-    } else {
-        None
-    };
-    Ok(Established {
-        transport: handshake.into_transport()?,
-        peer_static,
-        code,
-    })
+    Ok(concluir(handshake)?)
 }
 
 /// Espera um corpo do par, com prazo.

@@ -9,7 +9,7 @@
 //! espera de quem esqueceu de retomar.
 
 use ir_ipc::{MotivoDaQueda, Pausa, Resposta};
-use ir_session::{LinkDown, Phase};
+use ir_session::LinkDown;
 use tracing::info;
 
 use super::Daemon;
@@ -19,17 +19,20 @@ impl Daemon {
     pub(super) fn pausar(&mut self) -> Resposta {
         info!("compartilhamento pausado aqui");
         self.pausa = Some(Pausa::Aqui);
-        if self.session.phase() != Phase::Offline {
-            let agora = self.now();
-            self.session
-                .stop(agora, LinkDown::UserStopped, &mut self.out);
-            self.apply_commands();
-        }
-        self.desconectar_todos();
         self.ultima_queda = Some(MotivoDaQueda::PedidoPeloUsuario);
-        self.notar_estado();
-        let _ = self.avisos.send(ir_ipc::Aviso::EstadoMudou(self.estado()));
+        self.despedir_e_derrubar(LinkDown::UserStopped);
         Resposta::Feito
+    }
+
+    /// Despede-se do par e derruba os enlaces — o que pausar e esquecer o par têm em comum.
+    ///
+    /// Primeiro soltar tudo e avisar o par, pelo enlace que ainda existe; depois derrubá-lo. A janela
+    /// fica sabendo uma vez só.
+    pub(super) fn despedir_e_derrubar(&mut self, motivo: LinkDown) {
+        self.encerrar_sessao(motivo);
+        self.desconectar_todos();
+        self.last_phase = self.session.phase();
+        self.avisar_estado();
     }
 
     /// Retoma: volta a discar na hora, e a aceitar o par.
@@ -38,7 +41,7 @@ impl Daemon {
         self.pausa = None;
         self.alcance.esquecer_esperas();
         self.connect_if_possible();
-        let _ = self.avisos.send(ir_ipc::Aviso::EstadoMudou(self.estado()));
+        self.avisar_estado();
         Resposta::Feito
     }
 
@@ -92,7 +95,7 @@ impl Daemon {
 mod tests {
     use ir_proto::carrier::Carrier;
     use ir_proto::message::DisconnectReason;
-    use ir_session::Input;
+    use ir_session::{Input, Phase};
 
     use super::*;
     use crate::actor::bancada::{Bancada, Feito};
@@ -193,8 +196,8 @@ mod tests {
         );
         let relida = crate::config::load_config(&bancada.dir).expect("relê");
         assert_eq!(
-            ir_painel::portador_do_texto(relida.portador_fixado.as_deref()),
-            Some(ir_ipc::Portador::Bluetooth),
+            relida.fixado(),
+            Some(Carrier::Rfcomm),
             "depois de reiniciar, a preferência continua"
         );
         assert_eq!(bancada.daemon.fixar_portador(None), Resposta::Feito);

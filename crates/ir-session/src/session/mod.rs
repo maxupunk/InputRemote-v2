@@ -22,7 +22,6 @@ mod upkeep;
 
 use ir_geometry::{Desktop, Point};
 use ir_proto::carrier::Carrier;
-use ir_proto::channel::ChannelId;
 use ir_proto::frame::{Frame, Sequence};
 use ir_proto::ids::RadioAddress;
 use ir_proto::input::{InputState, PointerDelta};
@@ -38,7 +37,7 @@ use crate::time::Timestamp;
 pub use direction::RECLAIM_DISTANCE;
 use ir_confiabilidade::incarnation::Incarnations;
 pub use route::{CarrierWins, Route, RouteReport};
-pub use state::{CarrierSet, Clock, LocalIdentity, PeerInfo};
+pub use state::{CarrierSet, Clock, LocalIdentity, PeerInfo, PerInputCarrier};
 
 /// A sessão.
 ///
@@ -81,8 +80,7 @@ pub struct Session {
 
     /// Janelas de retransmissão e detecção de repetição, por canal.
     ///
-    /// Só têm efeito sobre portador de datagrama; sobre stream o portador já garante ordem e
-    /// entrega, e as janelas ficam vazias.
+    /// Valem em qualquer rota: a sessão trata todo portador de entrada como datagrama ([`route`]).
     pub(super) reliability: ReliableChannels,
 
     /// A encarnação desta sessão e a do par, para descartar quadros de sessões que acabaram.
@@ -215,7 +213,7 @@ impl Session {
                 self.on_local_button(now, button, pressed, out);
             }
             Input::EmergencyRelease => self.on_emergency(now, out),
-            Input::LocalScreens(layout) => self.on_local_screens(now, layout, out),
+            Input::LocalScreens(layout) => self.on_local_screens(now, &layout, out),
             Input::SetPeerEdge { edge, chosen_at } => {
                 self.on_set_peer_edge(now, edge, chosen_at, out);
             }
@@ -284,18 +282,10 @@ impl Session {
         self.dispatch_on_route(frame, out);
     }
 
-    /// A confirmação mais urgente a carregar num quadro que já vai sair.
-    ///
-    /// A ordem é a de importância: entrada antes de controle, porque é a janela da entrada que
-    /// enche durante digitação contínua e é ela que derrubaria a sessão no meio de uma frase.
+    /// A confirmação mais urgente a carregar num quadro que já vai sair, na ordem de
+    /// [`ReliableChannels::ACK_ORDER`].
     fn ack_to_piggyback(&self) -> Option<ir_proto::frame::ChannelAck> {
-        const ORDER: [ChannelId; 4] = [
-            ChannelId::ReliableInput,
-            ChannelId::Control,
-            ChannelId::Feedback,
-            ChannelId::ClipboardText,
-        ];
-        ORDER.into_iter().find_map(|channel| {
+        ReliableChannels::ACK_ORDER.into_iter().find_map(|channel| {
             self.reliability
                 .ack_for(channel)
                 .map(|ack| ir_proto::frame::ChannelAck::new(channel, ack))

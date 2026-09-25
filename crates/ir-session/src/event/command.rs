@@ -2,36 +2,15 @@
 
 use ir_proto::carrier::Carrier;
 use ir_proto::frame::Frame;
-use ir_proto::input::{Button, HidUsage, PointerPosition, WheelDelta};
+use ir_proto::input::PointerPosition;
 
 use super::Notice;
 
 /// Uma entrada a injetar na máquina local. Só o cliente recebe estes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum Injection {
-    /// Uma tecla física.
-    Key {
-        /// Qual.
-        usage: HidUsage,
-        /// `true` para pressionar.
-        pressed: bool,
-    },
-    /// Um botão do ponteiro.
-    Button {
-        /// Qual.
-        button: Button,
-        /// `true` para pressionar.
-        pressed: bool,
-    },
-    /// Movimento de roda.
-    Wheel(WheelDelta),
-    /// Onde o ponteiro deve estar.
-    ///
-    /// Sempre absoluto, nunca relativo — `docs/05-windows.md` §4.2: injetar movimento
-    /// relativo faria o sistema aplicar a própria aceleração a deltas que já vêm acelerados.
-    Pointer(PointerPosition),
-}
+///
+/// O tipo é o de `ir-proto`, o mesmo que o injetor e o canal do agente usam: a injeção atravessa
+/// o serviço e o agente sem tradução nenhuma.
+pub use ir_proto::input::Injection;
 
 /// O que a sessão pede.
 #[derive(Debug, Clone, PartialEq, Eq)]

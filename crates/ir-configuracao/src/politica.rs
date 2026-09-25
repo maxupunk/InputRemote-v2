@@ -1,12 +1,15 @@
-//! Quem pode controlar quem e a borda, como ficam no arquivo, e a política com que o serviço sobe.
+//! Quem pode controlar quem, a borda e o portador fixado, como ficam no arquivo, e a política com
+//! que o serviço sobe.
 //!
 //! Moram com a configuração porque são a tradução dela: o arquivo guarda texto, a sessão quer
-//! [`Policy`] e [`Edge`]. Não há mais papel ([ADR-0014](../../../docs/adr/0014-controle-simetrico.md)):
+//! [`Policy`], [`Edge`] e [`Carrier`]. Cada texto é uma constante só, usada na ida e na volta: duas
+//! grafias do mesmo valor eram como a leitura e a escrita podiam divergir sem ninguém ver. Não há mais papel ([ADR-0014](../../../docs/adr/0014-controle-simetrico.md)):
 //! um arquivo antigo, com `role = "server"` ou `"client"`, sobe com os dois controlando um ao outro.
 
 use std::path::Path;
 
 use anyhow::{Result, bail};
+use ir_proto::carrier::Carrier;
 use ir_proto::screens::Edge;
 use ir_session::Policy;
 use tracing::warn;
@@ -15,14 +18,29 @@ use crate::Config;
 
 /// A política padrão, no arquivo.
 pub(crate) const PADRAO: &str = "ambos";
+/// Só este controla o outro.
+const SO_ESTE: &str = "so-este";
+/// Só o outro controla este.
+const SO_O_OUTRO: &str = "so-o-outro";
+
+// As bordas, no arquivo.
+const ESQUERDA: &str = "left";
+const DIREITA: &str = "right";
+const ACIMA: &str = "top";
+const ABAIXO: &str = "bottom";
+
+// Os portadores que se pode fixar, no arquivo. A rede de arquivos não leva entrada: fixá-la é
+// fixar a rede.
+const BLUETOOTH: &str = "bluetooth";
+const REDE: &str = "rede";
 
 /// O texto de configuração para uma política.
 #[must_use]
 pub const fn texto_da_politica(politica: Policy) -> &'static str {
     match politica {
         Policy::Both => PADRAO,
-        Policy::OnlyControls => "so-este",
-        Policy::OnlyControlled => "so-o-outro",
+        Policy::OnlyControls => SO_ESTE,
+        Policy::OnlyControlled => SO_O_OUTRO,
     }
 }
 
@@ -33,9 +51,9 @@ pub const fn texto_da_politica(politica: Policy) -> &'static str {
 /// Erro se o texto não for uma das três.
 pub fn politica_do_texto(texto: &str) -> Result<Policy> {
     Ok(match texto {
-        "ambos" => Policy::Both,
-        "so-este" => Policy::OnlyControls,
-        "so-o-outro" => Policy::OnlyControlled,
+        PADRAO => Policy::Both,
+        SO_ESTE => Policy::OnlyControls,
+        SO_O_OUTRO => Policy::OnlyControlled,
         outro => bail!("política inválida: {outro} (use ambos, so-este ou so-o-outro)"),
     })
 }
@@ -54,10 +72,44 @@ pub const fn politica_sustentada(politica: Policy, captura: bool) -> bool {
 #[must_use]
 pub const fn edge_para_texto(edge: Edge) -> &'static str {
     match edge {
-        Edge::Left => "left",
-        Edge::Right => "right",
-        Edge::Top => "top",
-        Edge::Bottom => "bottom",
+        Edge::Left => ESQUERDA,
+        Edge::Right => DIREITA,
+        Edge::Top => ACIMA,
+        Edge::Bottom => ABAIXO,
+    }
+}
+
+/// A borda que o texto de configuração nomeia.
+///
+/// # Errors
+///
+/// Erro se o texto não nomear uma borda.
+pub fn edge_do_texto(texto: &str) -> Result<Edge> {
+    Ok(match texto {
+        ESQUERDA => Edge::Left,
+        DIREITA => Edge::Right,
+        ACIMA => Edge::Top,
+        ABAIXO => Edge::Bottom,
+        outro => bail!("borda inválida: {outro}"),
+    })
+}
+
+/// O portador como fica no arquivo de configuração.
+#[must_use]
+pub const fn texto_do_portador(portador: Carrier) -> &'static str {
+    match portador {
+        Carrier::Rfcomm => BLUETOOTH,
+        Carrier::Udp | Carrier::Tcp => REDE,
+    }
+}
+
+/// O portador fixado no arquivo de configuração, se o texto for um dos conhecidos.
+#[must_use]
+pub fn portador_do_texto(texto: Option<&str>) -> Option<Carrier> {
+    match texto? {
+        BLUETOOTH => Some(Carrier::Rfcomm),
+        REDE => Some(Carrier::Udp),
+        _ => None,
     }
 }
 
@@ -101,6 +153,26 @@ mod tests {
             );
         }
         assert!(politica_do_texto("server").is_err(), "papel não é política");
+    }
+
+    #[test]
+    fn a_borda_vai_ao_arquivo_e_volta_igual() {
+        for edge in [Edge::Left, Edge::Right, Edge::Top, Edge::Bottom] {
+            assert_eq!(edge_do_texto(edge_para_texto(edge)).unwrap(), edge);
+        }
+        assert!(edge_do_texto("meio").is_err());
+    }
+
+    #[test]
+    fn o_portador_vai_ao_arquivo_e_volta_igual() {
+        for portador in [Carrier::Rfcomm, Carrier::Udp] {
+            assert_eq!(
+                portador_do_texto(Some(texto_do_portador(portador))),
+                Some(portador)
+            );
+        }
+        assert_eq!(portador_do_texto(Some("pombo-correio")), None);
+        assert_eq!(portador_do_texto(None), None);
     }
 
     #[test]

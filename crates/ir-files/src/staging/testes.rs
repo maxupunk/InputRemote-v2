@@ -27,6 +27,54 @@ async fn a_montagem_incompleta_desaparece_sozinha() {
 }
 
 #[tokio::test]
+async fn a_montagem_se_reconhece_pelo_nome_e_a_entrega_nao() {
+    // A faxina usa isto para não apagar a cópia que ainda está chegando.
+    let temp = pasta_temporaria("staging-nome");
+    let staging = Staging::criar(temp.caminho(), TransferId(9)).await.unwrap();
+    let nome = staging.raiz().file_name().unwrap().to_str().unwrap();
+    assert!(e_montagem(nome), "{nome}");
+    assert!(!e_montagem("relatorio"));
+    assert!(!e_montagem("a.txt e outros"));
+}
+
+#[tokio::test]
+async fn remover_apaga_arquivo_e_arvore() {
+    let temp = pasta_temporaria("staging-remover");
+    let arvore = temp.caminho().join("arvore/dentro");
+    tokio::fs::create_dir_all(&arvore).await.unwrap();
+    tokio::fs::write(arvore.join("a.txt"), b"a").await.unwrap();
+    let solto = temp.caminho().join("solto.txt");
+    tokio::fs::write(&solto, b"b").await.unwrap();
+
+    remover(&temp.caminho().join("arvore")).await.unwrap();
+    remover(&solto).await.unwrap();
+    assert!(
+        tokio::fs::metadata(temp.caminho().join("arvore"))
+            .await
+            .is_err()
+    );
+    assert!(tokio::fs::metadata(&solto).await.is_err());
+}
+
+#[tokio::test]
+async fn a_subida_recolhe_so_as_montagens_orfas() {
+    let temp = pasta_temporaria("staging-orfas");
+    let orfa = temp
+        .caminho()
+        .join(format!("{PREFIXO_DA_MONTAGEM}7/dentro"));
+    tokio::fs::create_dir_all(&orfa).await.unwrap();
+    let entrega = temp.caminho().join("relatorio.txt");
+    tokio::fs::write(&entrega, b"fica").await.unwrap();
+
+    assert_eq!(recolher_orfas(temp.caminho()).await, 1);
+    assert!(tokio::fs::metadata(orfa.parent().unwrap()).await.is_err());
+    assert!(
+        tokio::fs::metadata(&entrega).await.is_ok(),
+        "entrega não é montagem"
+    );
+}
+
+#[tokio::test]
 async fn publicar_e_um_rename_e_o_drop_nao_apaga_o_publicado() {
     let temp = pasta_temporaria("staging-publica");
     let publicado = {

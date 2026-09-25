@@ -112,6 +112,14 @@ fn moving_the_mouse_here_takes_control_back() {
     );
     assert!(reclaimed(&pair, Side::Client, true));
     assert!(reclaimed(&pair, Side::Server, false));
+    // Os avisos são espelhados: o controle mudou de lado nas duas pontas, e foi por retomada.
+    for side in [Side::Client, Side::Server] {
+        assert!(
+            pair.notices(side)
+                .contains(&Notice::ControlMoved { remote: false }),
+            "{side:?}: o controle está nesta tela"
+        );
+    }
 }
 
 #[test]
@@ -246,6 +254,10 @@ fn when_both_cross_at_once_exactly_one_is_in_control() {
     assert!(
         pair.any(Side::Client, is::unsuppress),
         "quem cedeu tem a entrada de volta"
+    );
+    assert!(
+        pair.any(Side::Client, is::release_all),
+        "pela mesma liberação de toda devolução"
     );
 }
 

@@ -49,6 +49,27 @@ pub enum Due {
 }
 
 impl ReliableChannels {
+    /// Os canais com confiabilidade de aplicação — a única lista deles; [`Self::pair`] é o mapa.
+    pub const COVERED: [ChannelId; 4] = [
+        ChannelId::Control,
+        ChannelId::ReliableInput,
+        ChannelId::Feedback,
+        ChannelId::ClipboardText,
+    ];
+
+    /// A ordem de varredura das retransmissões: controle antes de entrada — se o controle desistiu,
+    /// não faz sentido reenviar teclas por um enlace que vai cair.
+    pub const RETRANSMIT_ORDER: [ChannelId; 4] = Self::COVERED;
+
+    /// A ordem de urgência das confirmações a carregar: entrada antes de controle, porque é a janela
+    /// da entrada que enche durante digitação contínua e derrubaria a sessão no meio de uma frase.
+    pub const ACK_ORDER: [ChannelId; 4] = [
+        ChannelId::ReliableInput,
+        ChannelId::Control,
+        ChannelId::Feedback,
+        ChannelId::ClipboardText,
+    ];
+
     /// Todos os pares vazios.
     #[must_use]
     pub fn new() -> Self {
@@ -57,14 +78,8 @@ impl ReliableChannels {
 
     /// Se este canal tem confiabilidade de aplicação.
     #[must_use]
-    pub const fn covers(channel: ChannelId) -> bool {
-        matches!(
-            channel,
-            ChannelId::Control
-                | ChannelId::ReliableInput
-                | ChannelId::Feedback
-                | ChannelId::ClipboardText
-        )
+    pub fn covers(channel: ChannelId) -> bool {
+        Self::COVERED.contains(&channel)
     }
 
     /// Registra um envio.
@@ -133,19 +148,11 @@ impl ReliableChannels {
 
     /// O que a passagem do tempo pede.
     ///
-    /// Varre os canais na ordem de importância: controle primeiro, entrada em seguida. Se
-    /// algum desistiu, isso é reportado antes de qualquer retransmissão — não faz sentido
-    /// reenviar por um enlace que vai cair.
+    /// Varre os canais em [`Self::RETRANSMIT_ORDER`]. Se algum desistiu, isso é reportado antes
+    /// de qualquer retransmissão.
     pub fn on_tick(&mut self, now: Timestamp, floor: Millis, ceiling: Millis) -> Due {
-        const ORDER: [ChannelId; 4] = [
-            ChannelId::Control,
-            ChannelId::ReliableInput,
-            ChannelId::Feedback,
-            ChannelId::ClipboardText,
-        ];
-
         let mut resend = Vec::new();
-        for channel in ORDER {
+        for channel in Self::RETRANSMIT_ORDER {
             let Some(pair) = self.pair_mut(channel) else {
                 continue;
             };
@@ -168,13 +175,10 @@ impl ReliableChannels {
     /// O par começou outra encarnação, e o que ele mandou antes não conta mais. O lado emissor
     /// fica: ele carrega o que **esta** ponta já mandou na encarnação corrente.
     pub fn reset_receivers(&mut self) {
-        for pair in [
-            &mut self.control,
-            &mut self.input,
-            &mut self.feedback,
-            &mut self.clipboard,
-        ] {
-            pair.receiver = Receiver::new();
+        for channel in Self::COVERED {
+            if let Some(pair) = self.pair_mut(channel) {
+                pair.receiver = Receiver::new();
+            }
         }
     }
 
@@ -200,190 +204,6 @@ impl ReliableChannels {
             ChannelId::Feedback => Some(&mut self.feedback),
             ChannelId::ClipboardText => Some(&mut self.clipboard),
             ChannelId::Pointer | ChannelId::Bulk => None,
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use ir_proto::input::{HidUsage, Modifiers};
-    use ir_proto::message::{InputMessage, Message};
-
-    fn frame(seq: u32) -> Frame {
-        Frame::new(
-            Message::Input(InputMessage::KeyDown {
-                usage: HidUsage(0x04),
-                mods: Modifiers::NONE,
-            }),
-            Sequence(seq),
-        )
-    }
-
-    fn at(millis: u64) -> Timestamp {
-        Timestamp::from_millis(millis)
-    }
-
-    #[test]
-    fn the_pointer_and_bulk_channels_are_not_covered() {
-        assert!(!ReliableChannels::covers(ChannelId::Pointer));
-        assert!(!ReliableChannels::covers(ChannelId::Bulk));
-        for channel in [
-            ChannelId::Control,
-            ChannelId::ReliableInput,
-            ChannelId::Feedback,
-            ChannelId::ClipboardText,
-        ] {
-            assert!(
-                ReliableChannels::covers(channel),
-                "{channel} deveria ser coberto"
-            );
-        }
-    }
-
-    #[test]
-    fn an_uncovered_channel_is_always_accepted_and_never_pending() {
-        let mut channels = ReliableChannels::new();
-        for channel in [ChannelId::Pointer, ChannelId::Bulk] {
-            assert_eq!(
-                channels.on_sent(channel, at(0), Sequence(1), &frame(1)),
-                SendOutcome::Accepted
-            );
-            assert_eq!(channels.pending(channel), 0, "{channel} não usa janela");
-            assert!(matches!(
-                channels.accept(channel, frame(1)),
-                Delivery::Ready(_)
-            ));
-            assert!(
-                matches!(channels.accept(channel, frame(1)), Delivery::Ready(_)),
-                "sem detecção de repetição"
-            );
-            assert!(channels.ack_for(channel).is_none());
-        }
-    }
-
-    #[test]
-    fn the_channels_do_not_share_a_window() {
-        let mut channels = ReliableChannels::new();
-        channels.on_sent(ChannelId::ClipboardText, at(0), Sequence(1), &frame(1));
-        assert_eq!(channels.pending(ChannelId::ClipboardText), 1);
-        assert_eq!(
-            channels.pending(ChannelId::ReliableInput),
-            0,
-            "a retransmissão de clipboard não pode atrasar um KeyUp"
-        );
-    }
-
-    #[test]
-    fn a_duplicate_is_detected_per_channel() {
-        let mut channels = ReliableChannels::new();
-        assert!(matches!(
-            channels.accept(ChannelId::ReliableInput, frame(1)),
-            Delivery::Ready(_)
-        ));
-        assert_eq!(
-            channels.accept(ChannelId::ReliableInput, frame(1)),
-            Delivery::Duplicate
-        );
-        assert!(
-            matches!(
-                channels.accept(ChannelId::Control, frame(1)),
-                Delivery::Ready(_)
-            ),
-            "a sequência 1 do controle é outra mensagem"
-        );
-    }
-
-    #[test]
-    fn an_out_of_order_frame_waits_for_the_one_before_it() {
-        // O cenário que deixa tecla presa: o `KeyDown` se perde, o `KeyUp` chega, e o
-        // `KeyDown` retransmitido chega depois. Entregar na ordem de chegada pressionaria a
-        // tecla e nunca mais a soltaria.
-        let mut channels = ReliableChannels::new();
-        assert!(matches!(
-            channels.accept(ChannelId::ReliableInput, frame(1)),
-            Delivery::Ready(_)
-        ));
-        assert_eq!(
-            channels.accept(ChannelId::ReliableInput, frame(3)),
-            Delivery::Buffered,
-            "o 3 espera o 2"
-        );
-        assert_eq!(channels.buffered(ChannelId::ReliableInput), 1);
-
-        match channels.accept(ChannelId::ReliableInput, frame(2)) {
-            Delivery::Ready(frames) => {
-                let order: Vec<u32> = frames.iter().map(|f| f.seq.get()).collect();
-                assert_eq!(order, vec![2, 3], "o 2 destrava o 3, e nesta ordem");
-            }
-            other => panic!("deveria entregar os dois, deu {other:?}"),
-        }
-        assert_eq!(channels.buffered(ChannelId::ReliableInput), 0);
-    }
-
-    #[test]
-    fn giving_up_reports_which_channel_died() {
-        let mut channels = ReliableChannels::new();
-        channels.on_sent(ChannelId::ReliableInput, at(0), Sequence(9), &frame(9));
-        let mut now = 0u64;
-        // Até um pouco depois do prazo de 1 s: desistir é por tempo, não por tentativas.
-        for _ in 0..60 {
-            now += 20;
-            if let Due::GiveUp { channel, seq } =
-                channels.on_tick(at(now), Millis(20), Millis(1000))
-            {
-                assert_eq!(channel, ChannelId::ReliableInput);
-                assert_eq!(seq, Sequence(9));
-                return;
-            }
-        }
-        panic!("tinha de desistir");
-    }
-
-    #[test]
-    fn control_is_swept_before_input() {
-        // Sequências distintas para que a ordem do resultado seja inequívoca.
-        const INPUT: u32 = 20;
-        const CONTROL: u32 = 10;
-
-        let mut channels = ReliableChannels::new();
-        channels.on_sent(
-            ChannelId::ReliableInput,
-            at(0),
-            Sequence(INPUT),
-            &frame(INPUT),
-        );
-        channels.on_sent(
-            ChannelId::Control,
-            at(0),
-            Sequence(CONTROL),
-            &frame(CONTROL),
-        );
-
-        match channels.on_tick(at(50), Millis(20), Millis(1000)) {
-            Due::Retransmit(frames) => {
-                let order: Vec<u32> = frames.iter().map(|f| f.seq.get()).collect();
-                assert_eq!(
-                    order,
-                    vec![CONTROL, INPUT],
-                    "controle primeiro, na ordem de importância"
-                );
-            }
-            other => panic!("deveria retransmitir os dois, deu {other:?}"),
-        }
-    }
-
-    #[test]
-    fn resetting_clears_every_channel() {
-        let mut channels = ReliableChannels::new();
-        for channel in [ChannelId::Control, ChannelId::ReliableInput] {
-            channels.on_sent(channel, at(0), Sequence(1), &frame(1));
-            channels.accept(channel, frame(1));
-        }
-        channels.reset();
-        for channel in [ChannelId::Control, ChannelId::ReliableInput] {
-            assert_eq!(channels.pending(channel), 0);
-            assert!(channels.ack_for(channel).is_none());
         }
     }
 }

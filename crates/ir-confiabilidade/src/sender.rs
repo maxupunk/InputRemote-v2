@@ -198,12 +198,6 @@ impl Sender {
             TimeoutOutcome::Retransmit(resend)
         }
     }
-
-    /// Esvazia tudo. Chamado a cada handshake novo.
-    pub fn reset(&mut self) {
-        self.unacked.clear();
-        self.srtt = None;
-    }
 }
 
 /// A espera antes de reenviar uma mensagem que já saiu `tries` vezes.

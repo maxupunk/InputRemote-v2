@@ -48,7 +48,8 @@ pub struct Plano {
     pub locais: Vec<PathBuf>,
     /// Soma dos tamanhos dos arquivos.
     pub total: u64,
-    /// Nome sugerido para a pasta de destino.
+    /// O nome da entrega, pela regra que o destino também usa
+    /// ([`crate::publicacao::nome_da_entrega`]).
     pub nome: String,
     /// Quantas entradas foram ignoradas, e por quê contadas juntas.
     pub ignorados: usize,
@@ -80,13 +81,16 @@ pub async fn montar(id: TransferId, raizes: &[PathBuf], leitor: Leitor) -> Resul
         itens: Vec::new(),
         locais: Vec::new(),
         total: 0,
-        nome: nome_do_destino(raizes),
+        nome: String::new(),
         ignorados: 0,
         leitor,
     };
     for raiz in raizes {
         acrescentar_raiz(&mut plano, raiz).await?;
     }
+    // Do manifesto pronto, e não das raízes pedidas: é o que o destino vê, e só assim os dois lados
+    // dão à mesma cópia o mesmo nome.
+    plano.nome = crate::publicacao::nome_da_entrega(&plano.itens);
     Ok(plano)
 }
 
@@ -228,21 +232,6 @@ fn nome_relativo(caminho: &Path) -> Result<String> {
         .filter(|nome| !nome.is_empty() && *nome != "." && *nome != "..")
         .map(str::to_owned)
         .ok_or_else(|| FileError::CaminhoImpossivel(caminho.to_path_buf()))
-}
-
-/// Nome da pasta em que a entrega aparece no destino.
-///
-/// Uma raiz só empresta o próprio nome, que é o que o usuário reconhece. Várias raízes não têm um
-/// nome natural, e inventar um do primeiro item seria enganoso quando há dez.
-fn nome_do_destino(raizes: &[PathBuf]) -> String {
-    match raizes {
-        [uma] => nome_relativo(uma).unwrap_or_else(|_| "recebido".to_owned()),
-        [primeiro, ..] => match nome_relativo(primeiro) {
-            Ok(nome) => format!("{nome} e outros"),
-            Err(_) => "recebidos".to_owned(),
-        },
-        [] => "recebido".to_owned(),
-    }
 }
 
 #[cfg(test)]

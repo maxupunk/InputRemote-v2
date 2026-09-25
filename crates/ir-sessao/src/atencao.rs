@@ -7,15 +7,27 @@
 //! A política é da máquina, e o produto só a toca quando um administrador liga a digitação do par
 //! na tela de bloqueio — é o mesmo consentimento, com a mesma consequência. Desligar a permissão
 //! devolve o valor que estava lá antes, se foi o produto quem o mudou.
+//!
+//! O `reg.exe` roda com prazo ([`crate::ferramenta`]) e fora do laço do serviço ([`Aplicador`]): o
+//! laço bate a cada 5 ms, e um registro que trava não pode levar o teclado junto.
 
 #![allow(unsafe_code)]
 
-use anyhow::{Context, Result, bail};
+use std::sync::mpsc;
+use std::time::Duration;
+
+use anyhow::Result;
+use tracing::{info, warn};
+
+use ir_processo::ferramenta::{numeros_hex, rodar_com_prazo};
 
 /// Onde mora a política.
 const CHAVE: &str = r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System";
 /// O nome do valor.
 const VALOR: &str = "SoftwareSASGeneration";
+/// Quanto o `reg.exe` pode demorar. Ele responde em milissegundos; cinco segundos é folga para uma
+/// máquina ocupada, e não uma espera sem fim.
+const PRAZO_DO_REG: Duration = Duration::from_secs(5);
 
 /// Quem pode gerar Ctrl+Alt+Del por software, pela política do sistema.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,14 +84,9 @@ impl PoliticaDeAtencao {
 /// Lê a política, pelo `reg.exe` — o valor ausente é "ninguém".
 #[must_use]
 pub fn politica() -> PoliticaDeAtencao {
-    let Ok(saida) = std::process::Command::new("reg")
-        .args(["query", CHAVE, "/v", VALOR])
-        .output()
-    else {
-        return PoliticaDeAtencao::Ninguem;
-    };
-    let texto = String::from_utf8_lossy(&saida.stdout);
-    PoliticaDeAtencao::do_numero(ler_dword(&texto).unwrap_or(0))
+    // Sem o valor, o `reg.exe` sai com falha: é o "ninguém" do Windows.
+    let saida = rodar_com_prazo("reg", &["query", CHAVE, "/v", VALOR], PRAZO_DO_REG);
+    PoliticaDeAtencao::do_numero(saida.ok().and_then(|texto| ler_dword(&texto)).unwrap_or(0))
 }
 
 /// Grava a política.
@@ -89,39 +96,86 @@ pub fn politica() -> PoliticaDeAtencao {
 /// Se o `reg.exe` recusar — sem privilégio de administrador, por exemplo.
 pub fn gravar_politica(politica: PoliticaDeAtencao) -> Result<()> {
     let numero = politica.numero().to_string();
-    let saida = std::process::Command::new("reg")
-        .args([
-            "add",
-            CHAVE,
-            "/v",
-            VALOR,
-            "/t",
-            "REG_DWORD",
-            "/d",
-            &numero,
-            "/f",
-        ])
-        .output()
-        .context("rodando reg.exe")?;
-    if !saida.status.success() {
-        bail!(
-            "reg.exe recusou: {}",
-            String::from_utf8_lossy(&saida.stderr).trim()
-        );
-    }
-    Ok(())
+    let argumentos = [
+        "add",
+        CHAVE,
+        "/v",
+        VALOR,
+        "/t",
+        "REG_DWORD",
+        "/d",
+        &numero,
+        "/f",
+    ];
+    rodar_com_prazo("reg", &argumentos, PRAZO_DO_REG).map(|_| ())
 }
 
 /// O número de uma linha `SoftwareSASGeneration    REG_DWORD    0x1` do `reg query`.
 ///
 /// Lê o hexadecimal, e não o texto em volta: o `reg.exe` muda de idioma com o sistema.
 fn ler_dword(saida: &str) -> Option<u32> {
-    saida
-        .lines()
-        .find(|linha| linha.contains(VALOR))?
-        .split_whitespace()
-        .find_map(|parte| parte.strip_prefix("0x"))
-        .and_then(|hex| u32::from_str_radix(hex, 16).ok())
+    numeros_hex(saida.lines().find(|linha| linha.contains(VALOR))?).next()
+}
+
+/// Quem liga e devolve a política fora do laço do serviço: uma thread, um pedido de cada vez, na
+/// ordem em que chegaram.
+///
+/// Em ordem, e com o valor anterior guardado aqui dentro: permitir e recusar em seguida, com as duas
+/// aplicações correndo soltas, podia fazer a recusa não achar nada a devolver — a permissão ainda
+/// não tinha anotado o que havia antes — e a política ficava ligada com a permissão desligada.
+#[derive(Debug)]
+pub struct Aplicador {
+    fila: mpsc::Sender<bool>,
+}
+
+impl Aplicador {
+    /// Sobe a thread. `anterior` é o valor que a configuração guardou; `anotar` recebe o novo sempre
+    /// que ele muda, para a configuração guardá-lo também.
+    pub fn novo(anterior: Option<u32>, anotar: impl Fn(Option<u32>) + Send + 'static) -> Self {
+        let (fila, pedidos) = mpsc::channel::<bool>();
+        let criada = std::thread::Builder::new()
+            .name("politica-de-atencao".to_owned())
+            .spawn(move || {
+                let mut anterior = anterior;
+                while let Ok(ligar) = pedidos.recv() {
+                    let antes = anterior;
+                    aplicar(ligar, &mut anterior);
+                    if anterior != antes {
+                        anotar(anterior);
+                    }
+                }
+            });
+        if let Err(erro) = criada {
+            warn!(%erro, "a thread da política de Ctrl+Alt+Del não subiu");
+        }
+        Self { fila }
+    }
+
+    /// Pede a política ligada para o serviço (`true`) ou devolvida ao que era (`false`). Não espera.
+    pub fn pedir(&self, ligar: bool) {
+        let _ = self.fila.send(ligar);
+    }
+}
+
+/// Liga a política para o serviço, anotando o que havia, ou devolve o anotado.
+fn aplicar(ligar: bool, anterior: &mut Option<u32>) {
+    if ligar {
+        let atual = politica();
+        if atual.permite_servicos() {
+            return; // já permitida, e não pelo produto: não há o que devolver depois
+        }
+        match gravar_politica(atual.com_servicos()) {
+            Ok(()) => {
+                info!(?atual, "política de Ctrl+Alt+Del ligada para o serviço");
+                *anterior = Some(atual.numero());
+            }
+            Err(erro) => warn!(%erro, "não foi possível ligar a política de Ctrl+Alt+Del"),
+        }
+    } else if let Some(valor) = anterior.take()
+        && let Err(erro) = gravar_politica(PoliticaDeAtencao::do_numero(valor))
+    {
+        warn!(%erro, "não foi possível devolver a política de Ctrl+Alt+Del");
+    }
 }
 
 /// Gera Ctrl+Alt+Del na sessão de console.

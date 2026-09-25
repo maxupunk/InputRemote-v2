@@ -31,6 +31,19 @@ pub fn vigiar_a_tela(destino: UnboundedSender<bool>) {
     });
 }
 
+/// Bloqueia todas as sessões gráficas desta máquina — o serviço é root, e o par pediu.
+///
+/// Não espera o `loginctl` terminar: quem pede é o laço do serviço, e bloquear não tem resposta
+/// que mude alguma coisa aqui.
+pub fn bloquear_sessoes() {
+    if let Err(erro) = std::process::Command::new("loginctl")
+        .arg("lock-sessions")
+        .spawn()
+    {
+        tracing::warn!(%erro, "não foi possível pedir ao loginctl que bloqueie as sessões");
+    }
+}
+
 /// Pergunta ao `loginctl` pela sessão ativa do assento principal.
 fn tela_protegida_agora() -> bool {
     let rodar = |argumentos: &[&str]| {

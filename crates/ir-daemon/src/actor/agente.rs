@@ -5,15 +5,16 @@
 //! simples de propósito — traduzir fato em entrada da sessão, e ressubir o agente quando ele
 //! não estiver de pé.
 
-use ir_ipc::{Aviso, ComandoDoAgente, FatoDoAgente};
-use ir_proto::input::PointerDelta;
+use std::time::{Duration, Instant};
+
+use ir_ipc::{ComandoDoAgente, FatoDoAgente};
 use ir_session::Input;
 use tokio::sync::broadcast;
 use tracing::{info, warn};
 
 use super::Daemon;
 
-/// A cada quantas batidas de 5 ms se relança o agente que ainda não conectou.
+/// Quanto se espera o agente lançado conectar antes de lançar outro.
 ///
 /// **Precisa ser maior que a janela em que o agente desiste**, que é de 30 s — 60 tentativas de
 /// 500 ms, em `ir-agent`. Eram 9 s, e daí vinham dois efeitos que se escondiam um no outro: o
@@ -23,11 +24,21 @@ use super::Daemon;
 ///
 /// Os dois números vivem em crates diferentes e não há como o compilador amarrá-los. Se um mudar,
 /// o outro precisa ser conferido à mão: 36 s aqui contra 30 s lá.
-///
-/// Só existe no Windows: no Linux não há agente a relançar, e uma constante sem uso lá viraria
-/// aviso de build.
-#[cfg(windows)]
-const RELANCAR_AGENTE_TICKS: u32 = super::RECONNECT_TICKS * 12;
+const RELANCAR_AGENTE: Duration = Duration::from_secs(36);
+
+/// Os desktops em que o agente injeta, como ele os contou ao ficar pronto.
+#[derive(Debug, Default)]
+pub(crate) struct DesktopsDoAgente {
+    /// Os nomes, para o diagnóstico.
+    pub(crate) nomes: Vec<String>,
+    /// Se entre eles está o seguro — a tela de bloqueio. Quem decide pelo nome é o agente.
+    pub(crate) tela_de_bloqueio: bool,
+}
+
+/// O zelador do agente: o mesmo do ajudante de clipboard, com o prazo do agente.
+pub(super) const fn zelador() -> ir_sessao::Zelador {
+    ir_sessao::Zelador::novo("agente", RELANCAR_AGENTE)
+}
 
 impl Daemon {
     /// Por onde mandar comandos ao agente — só quando há agente pronto.
@@ -43,54 +54,34 @@ impl Daemon {
         }
     }
 
-    /// Um fato vindo do agente, traduzido para entrada da sessão.
+    /// Um fato vindo do agente.
+    ///
+    /// A entrada que o agente captura é do mesmo tipo que a captura local do Linux entrega, e segue
+    /// pelo mesmo caminho ([`Self::on_capture`]), sem tradução.
     pub(super) fn on_fato(&mut self, fato: FatoDoAgente) {
-        let input = match fato {
-            FatoDoAgente::Pronto { desktops } => {
-                self.on_agente_pronto(&desktops);
-                return;
-            }
-            FatoDoAgente::Encerrou => {
-                self.on_agente_encerrou();
-                return;
-            }
-            // A posição absoluta não é movimento: ela **semeia** ou sincroniza o ponteiro, que é
-            // o que faz a travessia disparar na borda certa.
-            FatoDoAgente::PonteiroAbsoluto { x, y } => {
-                self.on_absolute_pointer(x, y);
-                return;
-            }
-            FatoDoAgente::PonteiroLocal { dx, dy } => Input::LocalPointer(PointerDelta { dx, dy }),
-            FatoDoAgente::RodaLocal(delta) => Input::LocalWheel(delta),
-            FatoDoAgente::TeclaLocal { usage, pressionada } => Input::LocalKey {
-                usage,
-                pressed: pressionada,
-            },
-            FatoDoAgente::BotaoLocal { botao, pressionado } => Input::LocalButton {
-                button: botao,
-                pressed: pressionado,
-            },
+        match fato {
+            FatoDoAgente::Pronto {
+                desktops,
+                tela_de_bloqueio,
+            } => self.on_agente_pronto(&desktops, tela_de_bloqueio),
+            FatoDoAgente::Encerrou => self.on_agente_encerrou(),
+            FatoDoAgente::Capturado(evento) => self.on_capture(evento),
             // Quem sabe o tamanho da tela do usuário é quem está na sessão dele.
-            FatoDoAgente::TelasMudaram(arranjo) => {
-                self.definir_telas(arranjo);
-                return;
-            }
-            FatoDoAgente::InjecaoRecusada { desktop } => {
-                if desktop.eq_ignore_ascii_case("Default") {
-                    self.injecao_recusada_na_area_de_trabalho();
-                } else {
+            FatoDoAgente::TelasMudaram(arranjo) => self.definir_telas(arranjo),
+            // Se o desktop é protegido, o agente já disse: a regra é uma só, a de `ir_input::desktop`.
+            FatoDoAgente::InjecaoRecusada { desktop, protegido } => {
+                if protegido {
                     warn!(desktop, "a injeção do agente foi recusada");
                     self.recusando_protegido(true);
+                } else {
+                    self.injecao_recusada_na_area_de_trabalho();
                 }
-                return;
             }
-            FatoDoAgente::DesktopMudou { nome } => {
-                self.on_desktop_mudou(&nome);
-                return;
+            FatoDoAgente::DesktopMudou { nome, protegido } => {
+                self.on_desktop_mudou(&nome, protegido);
             }
-            _ => return,
-        };
-        self.drive(input);
+            _ => {}
+        }
     }
 
     /// O sistema recusou uma injeção na área de trabalho: a tela passa a dizer, e o registro anota
@@ -100,7 +91,7 @@ impl Daemon {
         self.injecao_recusada = Some(std::time::Instant::now());
         if nova {
             warn!("o sistema está recusando o teclado e o mouse que o par manda");
-            let _ = self.avisos.send(ir_ipc::Aviso::EstadoMudou(self.estado()));
+            self.avisar_estado();
         }
     }
 
@@ -112,27 +103,25 @@ impl Daemon {
         if antiga {
             info!("o sistema voltou a aceitar o teclado e o mouse do par");
             self.injecao_recusada = None;
-            let _ = self.avisos.send(ir_ipc::Aviso::EstadoMudou(self.estado()));
+            self.avisar_estado();
         }
     }
 
     /// O agente conectou e está pronto para capturar e injetar.
-    fn on_agente_pronto(&mut self, desktops: &[String]) {
+    fn on_agente_pronto(&mut self, desktops: &[String], tela_de_bloqueio: bool) {
         self.agente_pronto = true;
-        self.desktops_do_agente = desktops.to_vec();
-        // O par fica sabendo na próxima sessão: é no `Hello` que as capacidades viajam.
-        self.identidade_local.capabilities.privileged_input = match self.nivel_daqui() {
-            ir_ipc::Nivel::TelaDeLogin => ir_proto::peer::PrivilegedInputLevel::LoginScreen,
-            ir_ipc::Nivel::TelaDeBloqueio => ir_proto::peer::PrivilegedInputLevel::LockScreen,
-            ir_ipc::Nivel::SoDesbloqueado => ir_proto::peer::PrivilegedInputLevel::UnlockedOnly,
-            ir_ipc::Nivel::Nenhum => ir_proto::peer::PrivilegedInputLevel::None,
+        self.desktops_do_agente = DesktopsDoAgente {
+            nomes: desktops.to_vec(),
+            tela_de_bloqueio,
         };
+        // O par fica sabendo na próxima sessão: é no `Hello` que as capacidades viajam.
+        self.identidade_local.capabilities.privileged_input = self.nivel_daqui().no_protocolo();
         self.drive(Input::AgentReady);
         info!(?desktops, "agente pronto");
         self.contar_ao_agente_a_permissao();
         // O cursor real está onde está, e o modelo da sessão precisa recomeçar no mesmo ponto.
         self.seed_pointer = true;
-        let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
+        self.avisar_estado();
     }
 
     /// O agente saiu, ou a conexão com ele caiu.
@@ -149,25 +138,28 @@ impl Daemon {
         self.agente_pronto = false;
         warn!("o agente saiu; sem captura nem injeção até ele voltar");
         self.drive(Input::AgentLost);
-        let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
-        self.relancar_agente_ja();
+        self.avisar_estado();
+        self.garantir_agente_agora();
     }
 
-    /// Relança o agente sem esperar a rodada de reconexão ([02, §8](../../../docs/02-arquitetura.md)
-    /// promete meio segundo). Se ele não conectar, a rodada periódica volta a tentar.
-    /// Nos testes não se lança processo nenhum.
-    #[cfg(all(windows, not(test)))]
-    #[allow(clippy::unused_self)]
-    pub(super) fn relancar_agente_ja(&mut self) {
-        match ir_sessao::lancar_agente() {
-            Ok(pid) => info!(pid, "agente relançado"),
-            Err(erro) => warn!(%erro, "não foi possível relançar o agente"),
+    /// Lança o agente já, se ele não está pronto, sem esperar a rodada de reconexão
+    /// ([02, §8](../../../docs/02-arquitetura.md) promete meio segundo): na subida, quando ele sai,
+    /// quando a sessão do Windows muda e quando a máquina acorda. Se ele não conectar, a rodada
+    /// periódica ([`Self::garantir_agente`]) volta a tentar.
+    ///
+    /// No Linux o serviço injeta direto por `uinput`, e não há agente a lançar
+    /// ([06, §2](../../../docs/06-linux.md)); nos testes não se lança processo nenhum.
+    #[cfg_attr(
+        any(not(windows), test),
+        allow(clippy::unused_self, clippy::missing_const_for_fn)
+    )]
+    pub(crate) fn garantir_agente_agora(&mut self) {
+        #[cfg(all(windows, not(test)))]
+        if !self.agente_pronto {
+            self.zelador_do_agente
+                .lancar(ir_sessao::lancar_agente, Instant::now());
         }
     }
-
-    #[cfg(any(not(windows), test))]
-    #[allow(clippy::unused_self)]
-    pub(super) fn relancar_agente_ja(&mut self) {}
 
     /// O desktop de entrada desta máquina mudou: bloqueou, abriu o UAC, voltou à área de trabalho.
     ///
@@ -175,9 +167,8 @@ impl Daemon {
     /// Win+L nem o desktop seguro, e o par ficaria recebendo o que ninguém mais digita
     /// ([05, §5.1](../../../docs/05-windows.md)). Do lado controlado, voltar à área de trabalho
     /// encerra a recusa do desktop protegido.
-    fn on_desktop_mudou(&mut self, nome: &str) {
+    fn on_desktop_mudou(&mut self, nome: &str, protegido: bool) {
         info!(nome, "o desktop de entrada mudou");
-        let protegido = !nome.eq_ignore_ascii_case("Default");
         self.on_tela_protegida(protegido);
         if protegido && self.session.phase() == ir_session::Phase::Sending {
             info!("a tela daqui bloqueou com o controle no par: devolvendo e soltando tudo");
@@ -205,30 +196,17 @@ impl Daemon {
         }
     }
 
-    /// Garante que há um agente de pé, relançando-o quando não há.
-    ///
-    /// Chamado uma vez na subida — e aí o agente nasce junto com o serviço — e depois no
-    /// intervalo da reconexão de rede. Relançar um agente que morreu é barato, e é o que faz a
-    /// falha dele ser um soluço em vez de o fim da sessão.
-    #[cfg(windows)]
+    /// Garante, no intervalo da reconexão de rede, que há um agente de pé: sem agente pronto, relança
+    /// [`RELANCAR_AGENTE`] depois do último lançamento. Relançar um agente que morreu é barato, e é o
+    /// que faz a falha dele ser um soluço em vez de o fim da sessão.
     pub(crate) fn garantir_agente(&mut self) {
-        if self.agente_pronto {
-            return;
-        }
-        if !self.ticks.is_multiple_of(RELANCAR_AGENTE_TICKS) {
-            return;
-        }
-        match ir_sessao::lancar_agente() {
-            Ok(pid) => info!(pid, "agente lançado"),
-            Err(erro) => warn!(%erro, "não foi possível lançar o agente"),
+        if self
+            .zelador_do_agente
+            .conferir(self.agente_pronto, Instant::now())
+        {
+            self.garantir_agente_agora();
         }
     }
-
-    /// No Linux o serviço injeta direto por `uinput`, e não há agente a lançar
-    /// ([06, §2](../../../docs/06-linux.md)).
-    #[cfg(not(windows))]
-    #[allow(clippy::unused_self)]
-    pub(crate) fn garantir_agente(&mut self) {}
 }
 
 #[cfg(test)]

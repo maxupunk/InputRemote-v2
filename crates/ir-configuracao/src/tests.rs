@@ -84,3 +84,48 @@ fn a_configuracao_padrao_e_criada_e_relida() {
     assert_eq!(criada.politica, relida.politica);
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn a_configuracao_gravada_nao_deixa_temporario() {
+    let dir = pasta("atomica");
+    let config = Config {
+        port: 4321,
+        ..Config::default()
+    };
+    config.save(&dir).unwrap();
+    config.save(&dir).unwrap();
+    assert!(!dir.join("config.toml.tmp").exists());
+    assert_eq!(load_config(&dir).unwrap().port, 4321);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn o_endereco_configurado_vence_o_do_pareamento() {
+    let mut config = Config::default();
+    assert_eq!(config.endereco_do_par(), None);
+    config.peers.push(PinnedPeer {
+        pubkey: "00".repeat(32),
+        addr: Some("10.0.0.2:52525".to_owned()),
+        radio: None,
+        nome: None,
+        recusa_tela_de_bloqueio: false,
+    });
+    assert_eq!(config.endereco_do_par(), Some("10.0.0.2:52525"));
+    config.peer_addr = Some("10.0.0.9:52525".to_owned());
+    assert_eq!(config.endereco_do_par(), Some("10.0.0.9:52525"));
+}
+
+#[test]
+fn o_portador_fixado_vai_ao_arquivo_e_volta() {
+    let mut config = Config::default();
+    assert_eq!(
+        config.fixado(),
+        None,
+        "sem nada gravado, a escolha é automática"
+    );
+    config.fixar(Some(Carrier::Rfcomm));
+    assert_eq!(config.portador_fixado.as_deref(), Some("bluetooth"));
+    assert_eq!(config.fixado(), Some(Carrier::Rfcomm));
+    config.fixar(None);
+    assert_eq!(config.fixado(), None);
+}

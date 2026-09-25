@@ -87,6 +87,25 @@ pub(crate) fn anunciar(
     }));
 }
 
+/// Conta à interface que o canal caiu no meio de uma cópia — e só se havia uma.
+///
+/// `em_curso` é o nome e o andamento da cópia que estava atravessando, ou `None`. Um lugar só para
+/// este aviso, porque espalhado ele saía duas vezes numa queda durante o envio (uma de cada camada,
+/// a segunda sem nome) e saía também quando o enlace caía em repouso — um cartão de "a cópia não
+/// atravessou" sem cópia nenhuma. Devolve se avisou.
+pub(crate) fn anunciar_queda(
+    avisos: &tokio::sync::broadcast::Sender<Aviso>,
+    sentido: Sentido,
+    em_curso: Option<(&str, (u64, u64))>,
+) -> bool {
+    let Some((nome, progresso)) = em_curso else {
+        return false;
+    };
+    let fase = Fase::Parada(Motivo::CanalCaiu);
+    anunciar(avisos, sentido, nome, progresso, fase);
+    true
+}
+
 /// O motivo do protocolo, no vocabulário da interface.
 pub(crate) const fn traduzir_recusa(motivo: RejectReason) -> Motivo {
     match motivo {
@@ -95,5 +114,33 @@ pub(crate) const fn traduzir_recusa(motivo: RejectReason) -> Motivo {
         RejectReason::UnsafePath => Motivo::CaminhoInseguro,
         RejectReason::TooManyItems => Motivo::ItensDemais,
         _ => Motivo::SemPermissao,
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_queda_sem_copia_em_curso_nao_avisa_nada() {
+        // O cartão de "a cópia não atravessou" aparecia quando o enlace caía em repouso.
+        let (avisos, mut recebe) = tokio::sync::broadcast::channel(4);
+        assert!(!anunciar_queda(&avisos, Sentido::Recebendo, None));
+        assert!(recebe.try_recv().is_err());
+    }
+
+    #[test]
+    fn a_queda_no_meio_de_uma_copia_avisa_uma_vez_com_o_nome_dela() {
+        let (avisos, mut recebe) = tokio::sync::broadcast::channel(4);
+        let em_curso = Some(("a.txt e outros", (10, 30)));
+        assert!(anunciar_queda(&avisos, Sentido::Enviando, em_curso));
+        let Ok(Aviso::Transferencia(copia)) = recebe.try_recv() else {
+            panic!("esperava o aviso da cópia");
+        };
+        assert_eq!(copia.nome, "a.txt e outros");
+        assert_eq!((copia.bytes_feitos, copia.bytes_total), (10, 30));
+        assert_eq!(copia.fase, Fase::Parada(Motivo::CanalCaiu));
+        assert!(recebe.try_recv().is_err(), "um aviso só");
     }
 }

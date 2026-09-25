@@ -37,16 +37,6 @@ fn cross(pair: &mut Pair) {
     pair.clear_log();
 }
 
-fn key(pair: &mut Pair, pressed: bool) {
-    pair.feed(
-        Side::Server,
-        Input::LocalKey {
-            usage: TECLA,
-            pressed,
-        },
-    );
-}
-
 fn key_injections(pair: &Pair) -> usize {
     pair.count(Side::Client, |command| {
         matches!(command, Command::Inject(Injection::Key { .. }))
@@ -69,7 +59,7 @@ fn down(pair: &mut Pair, carrier: Carrier) {
 fn every_frame_leaves_by_both_carriers() {
     let mut pair = dual();
     cross(&mut pair);
-    key(&mut pair, true);
+    pair.key(Side::Server, TECLA, true);
 
     let rfcomm = pair.sent_on(Side::Server, Carrier::Rfcomm);
     assert!(rfcomm > 0);
@@ -82,8 +72,8 @@ fn a_key_travels_twice_and_is_typed_once() {
     // duas vezes o que o usuário digitou uma (docs/04 §2).
     let mut pair = dual();
     cross(&mut pair);
-    key(&mut pair, true);
-    key(&mut pair, false);
+    pair.key(Side::Server, TECLA, true);
+    pair.key(Side::Server, TECLA, false);
 
     assert_eq!(
         key_injections(&pair),
@@ -130,7 +120,7 @@ fn a_duplicated_pointer_sample_moves_the_cursor_once_on_a_single_route() {
 fn losing_bluetooth_mid_keypress_keeps_the_session_and_the_key() {
     let mut pair = dual();
     cross(&mut pair);
-    key(&mut pair, true);
+    pair.key(Side::Server, TECLA, true);
     pair.clear_log();
 
     down(&mut pair, Carrier::Rfcomm);
@@ -141,7 +131,7 @@ fn losing_bluetooth_mid_keypress_keeps_the_session_and_the_key() {
     assert_eq!(pair.server.route(), Some(Route::Single(Carrier::Udp)));
     assert!(!pair.client.input_state().is_released());
 
-    key(&mut pair, false);
+    pair.key(Side::Server, TECLA, false);
     assert!(
         pair.client.input_state().is_released(),
         "o KeyUp chegou pelo portador que sobrou"
@@ -160,8 +150,8 @@ fn a_silent_bluetooth_does_not_cost_the_session() {
     for _ in 0..12 {
         pair.advance(250);
     }
-    key(&mut pair, true);
-    key(&mut pair, false);
+    pair.key(Side::Server, TECLA, true);
+    pair.key(Side::Server, TECLA, false);
 
     assert_eq!(
         pair.server.phase(),
@@ -186,7 +176,7 @@ fn a_silent_bluetooth_does_not_cost_the_session() {
 fn with_both_carriers_silent_the_session_falls_and_releases() {
     let mut pair = dual();
     cross(&mut pair);
-    key(&mut pair, true);
+    pair.key(Side::Server, TECLA, true);
     pair.set_carrier_delivery(Carrier::Rfcomm, false);
     pair.set_carrier_delivery(Carrier::Udp, false);
 
@@ -222,7 +212,7 @@ fn a_carrier_that_comes_back_rejoins_the_route() {
 fn losing_the_last_carrier_still_ends_the_session() {
     let mut pair = dual();
     cross(&mut pair);
-    key(&mut pair, true);
+    pair.key(Side::Server, TECLA, true);
     down(&mut pair, Carrier::Rfcomm);
     down(&mut pair, Carrier::Udp);
 
@@ -239,7 +229,7 @@ fn a_frame_on_a_carrier_this_side_never_saw_up_is_used_but_does_not_widen() {
     pair.connect(Carrier::Udp);
     pair.feed(Side::Server, Input::CarrierUp(Carrier::Rfcomm));
     cross(&mut pair);
-    key(&mut pair, true);
+    pair.key(Side::Server, TECLA, true);
 
     assert_eq!(pair.server.route(), Some(Route::Dual));
     assert_eq!(pair.client.route(), Some(Route::Single(Carrier::Udp)));
@@ -293,7 +283,7 @@ fn a_pinned_session_never_goes_dual_and_unpinning_widens_it() {
 fn pinning_a_carrier_of_the_dual_route_narrows_it_in_place() {
     let mut pair = dual();
     cross(&mut pair);
-    key(&mut pair, true);
+    pair.key(Side::Server, TECLA, true);
     pair.clear_log();
 
     pair.pin(Side::Server, Some(Carrier::Rfcomm));

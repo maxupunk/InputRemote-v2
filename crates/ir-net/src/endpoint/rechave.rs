@@ -30,9 +30,10 @@ pub(super) const IDADE_MAXIMA: Duration = Duration::from_secs(10 * 60);
 ///
 /// Só um dos dois, e sempre o mesmo: as duas pontas fazem dez minutos quase juntas, e dois pedidos
 /// de troca cruzados se atropelariam — cada um esperando a resposta do seu, os dois vencendo o
-/// prazo, e de novo um minuto depois. Quem tem a menor chave pública pede; a outra ponta atende.
+/// prazo, e de novo um minuto depois. Quem tem a menor chave pública pede — a chave do par
+/// [precede](PublicKey::precede) a nossa —; a outra ponta atende.
 pub(super) fn troca_por_idade(minha: &PublicKey, do_par: &PublicKey, idade: Duration) -> bool {
-    idade >= IDADE_MAXIMA && minha.0 < do_par.0
+    idade >= IDADE_MAXIMA && do_par.precede(minha)
 }
 
 impl Endpoint {

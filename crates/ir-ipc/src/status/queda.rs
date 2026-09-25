@@ -49,4 +49,35 @@ impl MotivoDaQueda {
             Self::ParPausou => "Pausado no outro computador",
         }
     }
+
+    /// O peso desta queda.
+    ///
+    /// Sem ramo curinga de propósito: um motivo novo não compila até alguém decidir o peso dele.
+    #[must_use]
+    pub const fn gravidade(self) -> Gravidade {
+        match self {
+            Self::PedidoPeloUsuario | Self::ParPausou => Gravidade::Pedida,
+            Self::ServicoDoParParando
+            | Self::ParSuspenso
+            | Self::TrocandoDeMeio
+            | Self::EstaMaquinaSuspensa
+            | Self::ParRecomecou => Gravidade::Esperada,
+            Self::ParNaoRespondeu | Self::MeioFalhou | Self::ErroDeProtocolo => Gravidade::Falha,
+        }
+    }
+}
+
+/// O peso de uma queda: quem a provocou, e se ela pede atenção.
+///
+/// Uma decisão só, para a cor da tela e para o aviso fora da janela. Eram duas listas separadas, e
+/// um par que se suspendia aparecia como normal na janela e como "Conexão perdida" na notificação.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Gravidade {
+    /// Alguém escolheu: quem está aqui ou quem está lá. A pessoa já sabe.
+    Pedida,
+    /// Comportamento normal do produto ou do sistema — suspensão, troca de meio, um serviço
+    /// reiniciando —, que se resolve sozinho.
+    Esperada,
+    /// Algo quebrou: é esta que a pessoa precisa ver, e é por isso que só ela alarma.
+    Falha,
 }

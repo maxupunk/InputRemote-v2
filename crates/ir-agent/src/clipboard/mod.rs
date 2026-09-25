@@ -79,6 +79,18 @@ enum Evento {
     Recusado,
     /// A conexão com o serviço caiu.
     Caiu,
+    /// O serviço fala uma versão do canal que este binário não entende: ele foi atualizado, e este
+    /// processo é de antes.
+    Incompativel,
+}
+
+/// Por que o laço de uma conexão terminou.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Fim {
+    /// A conexão caiu: tentar de novo.
+    Caiu,
+    /// Este processo é mais velho que o serviço: sair.
+    Incompativel,
 }
 
 /// Serve até o processo ser encerrado.
@@ -106,18 +118,28 @@ pub(crate) fn servir() -> Result<()> {
 
     let mut eco = Eco::nova();
     let mut notificador = notificacao::Notificador::default();
-    let endereco = ir_ipc::cliente::endereco_do_controle();
+    let endereco = ir_ipc::endereco::do_controle();
     loop {
         match conectar(&endereco, &eventos) {
             Ok(mut escrita) => {
                 info!("ajudante de clipboard ligado ao serviço");
-                atender(Partes {
+                let fim = atender(Partes {
                     eventos: &recebe,
                     escrita: escrita.as_mut(),
                     clip: clip.as_mut(),
                     eco: &mut eco,
                     notificador: &mut notificador,
                 });
+                if fim == Fim::Incompativel {
+                    // Reconectar não adianta: cada quadro viria inválido, e com a trava de
+                    // instância única este processo impediria o novo de subir. Saindo, quem zela
+                    // pelo ajudante lança o binário instalado. Antes disto, depois de uma
+                    // atualização o texto não atravessava mais até sair da sessão.
+                    info!(
+                        "o serviço fala outra versão do canal: este ajudante é de antes da atualização e sai, para subir o instalado"
+                    );
+                    return Ok(());
+                }
                 warn!("a conexão com o serviço caiu; tentando de novo");
             }
             Err(erro) => debug!(%erro, "o serviço ainda não atende"),
@@ -149,6 +171,11 @@ fn ler_avisos(mut leitura: Box<dyn Read + Send>, eventos: &Sender<Evento>) {
                 debug!("o serviço fechou o canal de controle");
                 break;
             }
+            Err(erro) if e_incompativel(&erro) => {
+                warn!(erro = ?erro, "o serviço mandou um quadro que este ajudante não entende");
+                let _ = eventos.send(Evento::Incompativel);
+                return;
+            }
             Err(erro) => {
                 warn!(erro = ?erro, "falha ao ler do canal de controle");
                 break;
@@ -177,6 +204,18 @@ fn ler_avisos(mut leitura: Box<dyn Read + Send>, eventos: &Sender<Evento>) {
     let _ = eventos.send(Evento::Caiu);
 }
 
+/// Se o erro de leitura é de formato, e não de canal: um quadro inteiro que não decodifica.
+///
+/// Os dois lados são do mesmo pacote, então isto só acontece com um processo que sobreviveu a uma
+/// atualização do serviço.
+fn e_incompativel(erro: &anyhow::Error) -> bool {
+    erro.chain().any(|causa| {
+        causa
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|io| io.kind() == std::io::ErrorKind::InvalidData)
+    })
+}
+
 /// O que o laço de uma conexão precisa. Juntos porque são a mesma coisa: a sessão do usuário.
 struct Partes<'a> {
     eventos: &'a Receiver<Evento>,
@@ -187,8 +226,8 @@ struct Partes<'a> {
     notificador: &'a mut notificacao::Notificador,
 }
 
-/// O laço principal de uma conexão.
-fn atender(partes: Partes<'_>) {
+/// O laço principal de uma conexão, até ela terminar.
+fn atender(partes: Partes<'_>) -> Fim {
     let Partes {
         eventos,
         escrita,
@@ -204,14 +243,16 @@ fn atender(partes: Partes<'_>) {
                 reagir(&transferencia, clip, eco);
             }
             Evento::Aviso(Aviso::TextoRecebido(texto)) => {
-                publicar(&Conteudo::texto(texto.como_str()), clip, eco);
+                publicar(&Conteudo::texto(texto.as_str()), clip, eco);
             }
             // Sem par, ou sem permissão: a próxima travessia tem de tentar a mesma cópia de novo.
             Evento::Recusado => eco.oferta_falhou(),
-            Evento::Caiu => return,
+            Evento::Caiu => return Fim::Caiu,
+            Evento::Incompativel => return Fim::Incompativel,
             Evento::Aviso(_) => {}
         }
     }
+    Fim::Caiu
 }
 
 /// Lê o clipboard e, se ele mudou de verdade, oferece ao par.
@@ -276,7 +317,7 @@ fn pedido_para(conteudo: &Conteudo) -> Option<Pedido> {
                 .map(|caminho| caminho.to_string_lossy().into_owned())
                 .collect(),
         }),
-        Conteudo::Texto(texto) => TextoDoClipboard::novo(texto.clone()).map(Pedido::OferecerTexto),
+        Conteudo::Texto(texto) => TextoDoClipboard::new(texto.clone()).map(Pedido::OferecerTexto),
         // A imagem vai como arquivo PNG, pelo canal de dados; o outro lado a reconhece pelo nome.
         Conteudo::Imagem(png) => {
             match imagem::gravar_para_enviar(png, &imagem::pasta_temporaria()) {
@@ -351,10 +392,7 @@ fn vigiar_em_thread(eventos: Sender<Evento>) {
 
 /// Manda um pedido ao serviço.
 fn pedir(escrita: &mut dyn Write, pedido: &Pedido) -> Result<()> {
-    let bytes = codec::codificar(pedido).context("codificando o pedido")?;
-    escrita.write_all(&bytes).context("escrevendo o pedido")?;
-    escrita.flush().context("esvaziando o pedido")?;
-    Ok(())
+    codec::escrever_em(escrita, pedido).context("escrevendo o pedido")
 }
 
 #[cfg(test)]

@@ -107,9 +107,12 @@ impl Faxineiro {
         feito
     }
 
-    /// Mede a pasta e guarda o resultado.
+    /// Mede a pasta e guarda o resultado — só as entregas, e não a cópia que ainda está chegando.
     pub async fn medir(&self) {
-        let bytes = tamanho(&self.pasta).await;
+        let bytes = listar(&self.pasta)
+            .await
+            .iter()
+            .fold(0u64, |total, entrega| total.saturating_add(entrega.bytes));
         self.espaco.store(bytes, Ordering::Relaxed);
     }
 }
@@ -162,6 +165,11 @@ pub fn escolher(entregas: &[Entrega], limites: Limites) -> Vec<&Entrega> {
 ///
 /// Uma entrega que não se consegue medir entra com zero byte e idade zero — ela não some da lista
 /// por causa de um erro de leitura, e também não vira candidata a ser apagada por engano.
+///
+/// A montagem de uma cópia que ainda está chegando não é entrega e fica de fora
+/// ([`ir_files::staging::e_montagem`]): "Limpar agora" a apagava no meio, e ela entrava na conta do
+/// espaço antes de existir. A de um serviço morto no meio é recolhida pela próxima cópia de mesmo
+/// identificador, ou pelo `Drop` de quem a criou.
 pub async fn listar(pasta: &Path) -> Vec<Entrega> {
     let Ok(mut leitura) = tokio::fs::read_dir(pasta).await else {
         return Vec::new();
@@ -169,6 +177,13 @@ pub async fn listar(pasta: &Path) -> Vec<Entrega> {
     let agora = SystemTime::now();
     let mut entregas = Vec::new();
     while let Ok(Some(item)) = leitura.next_entry().await {
+        if item
+            .file_name()
+            .to_str()
+            .is_some_and(ir_files::staging::e_montagem)
+        {
+            continue;
+        }
         let caminho = item.path();
         let bytes = Box::pin(tamanho(&caminho)).await;
         let idade = item
@@ -222,15 +237,7 @@ pub async fn esvaziar(pasta: &Path) -> Faxinado {
 async fn apagar(entregas: &[Entrega]) -> Faxinado {
     let mut feito = Faxinado::default();
     for entrega in entregas {
-        let apagou = if tokio::fs::metadata(&entrega.caminho)
-            .await
-            .is_ok_and(|dados| dados.is_dir())
-        {
-            tokio::fs::remove_dir_all(&entrega.caminho).await
-        } else {
-            tokio::fs::remove_file(&entrega.caminho).await
-        };
-        match apagou {
+        match ir_files::staging::remover(&entrega.caminho).await {
             Ok(()) => {
                 // O nome do arquivo fica em `debug`, que é o teto de docs/04 §7.
                 debug!(caminho = ?entrega.caminho, "entrega antiga apagada");
@@ -353,6 +360,38 @@ mod tests {
         assert_eq!(feito.entregas, 2);
         assert_eq!(feito.bytes, 3072);
         assert_eq!(listar(&pasta).await.len(), 0);
+        let _ = tokio::fs::remove_dir_all(&pasta).await;
+    }
+
+    #[tokio::test]
+    async fn a_copia_que_ainda_esta_chegando_nao_e_limpa_nem_contada() {
+        // O defeito: "Limpar agora" apagava a montagem `.parcial-*` no meio de uma cópia, e o
+        // espaço mostrado contava o que ainda nem tinha chegado.
+        let pasta = std::env::temp_dir().join(format!("ir-faxina-parcial-{}", std::process::id()));
+        let _ = tokio::fs::remove_dir_all(&pasta).await;
+        let montagem = pasta.join(".parcial-7");
+        tokio::fs::create_dir_all(&montagem)
+            .await
+            .expect("cria a montagem");
+        tokio::fs::write(montagem.join("meio.bin"), vec![7; 4096])
+            .await
+            .expect("escreve na montagem");
+        tokio::fs::write(pasta.join("entregue.bin"), vec![7; 1024])
+            .await
+            .expect("escreve a entrega");
+
+        let entregas = listar(&pasta).await;
+        assert_eq!(entregas.len(), 1, "{entregas:?}");
+        let faxineiro = Faxineiro::novo(pasta.clone(), Limites::default());
+        faxineiro.medir().await;
+        assert_eq!(faxineiro.espaco(), 1024);
+
+        let feito = faxineiro.esvaziar().await;
+        assert_eq!(feito.entregas, 1);
+        assert!(
+            tokio::fs::metadata(montagem.join("meio.bin")).await.is_ok(),
+            "a montagem sobreviveu à limpeza"
+        );
         let _ = tokio::fs::remove_dir_all(&pasta).await;
     }
 }

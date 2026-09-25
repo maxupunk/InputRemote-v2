@@ -10,6 +10,8 @@ repository.workspace = true
 
 [dependencies]
 ir-proto.workspace = true
+# A posição de um monitor no desktop virtual inteiro, a mesma conversão que a sessão usa.
+ir-geometry.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
 

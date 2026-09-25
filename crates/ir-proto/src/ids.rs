@@ -36,6 +36,26 @@ impl MachineId {
     }
 }
 
+/// O identificador inteiro, em 32 dígitos hexadecimais minúsculos: o texto que a descoberta anuncia.
+impl core::fmt::LowerHex for MachineId {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        core::fmt::Display::fmt(&Hex(&self.0), f)
+    }
+}
+
+/// Bytes em hexadecimal minúsculo, dois dígitos por byte, sem separador.
+///
+/// Uma regra só para todo lugar que escreve bytes como texto — o identificador anunciado, a chave
+/// do par gravada na configuração. Cada um tinha o seu laço.
+#[derive(Debug, Clone, Copy)]
+pub struct Hex<'a>(pub &'a [u8]);
+
+impl core::fmt::Display for Hex<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.0.iter().try_for_each(|byte| write!(f, "{byte:02x}"))
+    }
+}
+
 /// Identificador de sessão, único por sessão estabelecida.
 ///
 /// Aparece em todo log para correlacionar os três processos e as duas máquinas
@@ -106,6 +126,13 @@ const fn hex_digit(nibble: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn machine_id_renders_as_32_lowercase_hex_digits() {
+        let id = MachineId([0xAB; 16]);
+        assert_eq!(format!("{id:x}"), "ab".repeat(16));
+        assert_eq!(Hex(&[0x00, 0x0F, 0xF0]).to_string(), "000ff0");
+    }
 
     #[test]
     fn short_id_renders_the_first_four_bytes() {

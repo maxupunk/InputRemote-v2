@@ -12,16 +12,45 @@ fn recem_instalado() -> Estado {
 #[test]
 fn o_wifi_do_par_cochilando_vira_aviso_com_o_botao_apontado_para_ele() {
     let mut estado = recem_instalado();
-    assert_eq!(estado_ui(&estado).aviso_de_rede, "");
+    estado.agente_pronto = true;
+    estado.captura_pronta = true;
+    assert_eq!(estado_ui(&estado).aviso, "");
 
     estado.economia_no_par = Some(ir_ipc::EconomiaDoWifi::Ligada);
     let ui = estado_ui(&estado);
-    assert!(
-        ui.aviso_de_rede.contains("outro computador"),
-        "{}",
-        ui.aviso_de_rede
-    );
-    assert!(ui.aviso_de_rede_no_par);
+    assert!(ui.aviso.contains("outro computador"), "{}", ui.aviso);
+    assert!(ui.aviso_resolvivel);
+    assert!(ui.aviso_no_par);
+}
+
+#[test]
+fn com_varios_avisos_a_tela_mostra_so_o_que_mais_impede() {
+    // A tela empilhava até três faixas; agora é uma, e sem o botão que só a de rede tem.
+    let mut estado = recem_instalado();
+    estado.economia_no_par = Some(ir_ipc::EconomiaDoWifi::Ligada);
+    estado.par_recusa_tela_de_bloqueio = true;
+    let ui = estado_ui(&estado);
+    assert_eq!(Some(ui.aviso.as_str()), estado.impedimento());
+    assert!(!ui.aviso_resolvivel);
+}
+
+#[test]
+fn so_a_queda_que_e_falha_avisa_fora_da_janela() {
+    // O defeito: um par suspenso era laranja na janela e "Conexão perdida" na notificação.
+    let mut estado = recem_instalado();
+    for motivo in [
+        MotivoDaQueda::ParSuspenso,
+        MotivoDaQueda::ServicoDoParParando,
+        MotivoDaQueda::EstaMaquinaSuspensa,
+        MotivoDaQueda::PedidoPeloUsuario,
+    ] {
+        estado.ultima_queda = Some(motivo);
+        assert!(!queda_merece_aviso(&estado), "{motivo:?}");
+    }
+    estado.ultima_queda = Some(MotivoDaQueda::MeioFalhou);
+    assert!(queda_merece_aviso(&estado));
+    estado.pausa = Some(ir_ipc::Pausa::NoPar);
+    assert!(!queda_merece_aviso(&estado), "a pausa a pessoa já conhece");
 }
 
 #[test]
@@ -128,13 +157,15 @@ fn o_impedimento_vira_texto_vazio_quando_nao_ha_nenhum() {
     let mut estado = recem_instalado();
     estado.agente_pronto = true;
     estado.captura_pronta = true;
-    assert_eq!(estado_ui(&estado).impedimento, "");
+    assert_eq!(estado_ui(&estado).aviso, "");
 }
 
 #[test]
-fn a_tela_recebe_a_impressao_agrupada_e_o_nivel_por_extenso() {
+fn a_tela_recebe_a_impressao_do_servico_e_o_nivel_por_extenso() {
     let mut estado = recem_instalado();
     estado.nivel_privilegiado = Nivel::TelaDeBloqueio;
+    // A mesma do registro do serviço: a janela só a mostra, sem recalcular.
+    estado.esta_impressao = "7K3M Q9XA 2BCD EFGH JKMN".to_owned();
     let ui = estado_ui(&estado);
 
     assert_eq!(ui.nivel, "N2");
@@ -143,12 +174,7 @@ fn a_tela_recebe_a_impressao_agrupada_e_o_nivel_por_extenso() {
         !ui.nivel_explicacao.is_empty(),
         "um selo sem explicação não informa nada"
     );
-    assert_eq!(
-        ui.esta_impressao.split(' ').count(),
-        8,
-        "{}",
-        ui.esta_impressao
-    );
+    assert_eq!(ui.esta_impressao, "7K3M Q9XA 2BCD EFGH JKMN");
 }
 
 #[test]
@@ -161,14 +187,4 @@ fn a_dica_da_bandeja_diz_o_estado_e_cabe_no_limite_do_windows() {
     let longa = dica_da_bandeja("Desconectado", &"palavra ".repeat(40));
     assert!(longa.chars().count() <= 120, "{}", longa.chars().count());
     assert!(longa.ends_with('…'));
-}
-
-#[test]
-fn nenhuma_frase_nova_tem_buraco_de_espacos() {
-    // A continuação de linha das frases longas já se perdeu em edições por script; o sintoma é
-    // um buraco de espaços no meio da frase.
-    assert!(
-        !AVISO_DO_BLOQUEIO_DO_PAR.contains("  "),
-        "buraco em: {AVISO_DO_BLOQUEIO_DO_PAR}"
-    );
 }

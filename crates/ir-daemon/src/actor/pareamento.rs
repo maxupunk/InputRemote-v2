@@ -11,7 +11,7 @@
 use std::time::{Duration, Instant};
 
 use ir_ipc::{Aviso, Resposta};
-use ir_session::{LinkDown, Phase};
+use ir_session::LinkDown;
 use tracing::{info, warn};
 
 use super::Daemon;
@@ -131,29 +131,19 @@ impl Daemon {
     /// serviço continuava tentando (log 25). O endereço fica, porque é o candidato que "Procurar"
     /// oferece para parear de novo — e, sem par gravado, ninguém disca para ele sozinho.
     pub(super) fn esquecer_par(&mut self) -> Resposta {
-        let mut nova = self.config.clone();
-        nova.peers.clear();
-        let resposta = self.persistir(nova);
+        let resposta = self.persistir_com(|config| config.peers.clear());
         if resposta != Resposta::Feito {
             return resposta;
         }
         info!("par esquecido pela interface; conexão encerrada");
+        // Sem par, sem permissão: o agente, a tela protegida e a política do Windows acompanham.
+        self.permissao_do_protegido_mudou();
         // O canal de arquivos com ele cai também: esquecido, ele não recebe mais nada daqui.
-        self.arquivos
-            .trocar_destino(crate::arquivos::destino(&self.config));
+        self.atualizar_destino_dos_arquivos();
         if self.pareando() {
             self.encerrar_pareamento_sem_sucesso();
         }
-        if self.session.phase() != Phase::Offline {
-            // Primeiro soltar tudo e avisar o par, pelo enlace que ainda existe; depois derrubá-lo.
-            let agora = self.now();
-            self.session
-                .stop(agora, LinkDown::UserStopped, &mut self.out);
-            self.apply_commands();
-        }
-        self.desconectar_todos();
-        self.last_phase = self.session.phase();
-        let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
+        self.despedir_e_derrubar(LinkDown::UserStopped);
         resposta
     }
 }

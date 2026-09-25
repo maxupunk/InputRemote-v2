@@ -10,9 +10,9 @@ use anyhow::{Context, Result};
 use ir_crypto::{Identity, PublicKey};
 use ir_net::{ConnectMode, Endpoint, NetCommand, NetEvent};
 use ir_proto::carrier::Carrier;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::UnboundedSender;
 
-use crate::{Endereco, Fato, Transporte};
+use crate::{Endereco, Fato, Transporte, repassar};
 
 /// A rede local como transporte de entrada.
 #[derive(Debug)]
@@ -31,14 +31,12 @@ impl Rede {
         identidade: Arc<Identity>,
         fatos: UnboundedSender<Fato>,
     ) -> Result<Self> {
-        let escuta: SocketAddr = format!("0.0.0.0:{porta}")
-            .parse()
-            .context("porta inválida")?;
+        let escuta = SocketAddr::from(([0, 0, 0, 0], porta));
         let socket = ir_net::bind(escuta)
             .await
             .context("vinculando o socket UDP")?;
         let alca = Endpoint::spawn(socket, identidade);
-        tokio::spawn(repassar(alca.events, fatos));
+        tokio::spawn(repassar(alca.events, fatos, fato_de));
         Ok(Self {
             comandos: alca.commands,
         })
@@ -57,11 +55,10 @@ impl Transporte for Rede {
             // virar uma conexão para o lugar errado.
             return;
         };
-        let mode = match chave {
-            Some(fixada) => ConnectMode::Reconnect(fixada),
-            None => ConnectMode::Pair,
-        };
-        let _ = self.comandos.send(NetCommand::Connect { peer, mode });
+        let _ = self.comandos.send(NetCommand::Connect {
+            peer,
+            mode: ConnectMode::de_chave(chave),
+        });
     }
 
     fn enviar(&self, bytes: Vec<u8>) {
@@ -78,18 +75,6 @@ impl Transporte for Rede {
 
     fn desconectar(&self) {
         let _ = self.comandos.send(NetCommand::Disconnect);
-    }
-}
-
-/// Repassa os eventos do endpoint como fatos do serviço, até um dos lados ir embora.
-async fn repassar(mut eventos: UnboundedReceiver<NetEvent>, fatos: UnboundedSender<Fato>) {
-    while let Some(evento) = eventos.recv().await {
-        let Some(fato) = fato_de(evento) else {
-            continue;
-        };
-        if fatos.send(fato).is_err() {
-            break; // o ator encerrou
-        }
     }
 }
 

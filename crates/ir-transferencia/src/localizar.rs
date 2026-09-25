@@ -34,7 +34,7 @@ pub fn sem_localizador() -> Localizador {
 #[must_use]
 pub fn da_descoberta(descoberta: &ir_transporte::Descoberta) -> Localizador {
     let descoberta = descoberta.clone();
-    Arc::new(move |chave| Box::pin(descoberta.localizar(ir_transporte::maquina_da_chave(&chave))))
+    Arc::new(move |chave| Box::pin(descoberta.localizar(chave.machine_id())))
 }
 
 /// Para onde discar: o endereço de rede configurado, e senão onde a rede diz que o par está.

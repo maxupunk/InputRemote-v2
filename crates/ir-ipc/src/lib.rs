@@ -55,6 +55,7 @@
 pub mod agent;
 pub mod cliente;
 pub mod codec;
+pub mod endereco;
 pub mod falha;
 pub mod status;
 pub mod texto;

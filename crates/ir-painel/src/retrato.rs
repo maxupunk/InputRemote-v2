@@ -8,7 +8,7 @@ use ir_proto::carrier::Carrier;
 use ir_proto::screens::Edge;
 use ir_session::{PeerInfo, Phase, Policy};
 
-use crate::traducao::{borda_de, link_state, politica_de, portador_de};
+use crate::traducao::{link_state, politica_de};
 
 /// O par gravado, e o que se sabe dele agora.
 #[derive(Debug, Clone, Copy)]
@@ -24,16 +24,18 @@ pub struct ParGravado<'a> {
 }
 
 /// O que esta máquina tem para digitar e capturar.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Copy)]
-pub struct Entrada<'a> {
+pub struct Entrada {
     /// Se o agente (Windows) está conectado e pronto.
     pub agente_pronto: bool,
     /// Se o serviço injeta direto — o `uinput` do Linux.
     pub injeta_direto: bool,
     /// Se o serviço captura direto — o `evdev` do Linux.
     pub captura_direto: bool,
-    /// Os desktops em que o agente injeta: `Winlogon` é a tela de bloqueio.
-    pub desktops_do_agente: &'a [String],
+    /// Se o agente injeta no desktop seguro — a tela de bloqueio e a de login. Quem decide pelo
+    /// nome do desktop é o agente; aqui chega o fato.
+    pub agente_na_tela_de_bloqueio: bool,
 }
 
 /// Tudo que o serviço sabe e a janela precisa, num valor só.
@@ -51,6 +53,8 @@ pub struct Retrato<'a> {
     pub borda: Edge,
     /// Esta máquina.
     pub maquina: Maquina,
+    /// A impressão digital desta máquina, já em texto: quem a calcula é o serviço, com a chave.
+    pub impressao: &'a str,
     /// O nome desta máquina.
     pub nome: &'a Nome,
     /// O par gravado, se há.
@@ -64,7 +68,7 @@ pub struct Retrato<'a> {
     /// A latência da última janela.
     pub latencia: Option<Latencia>,
     /// O que esta máquina tem para digitar e capturar.
-    pub entrada: Entrada<'a>,
+    pub entrada: Entrada,
     /// Se o par pode digitar na tela de bloqueio daqui.
     pub bloqueio_permitido: bool,
     /// Por que a última sessão caiu.
@@ -94,11 +98,12 @@ pub fn estado(r: &Retrato<'_>) -> Estado {
     Estado {
         enlace: link_state(r.fase),
         politica: politica_de(r.politica),
-        borda_do_par: borda_de(r.borda),
+        borda_do_par: r.borda.into(),
         esta_maquina: r.maquina,
+        esta_impressao: r.impressao.to_owned(),
         este_nome: r.nome.clone(),
         par: r.par.map(|par| par_conhecido(&par)),
-        portador: r.portador.map(portador_de),
+        portador: r.portador.map(Portador::from),
         portador_fixado: r.portador_fixado,
         motivo_do_portador: motivo_do_portador(r),
         latencia: r.latencia.filter(|_| estabelecida),
@@ -129,7 +134,7 @@ pub fn estado(r: &Retrato<'_>) -> Estado {
 /// ele abriu o desktop `Winlogon`, a tela de bloqueio e a de login são alcançáveis, porque o serviço
 /// o lança na sessão de console mesmo antes de alguém entrar (ADR-0008).
 #[must_use]
-pub fn nivel(entrada: &Entrada<'_>) -> Nivel {
+pub fn nivel(entrada: &Entrada) -> Nivel {
     if cfg!(target_os = "linux") && entrada.injeta_direto {
         return Nivel::TelaDeLogin;
     }
@@ -140,11 +145,7 @@ pub fn nivel(entrada: &Entrada<'_>) -> Nivel {
             Nivel::Nenhum
         };
     }
-    if entrada
-        .desktops_do_agente
-        .iter()
-        .any(|desktop| desktop.eq_ignore_ascii_case("Winlogon"))
-    {
+    if entrada.agente_na_tela_de_bloqueio {
         Nivel::TelaDeLogin
     } else {
         Nivel::SoDesbloqueado
@@ -194,22 +195,20 @@ fn par_conhecido(par: &ParGravado<'_>) -> ParConhecido {
 mod tests {
     use super::*;
 
-    fn entrada(agente: bool, direto: bool, desktops: &[String]) -> Entrada<'_> {
+    fn entrada(agente: bool, direto: bool, tela_de_bloqueio: bool) -> Entrada {
         Entrada {
             agente_pronto: agente,
             injeta_direto: direto,
             captura_direto: false,
-            desktops_do_agente: desktops,
+            agente_na_tela_de_bloqueio: tela_de_bloqueio,
         }
     }
 
     #[test]
     fn o_agente_no_winlogon_alcanca_a_tela_de_login() {
-        let com = vec!["Default".to_owned(), "Winlogon".to_owned()];
-        let sem = vec!["Default".to_owned()];
-        assert_eq!(nivel(&entrada(true, false, &com)), Nivel::TelaDeLogin);
-        assert_eq!(nivel(&entrada(true, false, &sem)), Nivel::SoDesbloqueado);
-        assert_eq!(nivel(&entrada(false, false, &[])), Nivel::Nenhum);
+        assert_eq!(nivel(&entrada(true, false, true)), Nivel::TelaDeLogin);
+        assert_eq!(nivel(&entrada(true, false, false)), Nivel::SoDesbloqueado);
+        assert_eq!(nivel(&entrada(false, false, false)), Nivel::Nenhum);
     }
 
     #[test]

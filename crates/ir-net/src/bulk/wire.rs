@@ -34,9 +34,13 @@
 //! que a especificação diz, e trocar formato de fio para economizar dois bytes a cada 64 KiB
 //! seria churn sem ganho mensurável.
 
+use ir_crypto::enlace::{self, Desenquadrador};
 use ir_proto::limits;
 
-use crate::error::{NetError, Result};
+// `NetError` só aparece na documentação e nos testes; o erro vem do `From` de `error`.
+#[cfg(any(test, doc))]
+use crate::error::NetError;
+use crate::error::Result;
 
 /// Bytes do prefixo de tamanho.
 pub const PREFIX: usize = 4;
@@ -57,51 +61,34 @@ pub const MAX_BODY: usize = limits::MAX_TCP_PLAINTEXT + TAG;
 /// [`NetError::TooLarge`] se o corpo passa de [`MAX_BODY`]. Falhar aqui é falha nossa, e custa
 /// menos que descobrir do outro lado.
 pub fn frame(body: &[u8]) -> Result<Vec<u8>> {
-    if body.len() > MAX_BODY {
-        return Err(NetError::TooLarge {
-            size: body.len(),
-            limit: MAX_BODY,
-        });
-    }
-    let Ok(size) = u32::try_from(body.len()) else {
-        return Err(NetError::TooLarge {
-            size: body.len(),
-            limit: MAX_BODY,
-        });
-    };
-    let mut out = Vec::with_capacity(PREFIX + body.len());
-    out.extend_from_slice(&size.to_le_bytes());
-    out.extend_from_slice(body);
-    Ok(out)
+    Ok(enlace::enquadrar::<PREFIX, MAX_BODY>(body)?)
 }
 
 /// Junta os pedaços que chegam do *stream* e devolve um corpo completo de cada vez.
 ///
 /// É o tipo que sabe que o TCP não respeita fronteira de mensagem. Alimente com o que o socket
-/// entregou, do tamanho que vier, e peça corpos até não haver mais nenhum inteiro.
+/// entregou, do tamanho que vier, e peça corpos até não haver mais nenhum inteiro. O trabalho é o
+/// do [`Desenquadrador`] do `ir-crypto`, o mesmo do rádio; aqui só se fixa a largura e o teto, e o
+/// erro sai no vocabulário deste crate.
 #[derive(Debug, Default)]
-pub struct Framer {
-    pending: Vec<u8>,
-}
+pub struct Framer(Desenquadrador<PREFIX, MAX_BODY>);
 
 impl Framer {
     /// Um desenquadrador vazio.
     #[must_use]
     pub const fn new() -> Self {
-        Self {
-            pending: Vec::new(),
-        }
+        Self(Desenquadrador::novo())
     }
 
     /// Guarda os bytes que acabaram de chegar do socket.
     pub fn feed(&mut self, bytes: &[u8]) {
-        self.pending.extend_from_slice(bytes);
+        self.0.alimentar(bytes);
     }
 
     /// Quantos bytes ainda não formaram um corpo inteiro.
     #[must_use]
     pub fn pending(&self) -> usize {
-        self.pending.len()
+        self.0.pendentes()
     }
 
     /// O próximo corpo completo, se já chegou inteiro.
@@ -111,25 +98,7 @@ impl Framer {
     /// [`NetError::TooLarge`] se o tamanho anunciado passa de [`MAX_BODY`] — conferido antes de
     /// reservar memória. Um anúncio absurdo derruba o enlace, e não a máquina.
     pub fn next_body(&mut self) -> Result<Option<Vec<u8>>> {
-        let Some(prefix) = self.pending.get(..PREFIX) else {
-            return Ok(None); // nem o tamanho chegou ainda
-        };
-        let Ok(bytes) = <[u8; PREFIX]>::try_from(prefix) else {
-            return Ok(None);
-        };
-        let size = usize::try_from(u32::from_le_bytes(bytes)).unwrap_or(usize::MAX);
-        if size > MAX_BODY {
-            return Err(NetError::TooLarge {
-                size,
-                limit: MAX_BODY,
-            });
-        }
-        let end = PREFIX + size;
-        if self.pending.len() < end {
-            return Ok(None); // o corpo ainda está chegando
-        }
-        let body: Vec<u8> = self.pending.drain(..end).skip(PREFIX).collect();
-        Ok(Some(body))
+        Ok(self.0.proximo()?)
     }
 }
 

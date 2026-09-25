@@ -27,7 +27,7 @@ use tracing::{debug, info, warn};
 
 use crate::Ajuste;
 use crate::fila::Trabalho;
-use crate::sessao::{anunciar, traduzir_recusa};
+use crate::sessao::{anunciar, anunciar_queda, traduzir_recusa};
 
 /// Quanto esperar por uma resposta do destino antes de considerar o canal perdido.
 ///
@@ -59,10 +59,6 @@ pub(crate) async fn enviar(
         // A cópia saiu da vez, tenha terminado, sido cancelada ou caído com o enlace.
         entrada.fila.terminou();
         if !inteiro {
-            // Interrompido no meio: dizer, para quem ofereceu poder oferecer de novo. Sem isto o
-            // ajudante de clipboard daria a cópia por entregue e não a repetiria.
-            let fase = Fase::Parada(Motivo::CanalCaiu);
-            anunciar(&ajuste.avisos, Sentido::Enviando, "", (0, 0), fase);
             return; // o laço de fora consegue outro enlace
         }
     }
@@ -92,7 +88,7 @@ async fn proximo(entrada: &mut crate::Entrada, respostas: &mut Respostas) -> Opt
 
 /// Conduz um envio inteiro. Devolve `false` quando o enlace caiu.
 async fn uma_transferencia(
-    (remetente, entrada): (&Arc<Mutex<Remetente>>, &crate::Entrada),
+    canal: (&Arc<Mutex<Remetente>>, &crate::Entrada),
     respostas: &mut Respostas,
     (caminhos, leitor): crate::PedidoDeEnvio,
     id: TransferId,
@@ -103,22 +99,53 @@ async fn uma_transferencia(
         Err(erro) => {
             warn!(erro = %erro.sem_caminho(), "não consegui montar o manifesto");
             debug!(%erro, "detalhe do manifesto");
-            anunciar(&ajuste.avisos, Sentido::Enviando, "", (0, 0), parada(&erro));
+            let nome = ir_files::publicacao::nome_do_pedido(&caminhos);
+            anunciar(
+                &ajuste.avisos,
+                Sentido::Enviando,
+                &nome,
+                (0, 0),
+                parada(&erro),
+            );
             return true;
         }
     };
-    let (nome, total) = (plano.nome.clone(), plano.total);
     let arquivos = plano.itens.iter().filter(|item| !item.is_dir).count();
-    info!(itens = plano.itens.len(), total, "enviando arquivos");
+    info!(
+        itens = plano.itens.len(),
+        total = plano.total,
+        "enviando arquivos"
+    );
+    let mut envio = Envio::novo(plano);
+    let fase = Fase::Anunciada;
     anunciar(
         &ajuste.avisos,
         Sentido::Enviando,
-        &nome,
-        (0, total),
-        Fase::Anunciada,
+        envio.nome(),
+        (0, envio.total()),
+        fase,
     );
 
-    let mut envio = Envio::novo(plano);
+    let inteiro = conduzir(canal, respostas, &mut envio, arquivos, ajuste).await;
+    if !inteiro {
+        // Interrompido no meio: dizer, com o nome desta cópia, para quem ofereceu poder oferecer de
+        // novo. Sem isto o ajudante de clipboard daria a cópia por entregue e não a repetiria.
+        let em_curso = (envio.nome(), (envio.enviados(), envio.total()));
+        anunciar_queda(&ajuste.avisos, Sentido::Enviando, Some(em_curso));
+    }
+    inteiro
+}
+
+/// Do manifesto à conferência: manda, espera o aceite, despeja e espera cada arquivo conferir.
+/// Devolve `false` quando o enlace caiu.
+async fn conduzir(
+    (remetente, entrada): (&Arc<Mutex<Remetente>>, &crate::Entrada),
+    respostas: &mut Respostas,
+    envio: &mut Envio,
+    arquivos: usize,
+    ajuste: &Ajuste,
+) -> bool {
+    let (nome, total, id) = (envio.nome().to_owned(), envio.total(), envio.id());
     let manifesto = envio.manifesto();
     if remetente
         .lock()
@@ -139,12 +166,12 @@ async fn uma_transferencia(
         }
         Aceite::Caiu => return false,
     }
-    match crate::despejo::despejar((remetente, entrada), &mut envio, (&nome, total), ajuste).await {
+    match crate::despejo::despejar((remetente, entrada), envio, (&nome, total), ajuste).await {
         crate::despejo::Despejo::Pronto => {}
         crate::despejo::Despejo::Cancelado => return true,
         crate::despejo::Despejo::Caiu => return false,
     }
-    concluir(respostas, &envio, (&nome, total, arquivos), ajuste).await
+    concluir(respostas, envio, (&nome, total, arquivos), ajuste).await
 }
 
 /// Espera o destino conferir cada arquivo, e só então diz ao usuário que chegou.

@@ -87,7 +87,7 @@ mod janela {
     use windows::Win32::Security::{
         DuplicateTokenEx, SecurityIdentification, SetTokenInformation, TOKEN_ADJUST_DEFAULT,
         TOKEN_ADJUST_SESSIONID, TOKEN_ALL_ACCESS, TOKEN_ASSIGN_PRIMARY, TOKEN_DUPLICATE,
-        TOKEN_QUERY, TokenPrimary, TokenSessionId, TokenUIAccess,
+        TOKEN_INFORMATION_CLASS, TOKEN_QUERY, TokenPrimary, TokenSessionId, TokenUIAccess,
     };
     use windows::Win32::System::Environment::{CreateEnvironmentBlock, DestroyEnvironmentBlock};
     use windows::Win32::System::RemoteDesktop::{WTSGetActiveConsoleSessionId, WTSQueryUserToken};
@@ -200,28 +200,23 @@ mod janela {
 
     /// Move o token para a sessão dada. Exige `SeTcbPrivilege`, que `LocalSystem` tem.
     fn mover_para_sessao(token: HANDLE, sessao: u32) -> Result<()> {
-        // SAFETY: `sessao` é um `u32` válido, e o tamanho declarado é o dele.
-        unsafe {
-            SetTokenInformation(
-                token,
-                TokenSessionId,
-                std::ptr::from_ref(&sessao).cast(),
-                u32::try_from(size_of::<u32>()).unwrap_or(4),
-            )
-        }?;
-        Ok(())
+        definir_u32(token, TokenSessionId, sessao)
     }
 
     /// Marca `TokenUIAccess`, a segunda das três origens confiáveis
     /// ([05, §4.4](../../../docs/05-windows.md)).
     fn marcar_ui_access(token: HANDLE) -> Result<()> {
-        let ligado: u32 = 1;
-        // SAFETY: `ligado` é um `u32` válido, e o tamanho declarado é o dele.
+        definir_u32(token, TokenUIAccess, 1)
+    }
+
+    /// Define uma informação do token cujo valor é um `u32` — a sessão e o `UIAccess` são assim.
+    fn definir_u32(token: HANDLE, classe: TOKEN_INFORMATION_CLASS, valor: u32) -> Result<()> {
+        // SAFETY: `valor` é um `u32` válido e vivo durante a chamada, e o tamanho declarado é o dele.
         unsafe {
             SetTokenInformation(
                 token,
-                TokenUIAccess,
-                std::ptr::from_ref(&ligado).cast(),
+                classe,
+                std::ptr::from_ref(&valor).cast(),
                 u32::try_from(size_of::<u32>()).unwrap_or(4),
             )
         }?;

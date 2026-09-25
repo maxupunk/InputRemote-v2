@@ -6,7 +6,7 @@ use ir_ipc::transferencia::Motivo;
 use ir_transporte::dados::Porta;
 use tracing::warn;
 
-use crate::{Ajuste, Entrada, recusar};
+use crate::{Ajuste, Entrada, recusar_enquanto};
 
 /// Abre a porta TCP de arquivos, insistindo até conseguir.
 ///
@@ -26,18 +26,7 @@ pub(crate) async fn abrir_a_porta(ajuste: &Ajuste, entrada: &mut Entrada) -> Opt
                 }
                 let motivo = Motivo::Outro(format!("o canal de arquivos não abriu: {erro}"));
                 let espera = tokio::time::sleep(REABRIR_A_PORTA);
-                tokio::pin!(espera);
-                loop {
-                    tokio::select! {
-                        () = &mut espera => break,
-                        toque = entrada.esperar() => {
-                            toque?;
-                            if let Some(trabalho) = entrada.fila.descartar() {
-                                recusar(ajuste, &trabalho.caminhos, motivo.clone());
-                            }
-                        }
-                    }
-                }
+                recusar_enquanto(ajuste, entrada, espera, &motivo).await?;
             }
         }
     }

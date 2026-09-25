@@ -19,10 +19,13 @@
 
 use ir_proto::carrier::Carrier;
 use ir_proto::ids::{MachineId, MonitorId};
+use ir_proto::input::HidUsage;
 use ir_proto::peer::{Capabilities, ClipboardCapabilities, MachineName, PrivilegedInputLevel};
 use ir_proto::screens::{Edge, MonitorInfo, ScreenLayout};
 use ir_session::event::Notice;
 use ir_session::{Command, CommandBatch, Input, LocalIdentity, Session, SessionConfig, Timestamp};
+
+pub mod is;
 
 /// Quem é quem, para o roteamento.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -229,6 +232,11 @@ impl Pair {
         self.feed(Side::Client, Input::CarrierUp(carrier));
     }
 
+    /// Uma tecla desce ou sobe no teclado deste lado.
+    pub fn key(&mut self, side: Side, usage: HidUsage, pressed: bool) {
+        self.feed(side, Input::LocalKey { usage, pressed });
+    }
+
     /// Entrega um evento a um lado e propaga o que sair.
     pub fn feed(&mut self, side: Side, input: Input) {
         let mut batch = CommandBatch::new();
@@ -346,55 +354,5 @@ impl Pair {
                 _ => None,
             })
             .collect()
-    }
-}
-
-/// Testes prontos, para as asserções ficarem legíveis nos cenários.
-pub mod is {
-    use super::Command;
-    use ir_proto::message::{Control, Message};
-
-    pub fn release_all(command: &Command) -> bool {
-        matches!(command, Command::ReleaseAll)
-    }
-
-    pub fn injection(command: &Command) -> bool {
-        matches!(command, Command::Inject(_))
-    }
-
-    pub fn suppress(command: &Command) -> bool {
-        matches!(command, Command::SuppressLocalInput(true))
-    }
-
-    pub fn unsuppress(command: &Command) -> bool {
-        matches!(command, Command::SuppressLocalInput(false))
-    }
-
-    pub fn warp(command: &Command) -> bool {
-        matches!(command, Command::WarpPointer(_))
-    }
-
-    pub fn enter_screen(command: &Command) -> bool {
-        matches!(
-            command,
-            Command::Send { frame, .. }
-                if matches!(frame.message, Message::Control(Control::EnterScreen { .. }))
-        )
-    }
-
-    pub fn snapshot(command: &Command) -> bool {
-        matches!(
-            command,
-            Command::Send { frame, .. }
-                if matches!(frame.message, Message::Control(Control::StateSnapshot { .. }))
-        )
-    }
-
-    pub fn leave_screen(command: &Command) -> bool {
-        matches!(
-            command,
-            Command::Send { frame, .. }
-                if matches!(frame.message, Message::Control(Control::LeaveScreen { .. }))
-        )
     }
 }

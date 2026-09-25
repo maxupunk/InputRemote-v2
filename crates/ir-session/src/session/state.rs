@@ -32,48 +32,78 @@ pub struct PeerInfo {
     pub version: ProtocolVersion,
 }
 
-/// Quais portadores estão disponíveis agora.
+/// Um valor por portador de entrada.
 ///
-/// Um campo por portador, e não um vetor: são três, o conjunto nunca cresce, e um campo
-/// nomeado não tem caminho de indexação inválida.
+/// Um campo por portador, e não um vetor: são dois, o conjunto nunca cresce, e um campo nomeado
+/// não tem caminho de indexação inválida. O TCP não tem campo — ele não leva entrada, e a sessão
+/// não fala por ele —, e perguntar por ele devolve `None` em vez de cair no campo de outro.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CarrierSet {
-    rfcomm: bool,
-    udp: bool,
-    tcp: bool,
+pub struct PerInputCarrier<T> {
+    /// O do Bluetooth.
+    pub rfcomm: T,
+    /// O da rede.
+    pub udp: T,
 }
 
-impl CarrierSet {
-    /// Nenhum portador disponível.
-    pub const NONE: Self = Self {
-        rfcomm: false,
-        udp: false,
-        tcp: false,
-    };
-
-    /// Marca um portador como disponível ou não.
-    pub const fn set(&mut self, carrier: Carrier, available: bool) {
-        match carrier {
-            Carrier::Rfcomm => self.rfcomm = available,
-            Carrier::Udp => self.udp = available,
-            Carrier::Tcp => self.tcp = available,
+impl<T> PerInputCarrier<T> {
+    /// O mesmo valor nos dois.
+    pub const fn both(value: T) -> Self
+    where
+        T: Copy,
+    {
+        Self {
+            rfcomm: value,
+            udp: value,
         }
     }
 
-    /// Se este portador está disponível.
+    /// O valor deste portador; `None` para o TCP.
+    #[must_use]
+    pub const fn get(&self, carrier: Carrier) -> Option<&T> {
+        match carrier {
+            Carrier::Rfcomm => Some(&self.rfcomm),
+            Carrier::Udp => Some(&self.udp),
+            Carrier::Tcp => None,
+        }
+    }
+
+    /// O valor deste portador, para mudar; `None` para o TCP.
+    pub const fn get_mut(&mut self, carrier: Carrier) -> Option<&mut T> {
+        match carrier {
+            Carrier::Rfcomm => Some(&mut self.rfcomm),
+            Carrier::Udp => Some(&mut self.udp),
+            Carrier::Tcp => None,
+        }
+    }
+}
+
+/// Quais portadores de entrada estão disponíveis agora.
+///
+/// O TCP não entra: ele é o canal de dados, não estabelece sessão e nunca é escolhido.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CarrierSet(PerInputCarrier<bool>);
+
+impl CarrierSet {
+    /// Nenhum portador disponível.
+    pub const NONE: Self = Self(PerInputCarrier::both(false));
+
+    /// Marca um portador como disponível ou não. Para o TCP, não faz nada.
+    pub const fn set(&mut self, carrier: Carrier, available: bool) {
+        if let Some(slot) = self.0.get_mut(carrier) {
+            *slot = available;
+        }
+    }
+
+    /// Se este portador de entrada está disponível. O TCP nunca está.
     #[must_use]
     pub const fn has(self, carrier: Carrier) -> bool {
-        match carrier {
-            Carrier::Rfcomm => self.rfcomm,
-            Carrier::Udp => self.udp,
-            Carrier::Tcp => self.tcp,
-        }
+        matches!(self.0.get(carrier), Some(true))
     }
 
     /// Se nenhum portador de entrada está disponível.
     #[must_use]
     pub const fn has_no_input_carrier(self) -> bool {
-        !self.rfcomm && !self.udp
+        !self.0.rfcomm && !self.0.udp
     }
 
     /// O portador de entrada a usar, e por quê.
@@ -98,10 +128,10 @@ impl CarrierSet {
                 None
             };
         }
-        if self.rfcomm {
+        if self.0.rfcomm {
             return Some((Carrier::Rfcomm, CarrierChoice::Preferred));
         }
-        if self.udp {
+        if self.0.udp {
             return Some((Carrier::Udp, CarrierChoice::FellBackToNetwork));
         }
         None
@@ -124,14 +154,12 @@ pub struct Clock {
     pub last_pointer: Timestamp,
     /// Quando saiu a última confirmação pura.
     pub last_bare_ack: Timestamp,
-    /// Quando chegou o último quadro pelo Bluetooth.
+    /// Quando chegou o último quadro por cada portador de entrada.
     ///
-    /// Os dois carimbos por portador não decidem prazo nenhum — quem decide é [`Self::last_rx`],
-    /// que conta a rota inteira. Eles existem para a interface poder dizer qual dos dois
-    /// portadores da rota dupla parou de responder.
-    pub last_rx_rfcomm: Timestamp,
-    /// Quando chegou o último quadro pela rede.
-    pub last_rx_udp: Timestamp,
+    /// Os carimbos por portador não decidem prazo nenhum — quem decide é [`Self::last_rx`], que
+    /// conta a rota inteira. Eles existem para a interface poder dizer qual dos dois portadores
+    /// da rota dupla parou de responder.
+    pub carrier_rx: PerInputCarrier<Timestamp>,
 }
 
 impl Clock {
@@ -147,26 +175,14 @@ impl Clock {
             last_snapshot: now,
             last_pointer: now,
             last_bare_ack: now,
-            last_rx_rfcomm: now,
-            last_rx_udp: now,
+            carrier_rx: PerInputCarrier::both(now),
         }
     }
 
-    /// Anota que chegou um quadro por este portador.
+    /// Anota que chegou um quadro por este portador. Pelo TCP, não há o que anotar.
     pub const fn mark_carrier_rx(&mut self, carrier: Carrier, at: Timestamp) {
-        match carrier {
-            Carrier::Rfcomm => self.last_rx_rfcomm = at,
-            Carrier::Udp => self.last_rx_udp = at,
-            Carrier::Tcp => {}
-        }
-    }
-
-    /// Quando chegou o último quadro por este portador.
-    #[must_use]
-    pub const fn carrier_rx(&self, carrier: Carrier) -> Timestamp {
-        match carrier {
-            Carrier::Rfcomm => self.last_rx_rfcomm,
-            Carrier::Udp | Carrier::Tcp => self.last_rx_udp,
+        if let Some(last) = self.carrier_rx.get_mut(carrier) {
+            *last = at;
         }
     }
 }
@@ -245,6 +261,23 @@ mod tests {
         assert_eq!(
             set.pick_input_carrier(None),
             Some((Carrier::Udp, CarrierChoice::FellBackToNetwork))
+        );
+    }
+
+    #[test]
+    fn tcp_has_no_slot_of_its_own_nor_borrows_another() {
+        let mut per = PerInputCarrier::both(0u8);
+        per.rfcomm = 1;
+        per.udp = 2;
+        assert_eq!(per.get(Carrier::Rfcomm), Some(&1));
+        assert_eq!(per.get(Carrier::Udp), Some(&2));
+        assert_eq!(per.get(Carrier::Tcp), None, "nem o da rede, nem o do rádio");
+        assert!(per.get_mut(Carrier::Tcp).is_none());
+        let mut clock = Clock::started_at(Timestamp::from_millis(1));
+        clock.mark_carrier_rx(Carrier::Tcp, Timestamp::from_millis(9));
+        assert_eq!(
+            clock.carrier_rx,
+            PerInputCarrier::both(Timestamp::from_millis(1))
         );
     }
 

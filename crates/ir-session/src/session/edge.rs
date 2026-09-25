@@ -100,12 +100,8 @@ impl Session {
             // Devolver pelo caminho da volta normal: o par solta tudo e para de injetar, e só
             // então a borda muda. Os dois avisos vão pelo canal de controle, que entrega na ordem.
             Phase::Sending => {
-                let message = Control::LeaveScreen {
-                    leaving_edge: self.config.peer_edge.opposite(),
-                    position: self.local_position(),
-                };
-                self.send(now, Message::Control(message), out);
-                self.take_control_back(u16::MAX / 2, out);
+                let leaving = (self.config.peer_edge.opposite(), self.local_position());
+                self.leave_peer_screen(now, leaving, u16::MAX / 2, out);
             }
             Phase::Receiving => self.reclaim(now, out),
             _ => {}
@@ -115,7 +111,15 @@ impl Session {
 
 /// Se a escolha `a` vale sobre a `b`: a mais recente; no empate, a do identificador menor.
 pub(super) fn prevails(a: (u64, &MachineId), b: (u64, &MachineId)) -> bool {
-    a.0 > b.0 || (a.0 == b.0 && a.1.0 < b.1.0)
+    a.0 > b.0 || (a.0 == b.0 && id_wins_tie(a.1, b.1))
+}
+
+/// O desempate entre as duas pontas: vence o identificador de instalação menor.
+///
+/// Uma regra só para todo empate — a borda escolhida ao mesmo tempo, os dois atravessando juntos —
+/// porque as duas pontas fazem a mesma conta com os valores trocados, e exatamente uma vence.
+pub(super) fn id_wins_tie(mine: &MachineId, theirs: &MachineId) -> bool {
+    mine.0 < theirs.0
 }
 
 #[cfg(test)]

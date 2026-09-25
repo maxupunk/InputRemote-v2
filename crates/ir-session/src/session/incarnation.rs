@@ -9,7 +9,7 @@ use ir_proto::frame::{Epoch, Frame};
 
 use crate::event::{CommandBatch, LinkDown};
 use crate::phase::Phase;
-use crate::session::{Clock, Session};
+use crate::session::Session;
 use crate::time::Timestamp;
 
 impl Session {
@@ -26,11 +26,13 @@ impl Session {
     ) -> bool {
         match self.incarnations.admit(frame) {
             Admission::Current => true,
-            Admission::Stale => false,
-            Admission::NewPeer => {
+            Admission::NewPeer if carrier.carries_input() => {
                 self.follow_new_peer(now, carrier, frame.epoch, out);
                 true
             }
+            // Só um portador de entrada abre sessão: o TCP é o canal de dados, e um aperto de mão
+            // por ele deixaria a época do par conhecida sem rota por onde responder.
+            Admission::NewPeer | Admission::Stale => false,
         }
     }
 
@@ -47,18 +49,11 @@ impl Session {
             self.tear_down(now, LinkDown::PeerRestarted, out);
         }
         if self.phase == Phase::Offline {
-            if carrier.carries_input() {
-                // Quem ouve primeiro, responde — mas numa encarnação própria, do zero. Sem isto a
-                // resposta sairia com a numeração e a época de uma sessão que já acabou.
-                self.available.set(carrier, true);
-                self.route = Some(super::Route::Single(carrier));
-                self.last_pointer_rx = None;
-                self.seqs.reset();
-                self.reliability.reset();
-                self.clock = Clock::started_at(now);
-                self.incarnations.start_local();
-                self.move_to(Phase::Handshaking, out);
-            }
+            // Quem ouve primeiro, responde — mas numa encarnação própria, do zero. Sem isto a
+            // resposta sairia com a numeração e a época de uma sessão que já acabou.
+            self.available.set(carrier, true);
+            self.open_incarnation(now, carrier);
+            self.move_to(Phase::Handshaking, out);
         } else {
             // No meio do nosso aperto de mão: o que o par mandou até aqui era de outra sessão dele.
             self.reliability.reset_receivers();

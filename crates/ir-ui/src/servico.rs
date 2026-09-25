@@ -7,7 +7,7 @@
 //! O contrato é pequeno de propósito. Se ele crescer, é sinal de que lógica de produto está
 //! vazando para cá — que é exatamente como o v1 acabou com 10.491 linhas no crate da interface.
 
-use ir_ipc::{Autoridade, Aviso, Pedido, Resposta};
+use ir_ipc::{Autoridade, Aviso, Falha, Pedido, Resposta};
 
 /// Um serviço com que a interface consegue conversar.
 pub trait Servico {
@@ -78,30 +78,22 @@ impl Desconexao {
         }
     }
 
-    /// O que fazer a respeito.
+    /// A falha de pedido que esta desconexão representa.
+    #[must_use]
+    pub const fn falha(self) -> Falha {
+        match self {
+            Self::ServicoParado => Falha::ServicoIndisponivel,
+            Self::SemPermissao => Falha::SemPermissao,
+        }
+    }
+
+    /// O que fazer a respeito, na instrução da plataforma em que a janela está.
     ///
-    /// A instrução é da plataforma em que a janela está: um comando de Linux mostrado no Windows
-    /// ensinaria a pessoa a desconfiar das instruções.
+    /// É a da falha correspondente ([`Falha::o_que_fazer`]): a faixa da janela desconectada e a
+    /// falha de um pedido dizem a mesma coisa, porque são a mesma situação.
     #[must_use]
     pub const fn o_que_fazer(self) -> &'static str {
-        match self {
-            Self::ServicoParado if cfg!(windows) => {
-                "Confira o serviço \"InputRemote\" em Serviços do Windows. Esta janela reconecta \
-                 sozinha quando ele voltar."
-            }
-            Self::ServicoParado => {
-                "Suba o serviço com \"sudo systemctl enable --now inputremote\". Esta janela \
-                 reconecta sozinha quando ele voltar."
-            }
-            Self::SemPermissao if cfg!(windows) => {
-                "Reinstale a versão atual do InputRemote como administrador. Esta janela reconecta \
-                 sozinha quando a permissão estiver certa."
-            }
-            Self::SemPermissao => {
-                "Peça a um administrador: \"sudo usermod -aG inputremote <seu usuário>\". Vale na \
-                 hora, sem reiniciar, e esta janela reconecta sozinha."
-            }
-        }
+        self.falha().o_que_fazer()
     }
 }
 
@@ -132,17 +124,6 @@ mod tests {
                 "{motivo:?}: `{}`",
                 motivo.o_que_fazer()
             );
-        }
-    }
-
-    #[test]
-    fn sem_permissao_no_linux_nao_manda_reiniciar() {
-        // A permissão é conferida no banco de usuários na hora da conexão. Mandar reiniciar seria
-        // repetir a instrução errada que a correção existiu para aposentar.
-        if !cfg!(windows) {
-            let instrucao = Desconexao::SemPermissao.o_que_fazer();
-            assert!(instrucao.contains("sem reiniciar"), "{instrucao}");
-            assert!(instrucao.contains("usermod"), "{instrucao}");
         }
     }
 }

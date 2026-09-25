@@ -27,12 +27,15 @@ use windows::Win32::System::StationsAndDesktops::{
 };
 use windows::core::HSTRING;
 
+use ir_proto::screens::ScreenLayout;
+
 use super::sendinput::SendInputInjector;
+use crate::desktop::{self, PADRAO, SEGURO};
 use crate::error::{InputError, Result};
 use crate::{InjectEvent, Injector};
 
 /// Os desktops em que se injeta, na ordem em que as threads nascem.
-const DESKTOPS: &[&str] = &["Default", "Winlogon", "Screen-saver"];
+const DESKTOPS: &[&str] = &[PADRAO, SEGURO, "Screen-saver"];
 
 /// De quanto em quanto tempo se pergunta ao sistema qual é o desktop de entrada.
 ///
@@ -44,6 +47,8 @@ const VALIDADE: Duration = Duration::from_millis(100);
 enum Pedido {
     Injetar(InjectEvent, SyncSender<Result<()>>),
     SoltarTudo,
+    /// O arranjo de telas mudou: cada thread tem o próprio injetor, e cada um precisa dele.
+    UsarTelas(ScreenLayout),
 }
 
 /// Uma thread de desktop viva.
@@ -71,7 +76,7 @@ impl InjetorPorDesktop {
     /// [`InputError::Unsupported`] se nem o `Default` abrir.
     pub fn novo() -> Result<Self> {
         let threads: Vec<Thread> = DESKTOPS.iter().filter_map(|nome| lancar(nome)).collect();
-        if !threads.iter().any(|thread| thread.nome == "Default") {
+        if !threads.iter().any(|thread| thread.nome == PADRAO) {
             return Err(InputError::Unsupported);
         }
         let nomes: Vec<&str> = threads.iter().map(|thread| thread.nome).collect();
@@ -93,7 +98,7 @@ impl InjetorPorDesktop {
             return nome.clone();
         }
         // Sem resposta — o que acontece por instantes durante a troca —, vale a área de trabalho.
-        let nome = nome_do_desktop_de_entrada().unwrap_or_else(|| "Default".to_owned());
+        let nome = nome_do_desktop_de_entrada().unwrap_or_else(|| PADRAO.to_owned());
         self.atual = Some((nome.clone(), agora));
         nome
     }
@@ -109,7 +114,7 @@ fn escolher<'a, T>(alvos: &'a [T], desktop: &str, nome: impl Fn(&T) -> &str) -> 
     alvos
         .iter()
         .find(|alvo| nome(alvo).eq_ignore_ascii_case(desktop))
-        .or_else(|| alvos.iter().find(|alvo| nome(alvo) == "Default"))
+        .or_else(|| alvos.iter().find(|alvo| nome(alvo) == PADRAO))
 }
 
 impl Injector for InjetorPorDesktop {
@@ -128,7 +133,7 @@ impl Injector for InjetorPorDesktop {
             tracing::info!(desktop = nome, "injetando em outro desktop");
         }
         self.ultimo = Some(nome);
-        if nome != "Default" && !self.protegido_permitido {
+        if desktop::protegido(nome) && !self.protegido_permitido {
             // A tela de bloqueio ou o UAC, sem a permissão do administrador desta máquina.
             return Err(InputError::Rejected);
         }
@@ -146,6 +151,12 @@ impl Injector for InjetorPorDesktop {
             let _ = thread.pedidos.send(Pedido::SoltarTudo);
         }
         Ok(())
+    }
+
+    fn usar_telas(&mut self, telas: &ScreenLayout) {
+        for thread in &self.threads {
+            let _ = thread.pedidos.send(Pedido::UsarTelas(telas.clone()));
+        }
     }
 
     fn desktop(&self) -> Option<String> {
@@ -195,6 +206,7 @@ fn servir(nome: &'static str, recebidos: &Receiver<Pedido>, pronta: &SyncSender<
             Pedido::SoltarTudo => {
                 let _ = injetor.release_all();
             }
+            Pedido::UsarTelas(telas) => injetor.usar_telas(&telas),
         }
     }
     // SAFETY: o handle veio de `OpenDesktopW` e não é mais usado; a thread está terminando.

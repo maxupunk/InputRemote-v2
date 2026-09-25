@@ -243,6 +243,30 @@ async fn recusar_o_codigo_derruba_o_enlace_nos_dois_lados() {
 }
 
 #[tokio::test]
+async fn com_a_janela_fechada_o_estranho_e_recusado_antes_de_ver_codigo() {
+    // Como na rede: o modo vem em claro, e a recusa acontece nele. Antes o rádio fazia o `XX`
+    // inteiro e só então derrubava — e quem ligou já tinha o código de seis dígitos na tela.
+    let mut dupla = subir();
+    mandar(&dupla.la, BtCommand::AcceptPairing(false));
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    mandar(
+        &dupla.aqui,
+        BtCommand::Connect {
+            peer: LA,
+            mode: ConnectMode::Pair,
+        },
+    );
+    match proximo(&mut dupla.aqui.events).await {
+        BtEvent::Error(_) => {}
+        outro => panic!("quem ligou não pode ver código, veio {outro:?}"),
+    }
+    assert!(
+        durante_o_silencio(&mut dupla.la.events).await.is_none(),
+        "e deste lado não aparece nada"
+    );
+}
+
+#[tokio::test]
 async fn conectar_a_quem_nao_esta_pareado_diz_o_que_fazer() {
     // A exigência escrita no ADR-0005: distinguir "não pareado no sistema" de "pareado, mas o
     // serviço não responde" — e dizer qual é. Sem isso o usuário mexe no lugar errado.

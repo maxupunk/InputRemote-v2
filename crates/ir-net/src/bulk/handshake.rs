@@ -23,7 +23,8 @@
 
 use core::time::Duration;
 
-use ir_crypto::{CryptoError, Handshake, Identity, PublicKey};
+use ir_crypto::enlace::concluir;
+use ir_crypto::{Handshake, Identity, PublicKey};
 
 use crate::bulk::link::BulkLink;
 use crate::bulk::stream::{Channel, Frames};
@@ -89,16 +90,11 @@ async fn run<C: Channel>(
             handshake.read_message(&body)?;
         }
     }
-    if !handshake.is_finished() {
-        return Err(NetError::Crypto(CryptoError::NotFinished));
-    }
-    let peer = handshake
-        .remote_static()
-        .ok_or(NetError::Crypto(CryptoError::Handshake))?;
-    if peer != expected {
+    let established = concluir(handshake)?;
+    if established.peer_static != expected {
         return Err(NetError::WrongPeer);
     }
-    Ok(BulkLink::new(frames, handshake.into_transport()?))
+    Ok(BulkLink::new(frames, established.transport))
 }
 
 /// Uma mensagem do par, com prazo.

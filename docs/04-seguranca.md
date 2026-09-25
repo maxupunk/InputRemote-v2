@@ -49,8 +49,9 @@ nunca sai da máquina e é gravada com ACL `SYSTEM` + `Administrators` (Windows)
 `0600 root:root` (Linux). Ela é da **máquina**, não do usuário — o serviço precisa dela
 antes de haver usuário.
 
-Impressão digital exibida ao usuário: BLAKE3 da chave pública, em 8 grupos de 4
-caracteres da base32 sem ambiguidade.
+Impressão digital exibida ao usuário: BLAKE3 da chave pública, em 5 grupos de 4
+caracteres da base32 sem ambiguidade (100 bits, `ir_crypto::Fingerprint`). É a mesma no
+registro do serviço e na janela: o serviço a calcula e a janela só a mostra.
 
 ### 3.2. Primeiro pareamento
 

@@ -24,8 +24,7 @@ use crate::error::{ProtoError, Result};
 /// da versão 2 não as decodificaria —, e por isso a versão 2 continua aceita.
 ///
 /// Versão 4: `Control::SecureAttention`, o Ctrl+Alt+Del pedido pelo lado que controla, e
-/// `Control::ProtectedDesktop`, o controlado dizendo que recusa digitação na tela de bloqueio. Só
-/// vão para um par da versão 4 ([`PROTECTED_DESKTOP`]).
+/// `Control::ProtectedDesktop`, o controlado dizendo que recusa digitação na tela de bloqueio.
 ///
 /// Versão 5: `Control::Role`, cada ponta anunciando o próprio papel.
 ///
@@ -33,12 +32,6 @@ use crate::error::{ProtoError, Result};
 /// mais papel: `Control::Role` saiu, `Control::Reclaim` entrou, `EdgeConfig` leva quando a borda foi
 /// escolhida, e `Capabilities::declines_control` diz se a ponta recusa ser controlada.
 pub const CURRENT: ProtocolVersion = ProtocolVersion(6);
-
-/// A primeira versão que entende Ctrl+Alt+Del pedido e a recusa no desktop protegido.
-pub const PROTECTED_DESKTOP: ProtocolVersion = ProtocolVersion(4);
-
-/// A primeira versão que entende as mensagens de economia de energia do Wi-Fi.
-pub const NETWORK_POWER: ProtocolVersion = ProtocolVersion(3);
 
 /// Versão mais antiga que esta build ainda aceita conversar.
 ///
@@ -48,13 +41,17 @@ pub const NETWORK_POWER: ProtocolVersion = ProtocolVersion(3);
 /// confirma nada, e a janela de retransmissão desta encheria até derrubar a sessão a cada
 /// segundo — em silêncio, parecendo defeito de rádio. Recusar na negociação diz o motivo. Não há
 /// versão 1 lançada com quem manter compatibilidade (`tests/vectors/main.rs`, exceção de
-/// pré-lançamento). Ficou em 2 quando [`CURRENT`] foi a 3: o que a versão 3 acrescenta só vai
-/// para quem a fala ([`NETWORK_POWER`]).
+/// pré-lançamento). Ficou em 2 quando [`CURRENT`] foi a 3: o que a versão 3 acrescenta ia só
+/// para quem a falava.
 ///
 /// Subiu para 6 com o controle simétrico: numa versão anterior cada ponta tem um papel fixo, e
 /// conversar com ela exigiria manter os dois modelos vivos na sessão. Sem versão lançada, os dois
 /// computadores do usuário atualizam juntos, e o par antigo é recusado na negociação com o motivo
 /// ("o outro computador tem uma versão mais antiga").
+///
+/// Consequência para quem manda: toda mensagem que entrou até esta versão vai a qualquer par
+/// aceito, sem portão de versão na sessão. Só o que entrar **depois** dela precisa perguntar a
+/// versão acordada antes de sair.
 pub const MIN_SUPPORTED: ProtocolVersion = ProtocolVersion(6);
 
 /// Versão do protocolo, monotônica.

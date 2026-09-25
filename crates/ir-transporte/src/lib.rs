@@ -51,19 +51,26 @@ use std::net::SocketAddr;
 use ir_bt::BdAddr;
 use ir_crypto::PublicKey;
 use ir_proto::carrier::Carrier;
-use ir_proto::ids::{MachineId, RadioAddress};
+use ir_proto::ids::RadioAddress;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
-/// O identificador de máquina de uma chave: os 16 primeiros bytes dela.
+/// Repassa os eventos de um endpoint como fatos do serviço, até um dos lados ir embora.
 ///
-/// Um lugar só: o serviço, a descoberta e o canal de arquivos derivavam cada um o seu, e é por
-/// esse número que a descoberta reconhece o par fixado na rede.
-#[must_use]
-pub fn maquina_da_chave(chave: &PublicKey) -> MachineId {
-    let mut bytes = [0u8; 16];
-    if let Some(inicio) = chave.0.get(..16) {
-        bytes.copy_from_slice(inicio);
+/// Uma vez só para os dois adaptadores: o que difere entre rede e rádio é a tradução, `traduzir`,
+/// que cada um escreve como função pura e testa sem socket.
+async fn repassar<E>(
+    mut eventos: UnboundedReceiver<E>,
+    fatos: UnboundedSender<Fato>,
+    traduzir: fn(E) -> Option<Fato>,
+) {
+    while let Some(evento) = eventos.recv().await {
+        let Some(fato) = traduzir(evento) else {
+            continue;
+        };
+        if fatos.send(fato).is_err() {
+            break; // o ator encerrou
+        }
     }
-    MachineId(bytes)
 }
 
 /// Onde um par pode ser alcançado.
@@ -101,10 +108,16 @@ impl Endereco {
     /// que permite a interface continuar mandando
     /// [`Pedido::IniciarPareamento`](ir_ipc::Pedido) com um texto só, sem ganhar vocabulário
     /// novo por causa do Bluetooth.
+    ///
+    /// Um IP sem porta vale a porta padrão ([`ir_proto::DEFAULT_PORT`]), a mesma regra da janela
+    /// (`ir_ipc::vocabulario::endereco::normalizar`).
     pub fn ler(texto: &str) -> Option<Self> {
         let limpo = texto.trim();
         if let Ok(radio) = limpo.parse::<BdAddr>() {
             return Some(Self::Radio(radio));
+        }
+        if let Ok(ip) = limpo.parse::<std::net::IpAddr>() {
+            return Some(Self::Rede(SocketAddr::new(ip, ir_proto::DEFAULT_PORT)));
         }
         limpo.parse::<SocketAddr>().ok().map(Self::Rede)
     }
@@ -244,6 +257,11 @@ mod tests {
     }
 
     #[test]
+    fn o_ip_sem_porta_vale_a_porta_padrao_como_na_janela() {
+        assert_eq!(Endereco::ler(" 10.0.0.135 "), Endereco::ler(REDE));
+    }
+
+    #[test]
     fn cada_endereco_sabe_o_proprio_portador() {
         assert_eq!(
             Endereco::ler(RADIO).expect("rádio").portador(),
@@ -275,7 +293,7 @@ mod tests {
 
     #[test]
     fn um_endereco_sem_sentido_e_recusado() {
-        for texto in ["", "   ", "nada", "10.0.0.135", "AC:50:DE:47:EB", "::"] {
+        for texto in ["", "   ", "nada", "10.0.0.135:", "AC:50:DE:47:EB", "::1:"] {
             assert_eq!(Endereco::ler(texto), None, "{texto} não é endereço");
         }
     }

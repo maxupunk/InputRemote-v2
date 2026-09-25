@@ -24,7 +24,7 @@ use bluer::rfcomm::{Listener, SocketAddr, Stream};
 
 use crate::addr::{BdAddr, CANAL};
 use crate::bluez;
-use crate::error::{BtError, Result};
+use crate::error::{BtError, FalhaDeConexao, Result, para_erro};
 use crate::radio::{Dispositivo, Radio};
 
 /// Onde o BlueZ guarda os pares conhecidos.
@@ -90,7 +90,7 @@ impl Radio for RadioLinux {
         let destino = SocketAddr::new(Address(alvo.bytes()), CANAL);
         Stream::connect(destino)
             .await
-            .map_err(|erro| traduzir(&erro, alvo))
+            .map_err(|erro| para_erro(classificar(erro), alvo))
     }
 
     async fn aceitar(&self) -> Result<(Self::Canal, BdAddr)> {
@@ -183,30 +183,35 @@ fn endereco_do_caminho(caminho: &Path) -> Option<BdAddr> {
     caminho.file_name()?.to_str()?.parse().ok()
 }
 
-/// Traduz a falha de conexão no que o usuário precisa ouvir.
-fn traduzir(erro: &std::io::Error, alvo: BdAddr) -> BtError {
+/// Diz qual situação é a falha de conexão que o kernel devolveu. A mensagem é de
+/// [`para_erro`], a mesma do Windows.
+fn classificar(erro: std::io::Error) -> FalhaDeConexao {
     use std::io::ErrorKind;
 
     /// `EBUSY`: o kernel já tem uma sessão RFCOMM com este par neste canal.
     const OCUPADO: i32 = 16;
+    /// `EHOSTDOWN`: a página do rádio não achou o par (o `ErrorKind` dele é genérico).
+    const PAR_DESLIGADO: i32 = 112;
 
-    if erro.raw_os_error() == Some(OCUPADO) {
+    match erro.raw_os_error() {
         // Não é falta de par nem falta de resposta: é sobra de uma conexão anterior que o enlace
         // de baixo nível ainda segura (log 28). Chamar isto de "erro de socket" mandava a pessoa
         // procurar defeito onde não há.
-        return BtError::Ocupado(alvo.to_string());
+        Some(OCUPADO) => return FalhaDeConexao::Ocupado,
+        Some(PAR_DESLIGADO) => return FalhaDeConexao::SemAlcance,
+        _ => {}
     }
-
     match erro.kind() {
         // O par existe e está pareado, mas ninguém atende no canal do produto.
-        ErrorKind::ConnectionRefused | ErrorKind::ConnectionReset | ErrorKind::TimedOut => {
-            BtError::SemResposta
-        }
+        ErrorKind::ConnectionRefused | ErrorKind::ConnectionReset => FalhaDeConexao::Recusada,
+        // O rádio não chegou ao par: é o `WSAEHOSTUNREACH`/`WSAETIMEDOUT` do Windows, e tem de
+        // dizer a mesma coisa. Antes `HostUnreachable` virava "não está pareado" aqui e "não
+        // atendeu" lá, para a mesma situação.
+        ErrorKind::TimedOut | ErrorKind::HostUnreachable => FalhaDeConexao::SemAlcance,
         // O kernel não tem vínculo com este endereço.
-        ErrorKind::HostUnreachable | ErrorKind::NotConnected => {
-            BtError::NaoPareado(alvo.to_string())
-        }
-        _ => BtError::Io(std::io::Error::new(erro.kind(), erro.to_string())),
+        ErrorKind::NotConnected => FalhaDeConexao::NaoPareado,
+        ErrorKind::NetworkDown => FalhaDeConexao::RadioCaiu,
+        _ => FalhaDeConexao::Outra(erro),
     }
 }
 
@@ -298,6 +303,29 @@ mod tests {
     fn conexao_recusada_vira_sem_resposta_e_nao_erro_cru() {
         let alvo = BdAddr([1, 2, 3, 4, 5, 6]);
         let recusada = std::io::Error::from(std::io::ErrorKind::ConnectionRefused);
-        assert!(matches!(traduzir(&recusada, alvo), BtError::SemResposta));
+        assert!(matches!(
+            para_erro(classificar(recusada), alvo),
+            BtError::SemResposta
+        ));
+    }
+
+    #[test]
+    fn os_codigos_do_kernel_viram_a_situacao_certa() {
+        use std::io::{Error, ErrorKind};
+        let casos = [
+            (Error::from_raw_os_error(16), "Ocupado"),
+            (Error::from_raw_os_error(112), "SemAlcance"),
+            (Error::from(ErrorKind::HostUnreachable), "SemAlcance"),
+            (Error::from(ErrorKind::TimedOut), "SemAlcance"),
+            (Error::from(ErrorKind::NotConnected), "NaoPareado"),
+            (Error::from(ErrorKind::NetworkDown), "RadioCaiu"),
+        ];
+        for (erro, esperado) in casos {
+            let falha = format!("{:?}", classificar(erro));
+            assert!(
+                falha.starts_with(esperado),
+                "{falha} deveria ser {esperado}"
+            );
+        }
     }
 }

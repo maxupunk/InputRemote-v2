@@ -12,7 +12,7 @@ mod common;
 use common::{Pair, Side, is};
 use ir_proto::carrier::Carrier;
 use ir_proto::input::{Button, HidUsage, PointerDelta};
-use ir_session::event::LinkDown;
+use ir_session::event::{LinkDown, Notice};
 use ir_session::{Command, Input, Phase};
 
 /// Leva o ponteiro do servidor até a borda direita e atravessa.
@@ -127,6 +127,14 @@ fn losing_the_agent_while_being_controlled_gives_control_back() {
         Phase::Ready,
         "e o controle volta para quem digita"
     );
+    // Como toda devolução de quem recebe que não é pela borda: uma retomada. O cursor de quem
+    // digita fica onde saiu, sem ser levado de volta pela borda.
+    let reclaimed = |side, here| {
+        pair.notices(side)
+            .contains(&Notice::ControlReclaimed { here })
+    };
+    assert!(reclaimed(Side::Client, true) && reclaimed(Side::Server, false));
+    assert!(!pair.any(Side::Server, is::warp));
 }
 
 #[test]

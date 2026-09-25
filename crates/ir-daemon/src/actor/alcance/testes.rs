@@ -3,7 +3,7 @@
 #![allow(clippy::expect_used)]
 
 use ir_crypto::PublicKey;
-use ir_ipc::{Pedido, Portador};
+use ir_ipc::Pedido;
 use ir_proto::carrier::Carrier;
 use ir_proto::ids::RadioAddress;
 use ir_transporte::{Endereco, Fato};
@@ -121,7 +121,7 @@ fn uma_discagem_que_falha_libera_a_proxima() {
 fn com_o_bluetooth_fixado_a_rede_nao_e_discada() {
     let mut bancada = pareado_pela_rede();
     bancada.daemon.alcance.anotar(Endereco::do_radio(RADIO));
-    bancada.daemon.portador_fixado = Some(Portador::Bluetooth);
+    bancada.daemon.config.fixar(Some(Carrier::Rfcomm));
 
     bancada.daemon.reconnect_if_needed();
 

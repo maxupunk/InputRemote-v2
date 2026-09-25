@@ -13,7 +13,6 @@
 #![allow(unsafe_code)]
 
 use std::ffi::OsString;
-use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -79,11 +78,9 @@ fn service_main(_argumentos: Vec<OsString>) {
 
 /// Registra o tratador de controles, reporta "rodando", e roda o serviço até o SCM mandar parar.
 fn rodar_servico() -> Result<()> {
-    // O estado do serviço é da máquina: sem `IR_DATA_DIR` à mão, fica em `%ProgramData%`, que o
-    // SYSTEM sabe escrever e nenhum usuário comum adultera.
-    garantir_data_dir();
     // A partir daqui o lançador sabe que está na sessão 0, e que alcançar a sessão do usuário
-    // exige o caminho do token em vez de um processo filho comum.
+    // exige o caminho do token em vez de um processo filho comum — e o estado vai para a pasta da
+    // máquina (`ir_configuracao::data_dir`).
     ir_sessao::marcar_como_servico();
 
     let (parar_tx, parar_rx) = mpsc::channel();
@@ -96,7 +93,7 @@ fn rodar_servico() -> Result<()> {
         | ServiceControlAccept::PRESHUTDOWN
         | ServiceControlAccept::POWER_EVENT
         | ServiceControlAccept::SESSION_CHANGE;
-    reportar(status, ServiceState::Running, aceitos, Duration::ZERO)?;
+    reportar(status, ServiceState::Running, aceitos, Duration::ZERO, 0)?;
 
     // O serviço roda numa runtime própria, numa thread à parte, para esta poder esperar o sinal
     // de parada do SCM sem bloquear o laço. O canal de parada é o que deixa o laço sair limpo.
@@ -167,6 +164,7 @@ fn parar(
         ServiceState::StopPending,
         ServiceControlAccept::empty(),
         PRAZO_DE_PARADA,
+        0,
     )?;
     let _ = pedir_parada.send(true);
     let limite = Instant::now() + PRAZO_DE_PARADA;
@@ -184,22 +182,13 @@ fn parar(
     } else {
         0
     };
-    status
-        .set_service_status(ServiceStatus {
-            service_type: ServiceType::OWN_PROCESS,
-            current_state: ServiceState::Stopped,
-            controls_accepted: ServiceControlAccept::empty(),
-            exit_code: if codigo == 0 {
-                ServiceExitCode::Win32(0)
-            } else {
-                ServiceExitCode::ServiceSpecific(codigo)
-            },
-            checkpoint: 0,
-            wait_hint: Duration::ZERO,
-            process_id: None,
-        })
-        .context("reportando estado ao SCM")?;
-    Ok(())
+    reportar(
+        status,
+        ServiceState::Stopped,
+        ServiceControlAccept::empty(),
+        Duration::ZERO,
+        codigo,
+    )
 }
 
 /// Quanto o controle de suspensão segura o Windows para o ator soltar tudo e avisar o par.
@@ -209,19 +198,25 @@ const CODIGO_SAIU_SOZINHO: u32 = 1;
 /// O código de saída de um serviço que não conseguiu subir, ou caiu com erro.
 const CODIGO_FALHOU: u32 = 2;
 
-/// Reporta um estado ao SCM, com quanto tempo ele deve esperar pelo próximo.
+/// Reporta um estado ao SCM, com quanto tempo ele deve esperar pelo próximo e o código de saída —
+/// zero é sucesso; outro é específico do serviço, e é o que dispara o reinício automático.
 fn reportar(
     status: service_control_handler::ServiceStatusHandle,
     estado: ServiceState,
     aceitos: ServiceControlAccept,
     espera: Duration,
+    codigo: u32,
 ) -> Result<()> {
     status
         .set_service_status(ServiceStatus {
             service_type: ServiceType::OWN_PROCESS,
             current_state: estado,
             controls_accepted: aceitos,
-            exit_code: ServiceExitCode::Win32(0),
+            exit_code: if codigo == 0 {
+                ServiceExitCode::Win32(0)
+            } else {
+                ServiceExitCode::ServiceSpecific(codigo)
+            },
             checkpoint: 0,
             wait_hint: espera,
             process_id: None,
@@ -234,34 +229,16 @@ fn reportar(
 ///
 /// A cada subida, e não só na instalação: é o que conserta uma máquina instalada antes desta
 /// correção, cuja chave herdou a leitura de todos os usuários ([04, §4](../../../docs/04-seguranca.md)).
-/// A pasta de recebidos padrão mora dentro dela e é reaberta ao usuário interativo, que é para
-/// quem os arquivos chegam. Uma falha fica no registro e não impede a subida: sem o serviço, o
-/// usuário perde o teclado, e a chave continua tão exposta quanto antes.
-pub fn fechar_pasta_de_estado(dir: &std::path::Path) {
+/// A pasta de recebidos padrão (`recebidos`) mora dentro dela e é reaberta ao usuário interativo,
+/// que é para quem os arquivos chegam. Uma falha fica no registro e não impede a subida: sem o
+/// serviço, o usuário perde o teclado, e a chave continua tão exposta quanto antes.
+pub fn fechar_pasta_de_estado(dir: &std::path::Path, recebidos: &std::path::Path) {
     use ir_acesso::seguranca::proteger_pasta;
     if let Err(erro) = proteger_pasta(dir, ir_acesso::SDDL_PASTA_DE_ESTADO) {
         tracing::error!(%erro, "não foi possível fechar a pasta de estado");
     }
-    let recebidos = dir.join("recebidos");
-    let _ = std::fs::create_dir_all(&recebidos);
-    if let Err(erro) = proteger_pasta(&recebidos, ir_acesso::SDDL_PASTA_DE_RECEBIDOS) {
+    let _ = std::fs::create_dir_all(recebidos);
+    if let Err(erro) = proteger_pasta(recebidos, ir_acesso::SDDL_PASTA_DE_RECEBIDOS) {
         tracing::error!(%erro, "não foi possível abrir a pasta de recebidos ao usuário");
-    }
-}
-
-/// Aponta `IR_DATA_DIR` para `%ProgramData%\InputRemote` quando ele não veio de fora, e garante
-/// que a pasta exista.
-fn garantir_data_dir() {
-    if std::env::var_os("IR_DATA_DIR").is_some() {
-        return;
-    }
-    let base = std::env::var_os("ProgramData")
-        .map_or_else(|| PathBuf::from(r"C:\ProgramData"), PathBuf::from);
-    let dir = base.join("InputRemote");
-    let _ = std::fs::create_dir_all(&dir);
-    // SAFETY: chamado no início do serviço, antes de qualquer thread de trabalho subir; não há
-    // leitura concorrente de ambiente.
-    unsafe {
-        std::env::set_var("IR_DATA_DIR", &dir);
     }
 }

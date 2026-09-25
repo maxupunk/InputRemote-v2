@@ -67,21 +67,15 @@ impl Velocimetro {
 }
 
 /// A taxa em unidade legível: "30,0 MB/s".
+///
+/// Pela mesma escrita do tamanho da cópia ([`ir_ipc::transferencia::tamanho_legivel`]): taxa e
+/// tamanho lado a lado na mesma tela precisam ter a mesma unidade e a mesma vírgula.
 fn por_segundo(bytes_por_segundo: f64) -> String {
-    const PASSO: f64 = 1024.0;
-    const UNIDADES: [&str; 4] = ["B/s", "KB/s", "MB/s", "GB/s"];
-    let mut valor = bytes_por_segundo.max(0.0);
-    let mut unidade = 0;
-    while valor >= PASSO && unidade + 1 < UNIDADES.len() {
-        valor /= PASSO;
-        unidade += 1;
-    }
-    let nome = UNIDADES.get(unidade).copied().unwrap_or("B/s");
-    if unidade == 0 {
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        return format!("{} {nome}", valor.round() as u64);
-    }
-    format!("{valor:.1} {nome}").replace('.', ",")
+    // A taxa é uma média de números não negativos e finitos; o arredondamento só perde a fração de
+    // byte, que nenhuma unidade da tela mostra.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let bytes = bytes_por_segundo.max(0.0).round() as u64;
+    format!("{}/s", ir_ipc::transferencia::tamanho_legivel(bytes))
 }
 
 /// As últimas cópias, e quanto trafegou nesta sessão.

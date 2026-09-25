@@ -121,49 +121,7 @@ mod tests {
     use tokio::sync::mpsc;
 
     use super::*;
-
-    /// Um endereço de teste único para esta execução, para dois testes não colidirem.
-    fn endereco_de_teste(rotulo: &str) -> String {
-        let id = std::process::id();
-        #[cfg(windows)]
-        {
-            format!(r"\\.\pipe\inputremote-test-{rotulo}-{id}")
-        }
-        #[cfg(not(windows))]
-        {
-            std::env::temp_dir()
-                .join(format!("ir-test-{rotulo}-{id}.sock"))
-                .to_string_lossy()
-                .into_owned()
-        }
-    }
-
-    #[cfg(windows)]
-    async fn conectar_agente(
-        endereco: &str,
-    ) -> impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin {
-        use tokio::net::windows::named_pipe::ClientOptions;
-        for _ in 0..50 {
-            if let Ok(cliente) = ClientOptions::new().open(endereco) {
-                return cliente;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        }
-        panic!("o agente de teste não conectou");
-    }
-
-    #[cfg(not(windows))]
-    async fn conectar_agente(
-        endereco: &str,
-    ) -> impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin {
-        for _ in 0..50 {
-            if let Ok(cliente) = tokio::net::UnixStream::connect(endereco).await {
-                return cliente;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        }
-        panic!("o agente de teste não conectou");
-    }
+    use crate::apoio::{conectar as conectar_agente, endereco_de_teste};
 
     #[tokio::test]
     async fn o_fato_sobe_o_comando_desce_e_o_segundo_agente_e_recusado() {
@@ -185,6 +143,7 @@ mod tests {
         // O fato do agente sobe até o ator.
         let pronto = FatoDoAgente::Pronto {
             desktops: vec!["Default".to_owned()],
+            tela_de_bloqueio: false,
         };
         quadros::escrever(&mut escrita, &pronto)
             .await

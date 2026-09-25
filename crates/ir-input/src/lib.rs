@@ -27,10 +27,13 @@
 
 use std::sync::mpsc::Sender;
 
-use ir_proto::input::{Button, HidUsage, PointerPosition, WheelDelta};
-
+mod arranjo;
+pub mod desktop;
 pub mod error;
 mod pendentes;
+// Só o `uinput` e o touchpad do Linux rolam em passos; os testes rodam em todo sistema.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+mod roda;
 pub use error::{InputError, Result};
 
 #[cfg(target_os = "linux")]
@@ -38,67 +41,16 @@ mod linux;
 #[cfg(windows)]
 mod windows;
 
-/// Um evento a injetar na máquina local. Espelha `ir_session::Injection`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum InjectEvent {
-    /// Uma tecla física, por HID Usage.
-    Key {
-        /// Qual.
-        usage: HidUsage,
-        /// `true` para pressionar.
-        pressed: bool,
-    },
-    /// Um botão do ponteiro.
-    Button {
-        /// Qual.
-        button: Button,
-        /// `true` para pressionar.
-        pressed: bool,
-    },
-    /// Movimento de roda.
-    Wheel(WheelDelta),
-    /// O ponteiro deve ir para esta posição, sempre absoluta
-    /// ([05, §4.2](../../../docs/05-windows.md)).
-    Pointer(PointerPosition),
-}
+/// Um evento a injetar na máquina local.
+///
+/// É o [`ir_proto::input::Injection`], o mesmo que a sessão pede e o canal do agente carrega. A
+/// posição de [`InjectEvent::Pointer`] é relativa a um monitor do arranjo local; o injetor a põe no
+/// referencial do sistema com o arranjo de [`Injector::usar_telas`].
+pub use ir_proto::input::Injection as InjectEvent;
 
-/// Um evento capturado da entrada local.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum CaptureEvent {
-    /// O ponteiro se moveu, em deltas relativos. Enviado enquanto o controle está no par.
-    PointerMotion {
-        /// Deslocamento horizontal.
-        dx: i32,
-        /// Deslocamento vertical.
-        dy: i32,
-    },
-    /// O ponteiro está nesta posição absoluta de tela. Enviado enquanto o controle é local, para
-    /// a sessão saber a posição real do cursor e detectar a travessia no ponto certo.
-    PointerAbsolute {
-        /// Posição horizontal, em pixels de tela.
-        x: i32,
-        /// Posição vertical, em pixels de tela.
-        y: i32,
-    },
-    /// A roda girou.
-    Wheel(WheelDelta),
-    /// Uma tecla mudou de estado.
-    Key {
-        /// Qual.
-        usage: HidUsage,
-        /// `true` para pressionada.
-        pressed: bool,
-    },
-    /// Um botão mudou de estado.
-    Button {
-        /// Qual.
-        button: Button,
-        /// `true` para pressionado.
-        pressed: bool,
-    },
-}
+/// Um evento capturado da entrada local. É o [`ir_proto::input::Capture`], o mesmo que o agente
+/// conta ao serviço.
+pub use ir_proto::input::Capture as CaptureEvent;
 
 /// Injeta entrada na máquina local.
 pub trait Injector: Send {
@@ -118,10 +70,17 @@ pub trait Injector: Send {
     /// [`InputError`] em falha do sistema.
     fn release_all(&mut self) -> Result<()>;
 
+    /// O arranjo de telas desta máquina, para [`InjectEvent::Pointer`] cair no monitor certo.
+    ///
+    /// A posição a injetar é relativa a um monitor; o sistema quer a fração do desktop virtual
+    /// inteiro ([`ir_geometry::Desktop::to_virtual_fraction`]). Até o arranjo chegar, a posição
+    /// vale como se houvesse uma tela só. Quem chama dá o arranjo de novo sempre que ele muda.
+    fn usar_telas(&mut self, telas: &ir_proto::screens::ScreenLayout);
+
     /// O desktop em que o último evento foi injetado, onde a plataforma tem mais de um.
     ///
     /// No Windows, `Default`, `Winlogon` (tela de bloqueio e UAC) ou `Screen-saver`. O agente o
-    /// conta ao serviço quando muda.
+    /// conta ao serviço quando muda, já dizendo se é protegido ([`desktop::protegido`]).
     fn desktop(&self) -> Option<String> {
         None
     }
@@ -209,19 +168,6 @@ pub fn arranjo_de_telas() -> Option<ir_proto::screens::ScreenLayout> {
     #[cfg(windows)]
     {
         windows::telas::arranjo()
-    }
-    #[cfg(not(windows))]
-    {
-        None
-    }
-}
-
-/// O retângulo do desktop virtual — origem, largura e altura —, onde a plataforma diz.
-#[must_use]
-pub fn desktop_virtual() -> Option<(i32, i32, u32, u32)> {
-    #[cfg(windows)]
-    {
-        windows::telas::desktop_virtual()
     }
     #[cfg(not(windows))]
     {

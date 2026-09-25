@@ -208,10 +208,7 @@ fn abrir_os_novos(
 
 /// O que o dispositivo é, se for teclado, mouse ou touchpad físico — e não um virtual do produto.
 fn classe(dispositivo: &Device) -> Option<Classe> {
-    if dispositivo
-        .name()
-        .is_some_and(|nome| nome.starts_with("InputRemote"))
-    {
+    if dispositivo.name().is_some_and(super::e_virtual_do_produto) {
         return None;
     }
     let teclado = dispositivo

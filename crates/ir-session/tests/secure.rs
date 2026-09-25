@@ -30,10 +30,6 @@ fn controlling() -> Pair {
     pair
 }
 
-fn key(pair: &mut Pair, usage: HidUsage, pressed: bool) {
-    pair.feed(Side::Server, Input::LocalKey { usage, pressed });
-}
-
 fn injected_key(pair: &Pair, usage: HidUsage) -> bool {
     pair.any(Side::Client, |c| {
         matches!(c, Command::Inject(ir_session::Injection::Key { usage: u, .. }) if *u == usage)
@@ -43,10 +39,10 @@ fn injected_key(pair: &Pair, usage: HidUsage) -> bool {
 #[test]
 fn ctrl_alt_end_becomes_ctrl_alt_del_on_the_peer_and_end_never_arrives() {
     let mut pair = controlling();
-    key(&mut pair, CTRL, true);
-    key(&mut pair, ALT, true);
-    key(&mut pair, END, true);
-    key(&mut pair, END, false);
+    pair.key(Side::Server, CTRL, true);
+    pair.key(Side::Server, ALT, true);
+    pair.key(Side::Server, END, true);
+    pair.key(Side::Server, END, false);
 
     assert!(
         pair.any(Side::Client, |c| matches!(c, Command::SecureAttention)),
@@ -65,10 +61,10 @@ fn ctrl_alt_end_becomes_ctrl_alt_del_on_the_peer_and_end_never_arrives() {
 #[test]
 fn ctrl_alt_shift_esc_gives_control_back_and_releases_the_peer() {
     let mut pair = controlling();
-    key(&mut pair, CTRL, true);
-    key(&mut pair, ALT, true);
-    key(&mut pair, SHIFT, true);
-    key(&mut pair, ESC, true);
+    pair.key(Side::Server, CTRL, true);
+    pair.key(Side::Server, ALT, true);
+    pair.key(Side::Server, SHIFT, true);
+    pair.key(Side::Server, ESC, true);
 
     assert_eq!(pair.server.phase(), Phase::Ready, "o controle voltou");
     assert!(
@@ -84,9 +80,9 @@ fn with_control_here_the_shortcut_is_just_keys() {
     let mut pair = Pair::matched();
     pair.connect(Carrier::Udp);
     pair.clear_log();
-    key(&mut pair, CTRL, true);
-    key(&mut pair, ALT, true);
-    key(&mut pair, END, true);
+    pair.key(Side::Server, CTRL, true);
+    pair.key(Side::Server, ALT, true);
+    pair.key(Side::Server, END, true);
     assert!(!pair.any(Side::Client, |c| matches!(c, Command::SecureAttention)));
 }
 
@@ -130,18 +126,18 @@ const SPACE: HidUsage = HidUsage(0x2C);
 fn ctrl_alt_shift_space_goes_to_the_peer_and_back() {
     let mut pair = Pair::matched();
     pair.connect(Carrier::Udp);
-    key(&mut pair, CTRL, true);
-    key(&mut pair, ALT, true);
-    key(&mut pair, SHIFT, true);
-    key(&mut pair, SPACE, true);
+    pair.key(Side::Server, CTRL, true);
+    pair.key(Side::Server, ALT, true);
+    pair.key(Side::Server, SHIFT, true);
+    pair.key(Side::Server, SPACE, true);
     assert_eq!(
         pair.server.phase(),
         Phase::Sending,
         "foi sem passar pela borda"
     );
-    key(&mut pair, SPACE, false);
+    pair.key(Side::Server, SPACE, false);
 
-    key(&mut pair, SPACE, true);
+    pair.key(Side::Server, SPACE, true);
     assert_eq!(pair.server.phase(), Phase::Ready, "e voltou");
     assert!(pair.client.input_state().is_released(), "soltando tudo lá");
 }

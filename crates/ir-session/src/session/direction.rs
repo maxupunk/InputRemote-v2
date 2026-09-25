@@ -116,13 +116,15 @@ impl Session {
     ///
     /// O que o daqui digitou ou clicou para retomar já chegou ao sistema: a entrada local não é
     /// suprimida enquanto se recebe.
+    ///
+    /// Os avisos são o espelho dos de [`Self::on_peer_reclaim`]: o controle mudou de lado, e foi
+    /// por retomada.
     pub(super) fn reclaim(&mut self, now: Timestamp, out: &mut CommandBatch) {
-        if self.phase != Phase::Receiving {
+        if !self.stop_receiving(out) {
             return;
         }
-        self.release_everything(out);
-        self.phase = Phase::Ready;
         self.send(now, Message::Control(Control::Reclaim), out);
+        out.push(Command::Notify(Notice::ControlMoved { remote: false }));
         out.push(Command::Notify(Notice::ControlReclaimed { here: true }));
     }
 
@@ -169,13 +171,13 @@ impl Session {
         let Some(peer) = self.peer.as_ref() else {
             return false;
         };
-        if self.identity.machine.0 < peer.machine.0 {
+        if super::edge::id_wins_tie(&self.identity.machine, &peer.machine) {
             return false; // o par faz a mesma conta, e cede ele
         }
         // O que foi mandado ao par o par ignora, porque ele está mandando; aqui, a supressão cai.
-        self.input_state.release_all();
-        self.pending_pointer = ir_proto::input::PointerDelta::ZERO;
-        out.push(Command::SuppressLocalInput(false));
+        // Com o mesmo `ReleaseAll` de toda devolução: nada foi injetado aqui enquanto se mandava,
+        // então ele não solta nada — e a liberação continua sendo um caminho só.
+        self.release_local_hold(out);
         true
     }
 }

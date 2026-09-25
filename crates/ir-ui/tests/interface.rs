@@ -205,7 +205,7 @@ fn desligar_a_tela_de_bloqueio_explica_em_preferencias_sem_pintar_de_laranja() {
 
     let tela = ponte::estado_ui(&estado(&servico));
     // Opcional e desligada por padrão: não é impedimento, e a tela fica verde.
-    assert!(tela.impedimento.is_empty(), "{}", tela.impedimento);
+    assert!(tela.aviso.is_empty(), "{}", tela.aviso);
     assert_eq!(tela.saude, ponte::SAUDE_BOA);
     // A explicação, com o que fazer, mora em Preferências.
     assert!(

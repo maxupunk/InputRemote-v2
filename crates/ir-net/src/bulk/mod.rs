@@ -116,7 +116,7 @@ pub fn prepare(stream: &TcpStream) {
 /// estabelece, que é a falha segura.
 #[must_use]
 pub fn keep_outbound_on_collision(local: PublicKey, peer: PublicKey) -> bool {
-    local.0 > peer.0
+    local.precede(&peer)
 }
 
 #[cfg(test)]

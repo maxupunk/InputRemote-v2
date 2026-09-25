@@ -15,9 +15,18 @@
 //! outro lado. A [`ReplayWindow`](ir_crypto::ReplayWindow) do transporte continua no caminho.
 //!
 //! **A contagem só avança quando a tag confere.** Um quadro adulterado não queima o número do
-//! legítimo — a mesma disciplina que o [`Transport::open`] já aplica à janela de repetição.
+//! legítimo — a mesma disciplina que o [`Transport::open`] já aplica à janela de repetição. A regra
+//! mora no [`ContadorImplicito`], o mesmo do TCP de arquivos.
+//!
+//! # Sem troca de chaves
+//!
+//! O rádio ainda não troca chaves com o enlace de pé, como a rede faz depois de 2^20 quadros ou
+//! dez minutos ([03, §3](../../../docs/03-protocolo.md)). Havia aqui uma consulta ao contador que
+//! ninguém chamava; saiu, para não parecer que a troca existe. As chaves só se renovam quando o
+//! enlace cai e é rediscado — é uma pendência, não uma decisão.
 
 use ir_crypto::Transport;
+use ir_crypto::enlace::ContadorImplicito;
 
 use crate::canal::{Canal, Quadros};
 use crate::error::Result;
@@ -29,7 +38,7 @@ pub struct EnlaceSeguro<C> {
     quadros: Quadros<C>,
     transporte: Transport,
     /// Quantos quadros já foram abertos. O próximo contador é este mais um.
-    recebidos: u64,
+    contagem: ContadorImplicito,
 }
 
 impl<C: Canal> EnlaceSeguro<C> {
@@ -39,7 +48,7 @@ impl<C: Canal> EnlaceSeguro<C> {
         Self {
             quadros,
             transporte,
-            recebidos: 0,
+            contagem: ContadorImplicito::novo(),
         }
     }
 
@@ -74,10 +83,12 @@ impl<C: Canal> EnlaceSeguro<C> {
 
     /// Decifra um corpo já lido do canal.
     fn abrir(&mut self, cifrado: &[u8]) -> Result<(Kind, Vec<u8>)> {
-        let contador = self.recebidos.wrapping_add(1);
-        let texto_claro = self.transporte.open(contador, cifrado)?;
-        // Só agora a contagem avança: um quadro que não abriu não consome o número do próximo.
-        self.recebidos = contador;
+        // A contagem só avança se a tag conferir: um quadro que não abriu não consome o número
+        // do próximo.
+        let transporte = &mut self.transporte;
+        let texto_claro = self
+            .contagem
+            .abrir(|contador| transporte.open(contador, cifrado))?;
         let (especie, conteudo) =
             wire::desembrulhar(&texto_claro).ok_or(crate::BtError::Malformed)?;
         Ok((especie, conteudo.to_vec()))
@@ -86,13 +97,7 @@ impl<C: Canal> EnlaceSeguro<C> {
     /// Quantos quadros já foram abertos neste enlace.
     #[must_use]
     pub const fn recebidos(&self) -> u64 {
-        self.recebidos
-    }
-
-    /// Se já convém rechavear, por volume de quadros enviados.
-    #[must_use]
-    pub const fn deve_rechavear(&self) -> bool {
-        self.transporte.should_rekey()
+        self.contagem.recebidos()
     }
 }
 

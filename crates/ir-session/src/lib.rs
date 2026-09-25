@@ -68,7 +68,7 @@ pub use event::{
 };
 pub use phase::Phase;
 pub use session::{
-    CarrierSet, CarrierWins, ConfigError, LocalIdentity, PeerInfo, RECLAIM_DISTANCE, Route,
-    RouteReport, Session,
+    CarrierSet, CarrierWins, ConfigError, LocalIdentity, PeerInfo, PerInputCarrier,
+    RECLAIM_DISTANCE, Route, RouteReport, Session,
 };
 pub use time::{Millis, Timestamp};

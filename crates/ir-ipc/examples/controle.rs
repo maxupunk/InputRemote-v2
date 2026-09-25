@@ -106,7 +106,7 @@ fn montar(acao: &str, argumento: Option<String>) -> Result<Roteiro, String> {
     match acao {
         // O que o ajudante faz quando há texto no clipboard, sem precisar de clipboard.
         "texto" => argumento
-            .and_then(ir_ipc::TextoDoClipboard::novo)
+            .and_then(ir_ipc::TextoDoClipboard::new)
             .map_or_else(
                 || Err("texto: diga o texto, até 256 KiB".to_owned()),
                 |texto| simples(Pedido::OferecerTexto(texto)),
@@ -149,36 +149,18 @@ fn montar(acao: &str, argumento: Option<String>) -> Result<Roteiro, String> {
 
 /// Manda um pedido. Devolve `false` se não deu.
 fn pedir(escritor: &mut Box<dyn Write + Send>, pedido: &Pedido) -> bool {
-    let bytes = match codec::codificar(pedido) {
-        Ok(bytes) => bytes,
+    match codec::escrever_em(escritor, pedido) {
+        Ok(()) => true,
         Err(erro) => {
-            println!("ERRO: não codificou: {erro}");
-            return false;
+            println!("ERRO: não escreveu: {erro}");
+            false
         }
-    };
-    if let Err(erro) = escritor.write_all(&bytes) {
-        println!("ERRO: não escreveu: {erro}");
-        return false;
     }
-    if let Err(erro) = escritor.flush() {
-        println!("ERRO: não esvaziou: {erro}");
-        return false;
-    }
-    true
 }
 
 /// Lê uma mensagem do serviço. `None` quando o canal acaba ou o corpo não decodifica.
 fn ler(leitor: &mut Box<dyn Read + Send>) -> Option<ParaInterface> {
-    let mut prefixo = [0u8; codec::PREFIXO];
-    if leitor.read_exact(&mut prefixo).is_err() {
-        return None;
-    }
-    let tamanho = codec::tamanho_anunciado(&prefixo).ok()?;
-    let mut corpo = vec![0u8; tamanho];
-    if leitor.read_exact(&mut corpo).is_err() {
-        return None;
-    }
-    codec::decodificar::<ParaInterface>(&corpo).ok()
+    codec::ler_de(leitor).ok().flatten()
 }
 
 /// Acompanha o que o serviço diz, confirmando o pareamento quando for o caso.
@@ -282,8 +264,8 @@ fn mostrar_aviso(
         ir_ipc::Aviso::TextoRecebido(texto) => {
             println!(
                 "TEXTO RECEBIDO ({} B): {}",
-                texto.como_str().len(),
-                texto.como_str()
+                texto.as_str().len(),
+                texto.as_str()
             );
             false
         }

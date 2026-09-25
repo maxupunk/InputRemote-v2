@@ -23,16 +23,23 @@ impl Daemon {
     /// parado, justamente quando um instalador tenta trocar o arquivo do agente.
     pub(super) async fn encerrar(&mut self) {
         info!("serviço parando: soltando tudo, avisando o par e dispensando o agente");
-        if self.session.phase() != Phase::Offline {
-            let agora = self.now();
-            self.session
-                .stop(agora, LinkDown::ServiceStopping, &mut self.out);
-            self.apply_commands();
-        }
+        self.encerrar_sessao(LinkDown::ServiceStopping);
         let _ = self.agente.send(ComandoDoAgente::Encerrar);
         // Um instante para a despedida e o pedido ao agente saírem pelos canais antes de a
         // runtime ser desmontada e levar as tarefas de envio junto.
         tokio::time::sleep(PRAZO_DE_DESPEDIDA).await;
+    }
+
+    /// Encerra a sessão, se há uma, pelo caminho de toda queda: `stop` se despede do par, emite o
+    /// `ReleaseAll` e devolve a entrada local — soltar tudo antes de qualquer outra coisa. Um ponto
+    /// só, e não uma soltura escrita de novo em cada lugar que derruba a sessão, onde poderia
+    /// divergir.
+    pub(crate) fn encerrar_sessao(&mut self, motivo: LinkDown) {
+        if self.session.phase() != Phase::Offline {
+            let agora = self.now();
+            self.session.stop(agora, motivo, &mut self.out);
+            self.apply_commands();
+        }
     }
 }
 

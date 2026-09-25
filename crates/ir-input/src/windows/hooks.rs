@@ -209,14 +209,15 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) 
     }
     // SAFETY: para `HC_ACTION`, `lparam` aponta para uma `MSLLHOOKSTRUCT` válida.
     let info = unsafe { *(lparam.0 as *const MSLLHOOKSTRUCT) };
-    let injected = info.flags & LLMHF_INJECTED != 0;
+    // Todo evento injetado passa sem virar captura — movimento, botão e roda. Só o movimento
+    // conferia a marca: a roda e o clique que o par injetava aqui voltavam como entrada local, e a
+    // sessão retomava o controle a cada rolagem (achado na bancada, log 54).
+    if info.flags & LLMHF_INJECTED != 0 {
+        // SAFETY: repasse padrão de gancho.
+        return unsafe { CallNextHookEx(None, code, wparam, lparam) };
+    }
     let suppress = SUPPRESS.load(Ordering::Relaxed);
-    let eat = handle_mouse(
-        u32::try_from(wparam.0).unwrap_or(0),
-        &info,
-        injected,
-        suppress,
-    );
+    let eat = handle_mouse(u32::try_from(wparam.0).unwrap_or(0), &info, suppress);
     if eat {
         LRESULT(1)
     } else {
@@ -226,9 +227,9 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) 
 }
 
 /// Trata um evento de mouse e diz se ele deve ser comido.
-fn handle_mouse(msg: u32, info: &MSLLHOOKSTRUCT, injected: bool, suppress: bool) -> bool {
+fn handle_mouse(msg: u32, info: &MSLLHOOKSTRUCT, suppress: bool) -> bool {
     match msg {
-        WM_MOUSEMOVE => handle_move(info, injected, suppress),
+        WM_MOUSEMOVE => handle_move(info, suppress),
         WM_LBUTTONDOWN => emit_button(Button::Left, true, suppress),
         WM_LBUTTONUP => emit_button(Button::Left, false, suppress),
         WM_RBUTTONDOWN => emit_button(Button::Right, true, suppress),
@@ -247,11 +248,7 @@ fn handle_mouse(msg: u32, info: &MSLLHOOKSTRUCT, injected: bool, suppress: bool)
 }
 
 /// Trata o movimento do ponteiro, com a lógica de prisão quando suprimindo.
-fn handle_move(info: &MSLLHOOKSTRUCT, injected: bool, suppress: bool) -> bool {
-    if injected {
-        // Movimento nosso (a prisão, ou um warp): não repassa nem come, e não vira evento.
-        return false;
-    }
+fn handle_move(info: &MSLLHOOKSTRUCT, suppress: bool) -> bool {
     if suppress {
         // Controle no par: manda o delta a partir do ponto de prisão e reprende o cursor, para
         // ele não sair da tela local. O evento é comido (o cursor local não se mexe).

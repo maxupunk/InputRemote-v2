@@ -161,6 +161,24 @@ impl Latencia {
         };
         self.mediana_ms <= mediana && self.p99_ms <= p99
     }
+
+    /// A medida como a tela mostra: mediana e pior caso, lado a lado.
+    ///
+    /// Os dois juntos, porque só a mediana esconde o que o usuário sente.
+    #[must_use]
+    pub fn frase(&self) -> String {
+        format!("{} ms · {} ms no pior caso", self.mediana_ms, self.p99_ms)
+    }
+
+    /// A medida como o relatório de diagnóstico traz: com quantas amostras, para quem lê saber
+    /// quanto confiar no número.
+    #[must_use]
+    pub fn frase_do_diagnostico(&self) -> String {
+        format!(
+            "{} ms de mediana, {} ms no pior caso ({} amostras em 10 s)",
+            self.mediana_ms, self.p99_ms, self.amostras
+        )
+    }
 }
 
 /// O par, resumido para a interface.
@@ -189,8 +207,15 @@ pub struct Estado {
     pub politica: Politica,
     /// De que lado fica a outra tela.
     pub borda_do_par: Borda,
-    /// Esta máquina, para a impressão digital aparecer na tela de pareamento.
+    /// Esta máquina.
     pub esta_maquina: Maquina,
+    /// A impressão digital desta máquina, pronta para a tela: a mesma do registro do serviço
+    /// ([04, §3.1](../../../docs/04-seguranca.md)).
+    ///
+    /// Vem pronta porque só o serviço tem a chave inteira. A janela mostrava antes o identificador
+    /// em hexadecimal com o mesmo nome, e as duas "impressões digitais" da mesma máquina não batiam.
+    #[serde(default)]
+    pub esta_impressao: String,
     /// O nome desta máquina.
     pub este_nome: Nome,
     /// O par pareado, se houver.
@@ -276,6 +301,7 @@ impl Estado {
             politica: Politica::Ambos,
             borda_do_par: Borda::Direita,
             esta_maquina: maquina,
+            esta_impressao: String::new(),
             este_nome: nome,
             par: None,
             portador: None,
@@ -304,8 +330,11 @@ mod avisos;
 mod frases;
 mod queda;
 
-pub use avisos::{AvisoDeRede, EconomiaDoWifi, Pausa};
-pub use queda::MotivoDaQueda;
+pub use avisos::{
+    AVISO_DO_BLOQUEIO_DO_PAR, AvisoDeRede, AvisoPrincipal, EconomiaDoWifi, Pausa,
+    frase_da_borda_ajustada,
+};
+pub use queda::{Gravidade, MotivoDaQueda};
 
 #[cfg(test)]
 mod testes;

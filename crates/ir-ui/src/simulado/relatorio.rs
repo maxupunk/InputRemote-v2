@@ -11,7 +11,7 @@ use ir_ipc::vocabulario::Portador;
 pub(super) fn diagnostico(estado: &Estado) -> String {
     let campos: [(&str, String); 12] = [
         ("maquina", estado.este_nome.como_texto().to_owned()),
-        ("impressao", estado.esta_maquina.impressao()),
+        ("impressao", estado.esta_impressao.clone()),
         ("politica", politica_de(estado).to_owned()),
         ("enlace", estado.enlace.frase().to_owned()),
         ("borda", estado.borda_do_par.nome().to_owned()),
@@ -59,14 +59,10 @@ const fn politica_de(estado: &Estado) -> &'static str {
 }
 
 fn atraso_de(estado: &Estado) -> String {
+    // A frase do contrato, a mesma do relatório do serviço de verdade.
     estado.latencia.map_or_else(
         || "sem amostras".to_owned(),
-        |medida| {
-            format!(
-                "mediana {} ms, p99 {} ms, {} amostras",
-                medida.mediana_ms, medida.p99_ms, medida.amostras
-            )
-        },
+        |medida| medida.frase_do_diagnostico(),
     )
 }
 

@@ -49,7 +49,7 @@ pub use localizar::{Localizador, da_descoberta, sem_localizador};
 /// Um pedido de envio: o que mandar, e com a autoridade de quem.
 pub(crate) type PedidoDeEnvio = (Vec<PathBuf>, Leitor);
 use ir_ipc::Aviso;
-use ir_ipc::transferencia::{Fase, Motivo, Sentido, Transferencia};
+use ir_ipc::transferencia::{Fase, Motivo, Sentido};
 use tokio::sync::{broadcast, mpsc, watch};
 use tracing::{debug, info, warn};
 
@@ -287,7 +287,9 @@ async fn servir(
     // Ao subir, antes de qualquer coisa: a pasta começa vazia. O que ficou de uma sessão anterior
     // é de uma cópia que já foi colada ou já foi esquecida — o clipboard não sobrevive ao
     // desligamento, então ninguém vai colar aquilo. Guardar é só ocupar disco. Durante a sessão a
-    // pasta se cuida pela política de `faxina`, que protege o que acabou de chegar.
+    // pasta se cuida pela política de `faxina`, que protege o que acabou de chegar. As montagens
+    // que um serviço morto deixou saem também: agora nenhuma cópia está em curso.
+    ir_files::staging::recolher_orfas(faxineiro.pasta()).await;
     faxineiro.esvaziar().await;
     // Sem par não se abre a porta: seria convidar conexão que nenhuma identidade autorizaria.
     if esperar_par(&ajuste, &mut entrada, &mut destino)
@@ -318,14 +320,9 @@ async fn servir(
                 continue;
             }
         }
+        // O aviso à tela, se havia cópia atravessando, já saiu de quem a conduzia
+        // (`sessao::anunciar_queda`): só ali se sabe o nome dela, e se havia uma.
         warn!("o canal de arquivos caiu; teclado e mouse não foram afetados");
-        let _ = ajuste.avisos.send(Aviso::Transferencia(Transferencia {
-            sentido: Sentido::Recebendo,
-            nome: String::new(),
-            bytes_feitos: 0,
-            bytes_total: 0,
-            fase: Fase::Parada(Motivo::CanalCaiu),
-        }));
     }
 }
 
@@ -349,38 +346,46 @@ async fn esperar_par(
         }
         // A troca de par primeiro: um pedido feito logo depois de parear chega junto com ela, e
         // sem a ordem o `select!` sorteava — às vezes recusando por "não há par" o que já tinha par.
+        let mut mudou = Ok(());
+        let motivo = Motivo::Outro("não há par pareado".to_owned());
+        let troca = async { mudou = destino.changed().await };
+        recusar_enquanto(ajuste, entrada, troca, &motivo).await?;
+        mudou.ok()?;
+    }
+}
+
+/// Conta à interface que este pedido não vai sair, e por quê.
+///
+/// Dizer não é melhor que ficar calado: um pedido que some deixa o usuário achando que a cópia foi
+/// feita. O nome é o que a entrega teria ([`ir_files::publicacao::nome_do_pedido`]), para a recusa
+/// e a cópia que desse certo falarem da mesma coisa.
+pub(crate) fn recusar(ajuste: &Ajuste, caminhos: &[PathBuf], motivo: Motivo) {
+    let nome = ir_files::publicacao::nome_do_pedido(caminhos);
+    let fase = Fase::Parada(motivo);
+    sessao::anunciar(&ajuste.avisos, Sentido::Enviando, &nome, (0, 0), fase);
+}
+
+/// Espera o `tempo` passar recusando, com `motivo`, todo pedido que chegar nesse meio.
+///
+/// É o que o canal faz enquanto não pode trabalhar — sem par, sem porta. `None` quando o serviço
+/// está saindo.
+pub(crate) async fn recusar_enquanto(
+    ajuste: &Ajuste,
+    entrada: &mut Entrada,
+    tempo: impl std::future::Future<Output = ()>,
+    motivo: &Motivo,
+) -> Option<()> {
+    tokio::pin!(tempo);
+    loop {
         tokio::select! {
             biased;
-            mudou = destino.changed() => mudou.ok()?,
+            () = &mut tempo => return Some(()),
             toque = entrada.esperar() => {
                 toque?;
                 if let Some(trabalho) = entrada.fila.descartar() {
-                    recusar(
-                        ajuste,
-                        &trabalho.caminhos,
-                        Motivo::Outro("não há par pareado".to_owned()),
-                    );
+                    recusar(ajuste, &trabalho.caminhos, motivo.clone());
                 }
             }
         }
     }
-}
-
-/// Responde a todo pedido com a mesma recusa, enquanto o serviço viver.
-///
-/// Dizer não é melhor que ficar calado: um pedido que some deixa o usuário achando que a cópia foi
-/// feita.
-/// Conta à interface que este pedido não vai sair, e por quê.
-pub(crate) fn recusar(ajuste: &Ajuste, caminhos: &[PathBuf], motivo: Motivo) {
-    let nome = caminhos
-        .first()
-        .and_then(|caminho| caminho.file_name())
-        .map_or_else(String::new, |nome| nome.to_string_lossy().into_owned());
-    let _ = ajuste.avisos.send(Aviso::Transferencia(Transferencia {
-        sentido: Sentido::Enviando,
-        nome,
-        bytes_feitos: 0,
-        bytes_total: 0,
-        fase: Fase::Parada(motivo),
-    }));
 }

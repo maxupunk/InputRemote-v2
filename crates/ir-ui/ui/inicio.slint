@@ -59,60 +59,20 @@ export component Inicio inherits VerticalLayout {
             wrap: word-wrap;
         }
 
-        if Dados.estado.impedimento != "": Faixa {
-            texto: Dados.estado.impedimento;
+        // Uma faixa só, a que mais importa: o que impede o produto, o teclado recusado na tela de
+        // bloqueio do outro computador (proteção, e não defeito), ou o Wi-Fi que cochila e faz o
+        // mouse pela rede travar em rajadas. Esta última vem com o botão que resolve: sem ele, a
+        // pessoa teria de achar sozinha a configuração de energia da placa — e, quando a placa é a
+        // do outro computador, ir até ele.
+        if Dados.estado.aviso != "": Faixa {
+            texto: Dados.estado.aviso;
             cor: Tema.atencao;
             cor-de-fundo: Tema.atencao-suave;
-        }
-
-        // O teclado que "para de funcionar" na tela de bloqueio do outro computador: é proteção, e
-        // a pessoa precisa saber disso ali, e não achar que o produto travou.
-        if Dados.estado.aviso-do-bloqueio-do-par != "": Faixa {
-            texto: Dados.estado.aviso-do-bloqueio-do-par;
-            cor: Tema.atencao;
-            cor-de-fundo: Tema.atencao-suave;
-        }
-
-        // O Wi-Fi que cochila faz o mouse pela rede travar em rajadas. O aviso vem com o botão que
-        // resolve: sem ele, a pessoa teria de achar sozinha a configuração de energia da placa — e,
-        // quando a placa é a do outro computador, ir até ele.
-        if Dados.estado.aviso-de-rede != "": Rectangle {
-            background: Tema.atencao-suave;
-            border-radius: Tema.raio-pequeno;
-
-            VerticalLayout {
-                padding: Tema.e3;
-                spacing: Tema.e2;
-
-                Text {
-                    text: Dados.estado.aviso-de-rede;
-                    color: Tema.texto;
-                    font-size: Tema.fonte-corpo;
-                    wrap: word-wrap;
-                }
-
-                HorizontalLayout {
-                    alignment: start;
-                    spacing: Tema.e3;
-
-                    Botao {
-                        texto: "Resolver";
-                        primario: true;
-                        acionado => {
-                            Acoes.resolver-economia(Dados.estado.aviso-de-rede-no-par);
-                        }
-                    }
-
-                    // O custo da escolha, dito antes do clique: a placa acordada gasta mais.
-                    Text {
-                        text: "A placa fica sempre acordada: gasta um pouco mais de bateria.";
-                        font-size: Tema.fonte-nota;
-                        color: Tema.texto-fraco;
-                        vertical-alignment: center;
-                        wrap: word-wrap;
-                        horizontal-stretch: 1;
-                    }
-                }
+            botao: Dados.estado.aviso-resolvivel ? "Resolver" : "";
+            // O custo da escolha, dito antes do clique: a placa acordada gasta mais.
+            nota: "A placa fica sempre acordada: gasta um pouco mais de bateria.";
+            acionado => {
+                Acoes.resolver-economia(Dados.estado.aviso-no-par);
             }
         }
 

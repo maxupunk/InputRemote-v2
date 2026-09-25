@@ -80,6 +80,53 @@ pub enum BtError {
     WrongPeer,
 }
 
+/// Por que uma conexão ao par falhou, em termos que não dependem do sistema operacional.
+///
+/// Cada sistema só diz qual código cru é qual situação; o que o usuário lê sai de um lugar só,
+/// [`para_erro`]. Antes cada backend escolhia a própria mensagem, e as duas já tinham divergido: o
+/// mesmo "o rádio não alcança o par" era "não está pareado" no Linux e "não atendeu" no Windows.
+#[derive(Debug)]
+pub enum FalhaDeConexao {
+    /// O rádio alcançou o par, e ninguém atende no canal do produto.
+    Recusada,
+    /// O rádio não alcançou o par, ou ele não respondeu no prazo: longe, desligado, sem rádio.
+    SemAlcance,
+    /// O sistema recusa conectar porque não tem vínculo gravado com este endereço.
+    NaoPareado,
+    /// O sistema ainda segura uma sessão anterior com este par, no mesmo canal (log 28).
+    Ocupado,
+    /// O rádio desta máquina caiu no meio da tentativa.
+    RadioCaiu,
+    /// Outra coisa, que não se sabe explicar melhor que o próprio erro.
+    Outra(std::io::Error),
+}
+
+/// A mensagem de uma falha de conexão ao par `alvo`.
+///
+/// O ADR-0005 exige distinguir "não pareado no sistema" de "pareado, mas o serviço não responde" —
+/// e dizer qual é. Não alcançar o par cai no segundo: do lado de cá não há como saber se ele está
+/// longe ou com o serviço parado, e a instrução ("veja se o outro está ligado e com o InputRemote
+/// rodando") serve aos dois.
+#[must_use]
+pub fn para_erro(falha: FalhaDeConexao, alvo: crate::BdAddr) -> BtError {
+    match falha {
+        FalhaDeConexao::Recusada | FalhaDeConexao::SemAlcance => BtError::SemResposta,
+        FalhaDeConexao::NaoPareado => BtError::NaoPareado(alvo.to_string()),
+        FalhaDeConexao::Ocupado => BtError::Ocupado(alvo.to_string()),
+        FalhaDeConexao::RadioCaiu => BtError::SemRadio("o rádio Bluetooth caiu".to_owned()),
+        FalhaDeConexao::Outra(erro) => BtError::Io(erro),
+    }
+}
+
+impl From<ir_crypto::enlace::Excesso> for BtError {
+    fn from(excesso: ir_crypto::enlace::Excesso) -> Self {
+        Self::GrandeDemais {
+            tamanho: excesso.tamanho,
+            limite: excesso.limite,
+        }
+    }
+}
+
 impl BtError {
     /// O que o usuário deve fazer, quando há o que fazer.
     ///
@@ -133,6 +180,36 @@ mod tests {
     fn falha_interna_nao_inventa_conselho() {
         assert!(BtError::Malformed.o_que_fazer().is_none());
         assert!(BtError::HandshakeTimeout.o_que_fazer().is_none());
+    }
+
+    #[test]
+    fn cada_falha_de_conexao_vira_a_mensagem_da_sua_situacao() {
+        let alvo = crate::BdAddr([0xAC, 0x50, 0xDE, 0x47, 0xEB, 0x28]);
+        assert!(matches!(
+            para_erro(FalhaDeConexao::Recusada, alvo),
+            BtError::SemResposta
+        ));
+        assert!(matches!(
+            para_erro(FalhaDeConexao::SemAlcance, alvo),
+            BtError::SemResposta
+        ));
+        assert!(matches!(
+            para_erro(FalhaDeConexao::NaoPareado, alvo),
+            BtError::NaoPareado(ref quem) if quem == "AC:50:DE:47:EB:28"
+        ));
+        assert!(matches!(
+            para_erro(FalhaDeConexao::Ocupado, alvo),
+            BtError::Ocupado(ref quem) if quem == "AC:50:DE:47:EB:28"
+        ));
+        assert!(matches!(
+            para_erro(FalhaDeConexao::RadioCaiu, alvo),
+            BtError::SemRadio(_)
+        ));
+        let cru = std::io::Error::other("qualquer");
+        assert!(matches!(
+            para_erro(FalhaDeConexao::Outra(cru), alvo),
+            BtError::Io(ref erro) if erro.to_string() == "qualquer"
+        ));
     }
 
     #[test]

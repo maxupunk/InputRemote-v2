@@ -29,20 +29,10 @@ use tokio::io::AsyncWriteExt;
 use tracing::debug;
 
 use crate::cota::{Cota, EspacoLivre};
+use crate::em_curso::ArquivoEmCurso;
 use crate::error::{FileError, Result};
 use crate::publicacao::{Publicacao, como_publicar};
 use crate::staging::Staging;
-
-/// O arquivo que está sendo escrito agora.
-#[derive(Debug)]
-struct Aberto {
-    item: u32,
-    caminho: PathBuf,
-    arquivo: tokio::fs::File,
-    escritos: u64,
-    declarado: u64,
-    resumo: blake3::Hasher,
-}
 
 /// O resultado de tentar abrir uma recepção.
 #[derive(Debug)]
@@ -85,7 +75,7 @@ pub struct Recepcao {
     nome: Publicacao,
     recebidos: PathBuf,
     staging: Staging,
-    aberto: Option<Aberto>,
+    aberto: Option<ArquivoEmCurso>,
     escritos: u64,
     conferidos: usize,
     arquivos: usize,
@@ -141,6 +131,12 @@ impl Recepcao {
     #[must_use]
     pub const fn id(&self) -> TransferId {
         self.id
+    }
+
+    /// O nome da entrega, o mesmo que quem envia mostra ([`crate::publicacao::nome_da_entrega`]).
+    #[must_use]
+    pub fn nome(&self) -> &str {
+        self.nome.nome()
     }
 
     /// Quantos bytes já foram escritos.
@@ -214,14 +210,7 @@ impl Recepcao {
         let arquivo = tokio::fs::File::create(&caminho)
             .await
             .map_err(|erro| FileError::io(&caminho, erro))?;
-        self.aberto = Some(Aberto {
-            item: indice,
-            caminho,
-            arquivo,
-            escritos: 0,
-            declarado: item.size,
-            resumo: blake3::Hasher::new(),
-        });
+        self.aberto = Some(ArquivoEmCurso::novo(indice, caminho, arquivo, item.size));
         Ok(Reacao::Nada)
     }
 
@@ -231,32 +220,24 @@ impl Recepcao {
             .aberto
             .as_mut()
             .ok_or(FileError::Violacao("bloco sem arquivo aberto"))?;
-        if aberto.item != indice {
+        if aberto.item() != indice {
             return Err(FileError::Violacao("bloco de outro item"));
         }
-        if aberto.escritos != offset {
+        if aberto.feitos() != offset {
             // Sobre TCP a ordem é garantida, então um deslocamento fora de lugar não é a rede
             // reordenando: é o par errado ou adulteração. Escrever em posição arbitrária deixaria
             // um buraco no arquivo e o resumo acusaria depois, sem dizer o porquê.
             return Err(FileError::Violacao("deslocamento fora de ordem"));
         }
-        let cabe = u64::try_from(dados.len())
-            .ok()
-            .and_then(|tamanho| aberto.escritos.checked_add(tamanho))
-            .is_some_and(|fim| fim <= aberto.declarado);
-        if !cabe {
+        if !aberto.cabe(dados.len()) {
             // A cota foi aprovada para o total declarado. Sem esta linha, um par poderia anunciar
             // um byte e mandar gigabytes.
             return Err(FileError::Violacao("bloco passa do tamanho declarado"));
         }
-        aberto
-            .arquivo
-            .write_all(dados)
-            .await
-            .map_err(|erro| FileError::io(&aberto.caminho, erro))?;
-        aberto.resumo.update(dados);
-        let tamanho = u64::try_from(dados.len()).unwrap_or(0);
-        aberto.escritos = aberto.escritos.saturating_add(tamanho);
+        if let Err(erro) = aberto.arquivo().write_all(dados).await {
+            return Err(FileError::io(aberto.caminho(), erro));
+        }
+        let tamanho = aberto.contar(dados);
         self.escritos = self.escritos.saturating_add(tamanho);
         Ok(Reacao::Nada)
     }
@@ -267,20 +248,18 @@ impl Recepcao {
             .aberto
             .take()
             .ok_or(FileError::Violacao("fim de um arquivo que não começou"))?;
-        if aberto.item != indice {
+        if aberto.item() != indice {
             return Err(FileError::Violacao("fim de outro item"));
         }
-        if aberto.escritos != aberto.declarado {
+        if !aberto.completo() {
             return Err(FileError::Violacao(
                 "o arquivo terminou antes do tamanho declarado",
             ));
         }
-        aberto
-            .arquivo
-            .flush()
-            .await
-            .map_err(|erro| FileError::io(&aberto.caminho, erro))?;
-        if *aberto.resumo.finalize().as_bytes() != resumo {
+        if let Err(erro) = aberto.arquivo().flush().await {
+            return Err(FileError::io(aberto.caminho(), erro));
+        }
+        if aberto.resumo() != resumo {
             return Err(FileError::ResumoDivergente { item: indice });
         }
         self.conferidos += 1;

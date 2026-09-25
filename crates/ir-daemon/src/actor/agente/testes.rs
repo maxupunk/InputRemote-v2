@@ -9,6 +9,7 @@ use super::super::bancada::Bancada;
 fn pronto(bancada: &mut Bancada) {
     bancada.daemon.on_fato(FatoDoAgente::Pronto {
         desktops: vec!["Default".to_owned()],
+        tela_de_bloqueio: false,
     });
     // O agente que chega fica sabendo, antes de tudo, se pode digitar na tela de bloqueio.
     assert_eq!(
@@ -49,10 +50,10 @@ fn com_agente_pronto_a_injecao_e_a_soltura_vao_para_ele() {
     assert_eq!(
         recebidos(&mut bancada),
         vec![
-            ComandoDoAgente::Tecla {
+            ComandoDoAgente::Injetar(Injection::Key {
                 usage: tecla,
-                pressionada: true
-            },
+                pressed: true
+            }),
             ComandoDoAgente::SoltarTudo,
         ]
     );
@@ -112,6 +113,7 @@ fn a_recusa_na_area_de_trabalho_aparece_na_tela_e_some_quando_para() {
 
     bancada.daemon.on_fato(FatoDoAgente::InjecaoRecusada {
         desktop: "Default".to_owned(),
+        protegido: false,
     });
     assert!(!bancada.daemon.estado().agente_pronto, "a tela avisa");
     assert!(

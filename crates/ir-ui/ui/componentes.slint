@@ -184,10 +184,17 @@ export component Dado inherits HorizontalLayout {
 /// Um recado que o usuário precisa ler antes de continuar.
 ///
 /// A tela mostra no máximo uma. Cinco avisos ao mesmo tempo é o mesmo que nenhum.
+///
+/// Com `botao`, a faixa traz a ação que resolve o aviso, e `nota` diz o custo dela antes do clique.
 export component Faixa inherits Rectangle {
     in property <string> texto;
     in property <color> cor;
     in property <color> cor-de-fundo;
+    /// O texto do botão que resolve; vazio quando não há o que resolver daqui.
+    in property <string> botao;
+    /// O que o botão custa, dito ao lado dele.
+    in property <string> nota;
+    callback acionado();
 
     background: root.cor-de-fundo;
     border-radius: Tema.raio-pequeno;
@@ -202,11 +209,37 @@ export component Faixa inherits Rectangle {
             border-radius: 2px;
         }
 
-        Text {
-            text: root.texto;
-            color: Tema.texto;
-            font-size: Tema.fonte-corpo;
-            wrap: word-wrap;
+        VerticalLayout {
+            spacing: Tema.e2;
+
+            Text {
+                text: root.texto;
+                color: Tema.texto;
+                font-size: Tema.fonte-corpo;
+                wrap: word-wrap;
+            }
+
+            if root.botao != "": HorizontalLayout {
+                alignment: start;
+                spacing: Tema.e3;
+
+                Botao {
+                    texto: root.botao;
+                    primario: true;
+                    acionado => {
+                        root.acionado();
+                    }
+                }
+
+                Text {
+                    text: root.nota;
+                    font-size: Tema.fonte-nota;
+                    color: Tema.texto-fraco;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                }
+            }
         }
     }
 }

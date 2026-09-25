@@ -92,6 +92,25 @@ async fn varias_raizes_entram_lado_a_lado() {
 }
 
 #[tokio::test]
+async fn quem_envia_e_quem_recebe_dao_o_mesmo_nome_a_mesma_copia() {
+    // O defeito: copiado na ordem [b.txt, a.txt], o envio mostrava "b.txt e outros" e a recepção
+    // "a.txt e outros" — cada lado com a sua regra.
+    let temp = pasta_temporaria("manifesto-mesmo-nome");
+    let a = temp.caminho().join("a.txt");
+    let b = temp.caminho().join("b.txt");
+    escrever(&a, b"a").await;
+    escrever(&b, b"bb").await;
+
+    let plano = montar(TransferId(5), &[b, a], Leitor::Proprio)
+        .await
+        .unwrap();
+    let do_destino = crate::publicacao::como_publicar(&plano.itens);
+    assert_eq!(plano.nome, "a.txt e outros");
+    assert_eq!(plano.nome, do_destino.nome());
+    assert_eq!(crate::Envio::novo(plano).nome(), do_destino.nome());
+}
+
+#[tokio::test]
 async fn uma_pasta_vazia_ainda_e_um_item() {
     // Copiar uma pasta vazia e receber nada seria perda silenciosa.
     let temp = pasta_temporaria("manifesto-vazia");

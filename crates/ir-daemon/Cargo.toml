@@ -14,6 +14,8 @@ path = "src/main.rs"
 
 [dependencies]
 ir-proto.workspace = true
+# O arranjo local em pixels, para prender o ponteiro onde a sessão mandou.
+ir-geometry.workspace = true
 ir-session.workspace = true
 ir-crypto.workspace = true
 # O serviço não fala com `ir-net` nem com `ir-bt` direto: ele pede a um transporte, e quem sabe

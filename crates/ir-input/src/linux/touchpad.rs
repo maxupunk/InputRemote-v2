@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use ir_proto::input::{Button, WheelDelta};
 
 use crate::CaptureEvent;
+use crate::roda::AcumuladorDeRoda;
 
 /// Quanto o ponteiro anda ao passar o dedo devagar pela largura inteira do touchpad, em pixels.
 ///
@@ -82,7 +83,7 @@ pub(super) struct Touchpad {
     andou: f32,
     /// O que sobrou de fração de pixel e de roda, para o movimento lento não sumir.
     resto: (f32, f32),
-    resto_da_roda: f32,
+    roda: AcumuladorDeRoda,
     /// Se houve clique físico neste toque: aí o toque não é clique de novo.
     clicou: bool,
 }
@@ -106,7 +107,8 @@ impl Touchpad {
             encostou: None,
             andou: 0.0,
             resto: (0.0, 0.0),
-            resto_da_roda: 0.0,
+            // Uma unidade de roda a cada tantos pixels: `PIXELS_POR_MARCACAO` dão uma marcação.
+            roda: AcumuladorDeRoda::novo(PIXELS_POR_MARCACAO / f32::from(WheelDelta::NOTCH)),
             clicou: false,
         }
     }
@@ -219,11 +221,8 @@ impl Touchpad {
     /// Dois dedos: rolagem natural, o conteúdo acompanha o dedo — como o GNOME e o Windows fazem no
     /// touchpad por padrão.
     fn rolar(&mut self, dy: f32) -> Vec<CaptureEvent> {
-        self.resto_da_roda += dy * f32::from(WheelDelta::NOTCH) / PIXELS_POR_MARCACAO;
-        let inteiro = self.resto_da_roda.trunc();
-        self.resto_da_roda -= inteiro;
-        #[allow(clippy::cast_possible_truncation)]
-        let dy = inteiro as i16;
+        let (_, unidades) = self.roda.acumular(0.0, dy);
+        let dy = i16::try_from(unidades.clamp(i16::MIN.into(), i16::MAX.into())).unwrap_or(0);
         if dy == 0 {
             return Vec::new();
         }

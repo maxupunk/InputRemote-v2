@@ -1,4 +1,4 @@
-//! Os monitores desta sessão, e o desktop virtual que eles formam.
+//! Os monitores desta sessão.
 //!
 //! O agente contava só a tela principal, uma vez na subida: com dois monitores, o segundo não
 //! existia para o par — o ponteiro não chegava nele, e a borda de travessia podia cair no meio do
@@ -12,10 +12,7 @@ use windows::Win32::Foundation::{LPARAM, RECT};
 use windows::Win32::Graphics::Gdi::{
     EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO,
 };
-use windows::Win32::UI::WindowsAndMessaging::{
-    GetSystemMetrics, MONITORINFOF_PRIMARY, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
-    SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
-};
+use windows::Win32::UI::WindowsAndMessaging::MONITORINFOF_PRIMARY;
 
 /// Um monitor como o Windows o descreve: o retângulo e se é o principal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,24 +95,6 @@ unsafe extern "system" fn cada_monitor(
         }
     }
     true.into()
-}
-
-/// O retângulo do desktop virtual — todos os monitores juntos: origem, largura e altura.
-#[must_use]
-pub fn desktop_virtual() -> Option<(i32, i32, u32, u32)> {
-    // SAFETY: `GetSystemMetrics` recebe um índice e devolve um inteiro, sem pré-condição.
-    let (x, y, largura, altura) = unsafe {
-        (
-            GetSystemMetrics(SM_XVIRTUALSCREEN),
-            GetSystemMetrics(SM_YVIRTUALSCREEN),
-            GetSystemMetrics(SM_CXVIRTUALSCREEN),
-            GetSystemMetrics(SM_CYVIRTUALSCREEN),
-        )
-    };
-    match (u32::try_from(largura), u32::try_from(altura)) {
-        (Ok(largura), Ok(altura)) if largura > 0 && altura > 0 => Some((x, y, largura, altura)),
-        _ => None,
-    }
 }
 
 #[cfg(test)]

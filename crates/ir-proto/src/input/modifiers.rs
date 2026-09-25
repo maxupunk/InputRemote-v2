@@ -79,7 +79,7 @@ impl Modifiers {
     /// É a metade "precisa pressionar" de uma reconciliação de estado.
     #[must_use]
     pub const fn missing_from(self, other: Self) -> Self {
-        Self(self.0 & !other.0)
+        self.without(other)
     }
 
     /// Se nenhum modificador está pressionado.

@@ -12,32 +12,20 @@
 //! Também é o que mantém a seta de dependência: `ir-files` depende de `ir-proto` e de mais nada
 //! ([02, §2](../../../docs/02-arquitetura.md)). Ele não sabe que existe TCP.
 
-use std::path::PathBuf;
-
 use ir_proto::limits;
 use ir_proto::message::{BulkMessage, ManifestItem};
 use tokio::io::AsyncReadExt;
 
+use crate::em_curso::ArquivoEmCurso;
 use crate::error::{FileError, Result};
 use crate::manifesto::Plano;
-
-/// O arquivo que está sendo lido agora.
-#[derive(Debug)]
-struct Aberto {
-    indice: usize,
-    caminho: PathBuf,
-    arquivo: tokio::fs::File,
-    lidos: u64,
-    declarado: u64,
-    resumo: blake3::Hasher,
-}
 
 /// Produz as mensagens do corpo de uma transferência.
 #[derive(Debug)]
 pub struct Envio {
     plano: Plano,
     proximo: usize,
-    aberto: Option<Aberto>,
+    aberto: Option<ArquivoEmCurso>,
     enviados: u64,
 }
 
@@ -68,6 +56,12 @@ impl Envio {
     #[must_use]
     pub const fn id(&self) -> ir_proto::message::TransferId {
         self.plano.id
+    }
+
+    /// O nome da entrega, o mesmo que o destino vai mostrar ([`crate::publicacao::nome_da_entrega`]).
+    #[must_use]
+    pub fn nome(&self) -> &str {
+        &self.plano.nome
     }
 
     /// Quantos bytes de conteúdo já saíram.
@@ -123,18 +117,16 @@ impl Envio {
             let aberto = abrir_para_enviar(&caminho)?;
             crate::permissao::conferir_aberto(&self.plano.leitor, &caminho, &aberto)?;
             let arquivo = tokio::fs::File::from_std(aberto);
-            let declarado = item.size;
-            self.aberto = Some(Aberto {
-                indice,
+            let item_no_fio = indice_no_fio(indice)?;
+            self.aberto = Some(ArquivoEmCurso::novo(
+                item_no_fio,
                 caminho,
                 arquivo,
-                lidos: 0,
-                declarado,
-                resumo: blake3::Hasher::new(),
-            });
+                item.size,
+            ));
             return Ok(Some(BulkMessage::FileStart {
                 id: self.plano.id,
-                item: indice_no_fio(indice)?,
+                item: item_no_fio,
             }));
         }
     }
@@ -145,24 +137,21 @@ impl Envio {
             return Ok(None);
         };
         let mut bloco = vec![0u8; limits::MAX_FILE_BLOCK];
-        let lidos = aberto
-            .arquivo
-            .read(&mut bloco)
-            .await
-            .map_err(|erro| FileError::io(&aberto.caminho, erro))?;
+        let lidos = match aberto.arquivo().read(&mut bloco).await {
+            Ok(lidos) => lidos,
+            Err(erro) => return Err(FileError::io(aberto.caminho(), erro)),
+        };
 
         if lidos == 0 {
             return self.fechar();
         }
         bloco.truncate(lidos);
-        aberto.resumo.update(&bloco);
-        let offset = aberto.lidos;
-        let lidos64 = lidos as u64;
-        aberto.lidos = aberto.lidos.saturating_add(lidos64);
-        self.enviados = self.enviados.saturating_add(lidos64);
+        let offset = aberto.feitos();
+        let lidos = aberto.contar(&bloco);
+        self.enviados = self.enviados.saturating_add(lidos);
         Ok(Some(BulkMessage::FileBlock {
             id: self.plano.id,
-            item: indice_no_fio(aberto.indice)?,
+            item: aberto.item(),
             offset,
             data: bloco,
         }))
@@ -173,18 +162,19 @@ impl Envio {
         let Some(aberto) = self.aberto.take() else {
             return Ok(None);
         };
-        if aberto.lidos != aberto.declarado {
+        if !aberto.completo() {
             return Err(FileError::MudouDurante {
-                caminho: aberto.caminho,
-                declarado: aberto.declarado,
-                lidos: aberto.lidos,
+                caminho: aberto.caminho().to_path_buf(),
+                declarado: aberto.declarado(),
+                lidos: aberto.feitos(),
             });
         }
-        self.proximo = aberto.indice + 1;
+        // O item aberto é sempre o `proximo`: abrir não avança, fechar sim.
+        self.proximo += 1;
         Ok(Some(BulkMessage::FileEnd {
             id: self.plano.id,
-            item: indice_no_fio(aberto.indice)?,
-            hash: *aberto.resumo.finalize().as_bytes(),
+            item: aberto.item(),
+            hash: aberto.resumo(),
         }))
     }
 }

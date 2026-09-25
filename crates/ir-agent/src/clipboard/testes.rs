@@ -85,14 +85,14 @@ fn texto_no_clipboard_vira_oferta_de_texto() {
     assert_eq!(
         pedidos(&saida),
         vec![Pedido::OferecerTexto(
-            TextoDoClipboard::novo("uma frase\ncom quebra".to_owned()).unwrap()
+            TextoDoClipboard::new("uma frase\ncom quebra".to_owned()).unwrap()
         )]
     );
 }
 
 #[test]
 fn texto_grande_demais_nao_sai_e_nao_fica_marcado() {
-    let grande = Conteudo::texto(&"a".repeat(TextoDoClipboard::MAXIMO + 1));
+    let grande = Conteudo::texto(&"a".repeat(TextoDoClipboard::MAX + 1));
     let mut clip = Mentira {
         dentro: Some(grande.clone()),
         ..Mentira::default()
@@ -233,4 +233,18 @@ fn uma_imagem_atravessa_como_arquivo_e_chega_como_imagem() {
         "o eco da imagem voltou para o par"
     );
     let _ = std::fs::remove_dir_all(recebidos);
+}
+
+#[test]
+fn um_quadro_que_nao_decodifica_e_versao_diferente_e_um_canal_que_cai_nao() {
+    // Um quadro inteiro, de tamanho válido, com corpo que não é `ParaInterface`: é o serviço
+    // atualizado falando com um ajudante de antes.
+    let mut estranho: &[u8] = &[3, 0, 0, 0, 0xFF, 0xFF, 0xFF];
+    let erro = crate::ler_quadro::<ParaInterface>(&mut estranho).unwrap_err();
+    assert!(e_incompativel(&erro), "{erro:?}");
+
+    // O canal que acaba no meio do corpo é queda, não versão: reconectar é o certo.
+    let mut cortado: &[u8] = &[9, 0, 0, 0, 1];
+    let erro = crate::ler_quadro::<ParaInterface>(&mut cortado).unwrap_err();
+    assert!(!e_incompativel(&erro), "{erro:?}");
 }

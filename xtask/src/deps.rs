@@ -48,24 +48,28 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "ir-files",
         ],
     ),
-    ("ir-input", &["ir-proto"]),
+    // A plataforma de entrada põe o ponteiro no monitor certo com a geometria pura, a mesma da
+    // sessão: uma conversão só de posição do protocolo para o referencial do sistema.
+    ("ir-input", &["ir-proto", "ir-geometry"]),
     // Quem conectou ao serviço e o que pode: responde à pergunta do motor de arquivos.
     ("ir-acesso", &["ir-files"]),
     ("ir-clip", &["ir-proto"]),
+    // O que todo processo pede ao sistema — registro, ferramenta com prazo. Não conhece o produto.
+    ("ir-processo", &[]),
     // Lançar e zelar por processo na sessão do usuário: não conhece protocolo nem estado.
-    ("ir-sessao", &[]),
+    ("ir-sessao", &["ir-processo"]),
     // Os canais locais do serviço: controle (interface) e agente.
     (
         "ir-canais",
         &["ir-ipc", "ir-acesso", "ir-sessao", "ir-transferencia"],
     ),
     // A economia de energia do Wi-Fi: ler e desligar. Não conhece nada do produto.
-    ("ir-energia", &[]),
+    ("ir-energia", &["ir-processo"]),
     // O que a máquina guarda em disco: configuração e identidade.
     ("ir-configuracao", &["ir-proto", "ir-crypto", "ir-session"]),
     // O processo visto pelo sistema operacional: SCM, registro, sinais e `logind`. Não conhece o
     // produto; o ator só recebe dele os avisos do sistema.
-    ("ir-servico", &["ir-acesso", "ir-sessao"]),
+    ("ir-servico", &["ir-acesso", "ir-sessao", "ir-processo"]),
     // O que a janela vê: o retrato do serviço traduzido no vocabulário publicado da interface.
     ("ir-painel", &["ir-proto", "ir-session", "ir-ipc"]),
     (
@@ -89,7 +93,18 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "ir-painel",
         ],
     ),
-    ("ir-agent", &["ir-proto", "ir-ipc", "ir-input", "ir-clip"]),
+    // O agente prende o ponteiro em pixels do arranjo da sessão dele, pela geometria pura.
+    (
+        "ir-agent",
+        &[
+            "ir-proto",
+            "ir-geometry",
+            "ir-ipc",
+            "ir-input",
+            "ir-clip",
+            "ir-processo",
+        ],
+    ),
     // A interface não conhece o produto. É a fronteira que impede o v1 de acontecer de novo,
     // e também o que mantém a licença do Slint contida num binário só
     // (`docs/adr/0007-ui-slint-processo-separado.md`).

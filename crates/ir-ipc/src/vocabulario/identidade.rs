@@ -12,38 +12,6 @@ use ir_proto::peer::MachineName;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Maquina(pub [u8; 16]);
 
-impl Maquina {
-    /// A impressão digital, em grupos de quatro dígitos hexadecimais.
-    ///
-    /// Agrupada porque a comparação é feita por uma pessoa olhando duas telas, e 32 caracteres
-    /// corridos não se comparam sem erro.
-    #[must_use]
-    pub fn impressao(&self) -> String {
-        let mut texto = String::with_capacity(39);
-        for (posicao, byte) in self.0.iter().enumerate() {
-            if posicao != 0 && posicao % 2 == 0 {
-                texto.push(' ');
-            }
-            texto.push(hexadecimal(byte >> 4));
-            texto.push(hexadecimal(byte & 0x0F));
-        }
-        texto
-    }
-}
-
-/// Um dígito hexadecimal minúsculo.
-///
-/// O ramo impossível devolve `?` em vez de entrar em pânico. A entrada é meio byte e nunca passa de
-/// 15, mas um caractere estranho numa impressão digital é um defeito visível e corrigível — uma
-/// janela que fecha sozinha não é.
-fn hexadecimal(meio: u8) -> char {
-    match meio {
-        0..=9 => char::from(b'0' + meio),
-        10..=15 => char::from(b'a' + meio - 10),
-        _ => '?',
-    }
-}
-
 impl From<MachineId> for Maquina {
     fn from(maquina: MachineId) -> Self {
         Self(maquina.0)
@@ -100,24 +68,6 @@ impl core::fmt::Display for Nome {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_impressao_vem_agrupada_para_dar_para_comparar() {
-        let texto = Maquina([0xAB; 16]).impressao();
-        assert_eq!(texto.split(' ').count(), 8, "{texto}");
-        for grupo in texto.split(' ') {
-            assert_eq!(grupo.len(), 4, "{texto}");
-        }
-        assert!(
-            !texto.contains("ABAB"),
-            "hexadecimal em minúsculas: {texto}"
-        );
-    }
-
-    #[test]
-    fn maquinas_diferentes_tem_impressoes_diferentes() {
-        assert_ne!(Maquina([1; 16]).impressao(), Maquina([2; 16]).impressao());
-    }
 
     #[test]
     fn um_nome_com_escape_de_terminal_e_limpo_na_construcao() {

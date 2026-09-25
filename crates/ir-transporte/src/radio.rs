@@ -17,9 +17,9 @@ use ir_bt::{BtCommand, BtEvent, ConnectMode, Endpoint};
 use ir_crypto::{Identity, PublicKey};
 use ir_proto::carrier::Carrier;
 use ir_proto::ids::RadioAddress;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::UnboundedSender;
 
-use crate::{Endereco, Fato, Transporte};
+use crate::{Endereco, Fato, Transporte, repassar};
 
 /// O rádio Bluetooth como transporte de entrada.
 #[derive(Debug)]
@@ -39,7 +39,7 @@ impl Radio {
     pub fn abrir(identidade: Arc<Identity>, fatos: UnboundedSender<Fato>) -> ir_bt::Result<Self> {
         let radio = Arc::new(ir_bt::abrir_radio()?);
         let alca = Endpoint::spawn(Arc::clone(&radio), identidade);
-        tokio::spawn(repassar(alca.events, fatos));
+        tokio::spawn(repassar(alca.events, fatos, fato_de));
         Ok(Self {
             comandos: alca.commands,
             sistema: radio,
@@ -84,11 +84,10 @@ impl Transporte for Radio {
             // Um endereço de rede não é com este transporte.
             return;
         };
-        let mode = match chave {
-            Some(fixada) => ConnectMode::Reconnect(fixada),
-            None => ConnectMode::Pair,
-        };
-        let _ = self.comandos.send(BtCommand::Connect { peer, mode });
+        let _ = self.comandos.send(BtCommand::Connect {
+            peer,
+            mode: ConnectMode::de_chave(chave),
+        });
     }
 
     fn enviar(&self, bytes: Vec<u8>) {
@@ -105,18 +104,6 @@ impl Transporte for Radio {
 
     fn desconectar(&self) {
         let _ = self.comandos.send(BtCommand::Disconnect);
-    }
-}
-
-/// Repassa os eventos do endpoint como fatos do serviço, até um dos lados ir embora.
-async fn repassar(mut eventos: UnboundedReceiver<BtEvent>, fatos: UnboundedSender<Fato>) {
-    while let Some(evento) = eventos.recv().await {
-        let Some(fato) = fato_de(evento) else {
-            continue;
-        };
-        if fatos.send(fato).is_err() {
-            break; // o ator encerrou
-        }
     }
 }
 

@@ -131,21 +131,23 @@ impl<R: AsyncRead + Unpin + Send> FrameReader<R> {
 /// Um *stream* visto como uma sequência de quadros, nos dois sentidos.
 ///
 /// A forma usada no handshake. Depois dele, [`Self::split`].
+///
+/// Por dentro já são as duas metades: o handshake passo a passo usa uma de cada vez, e dividir
+/// depois é só entregá-las — com os bytes que o desenquadrador já tiver guardado.
 #[derive(Debug)]
 pub struct Frames<C> {
-    channel: C,
-    framer: Framer,
-    buffer: Box<[u8]>,
+    reader: FrameReader<ReadHalf<C>>,
+    writer: FrameWriter<WriteHalf<C>>,
 }
 
 impl<C: Channel> Frames<C> {
     /// Envolve um *stream*.
     #[must_use]
     pub fn new(channel: C) -> Self {
+        let (read, write) = split(channel);
         Self {
-            channel,
-            framer: Framer::new(),
-            buffer: vec![0u8; READ_CHUNK].into_boxed_slice(),
+            reader: FrameReader::with_framer(read, Framer::new()),
+            writer: FrameWriter::new(write),
         }
     }
 
@@ -155,9 +157,7 @@ impl<C: Channel> Frames<C> {
     ///
     /// Os de [`FrameWriter::send`].
     pub async fn send(&mut self, body: &[u8]) -> Result<()> {
-        let framed = wire::frame(body)?;
-        self.channel.write_all(&framed).await?;
-        Ok(())
+        self.writer.send(body).await
     }
 
     /// Manda um corpo e força a saída. Ver [`FrameWriter::send_now`].
@@ -166,9 +166,7 @@ impl<C: Channel> Frames<C> {
     ///
     /// Os de [`FrameWriter::send`].
     pub async fn send_now(&mut self, body: &[u8]) -> Result<()> {
-        self.send(body).await?;
-        self.channel.flush().await?;
-        Ok(())
+        self.writer.send_now(body).await
     }
 
     /// Espera o próximo corpo completo. Ver [`FrameReader::recv`].
@@ -177,26 +175,13 @@ impl<C: Channel> Frames<C> {
     ///
     /// Os de [`FrameReader::recv`].
     pub async fn recv(&mut self) -> Result<Vec<u8>> {
-        loop {
-            if let Some(body) = self.framer.next_body()? {
-                return Ok(body);
-            }
-            let read = self.channel.read(&mut self.buffer).await?;
-            let Some(arrived) = self.buffer.get(..read).filter(|_| read > 0) else {
-                return Err(NetError::Closed);
-            };
-            self.framer.feed(arrived);
-        }
+        self.reader.recv().await
     }
 
     /// Separa em duas metades independentes, preservando os bytes já recebidos.
     #[must_use]
     pub fn split(self) -> (FrameReader<ReadHalf<C>>, FrameWriter<WriteHalf<C>>) {
-        let (read, write) = split(self.channel);
-        (
-            FrameReader::with_framer(read, self.framer),
-            FrameWriter::new(write),
-        )
+        (self.reader, self.writer)
     }
 }
 

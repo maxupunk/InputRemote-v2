@@ -15,9 +15,10 @@
 //! Agora o portador vem do próprio fato, e a escolha de qual usar continua sendo da sessão.
 
 use ir_crypto::PublicKey;
+use ir_ipc::Resposta;
 use ir_proto::carrier::Carrier;
 use ir_session::{Input, LinkDown, Phase};
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 use super::Daemon;
 use crate::config::{PinnedPeer, encode_key};
@@ -103,7 +104,7 @@ impl Daemon {
         if let Some(reabridor) = &self.reabridor {
             reabridor.reabrir();
         }
-        let _ = self.avisos.send(ir_ipc::Aviso::EstadoMudou(self.estado()));
+        self.avisar_estado();
     }
 
     /// O enlace seguro ficou pronto.
@@ -114,16 +115,14 @@ impl Daemon {
             // conta própria, ou outro computador — levaria a chave sem a confirmação do usuário.
             if pendente != chave_do_par || self.peer.map(Endereco::portador) != Some(portador) {
                 warn!(%de, %portador, "enlace alheio ao pareamento em curso — recusando");
-                if let Some(transporte) = self.transporte(portador) {
-                    transporte.desconectar();
-                }
+                self.recusar_enlace(portador);
                 return;
             }
             self.pareamento = None;
-            self.save_peer(chave_do_par, de);
+            let sucesso = self.save_peer(chave_do_par, de);
             let _ = self
                 .avisos
-                .send(ir_ipc::Aviso::PareamentoConcluido { sucesso: true });
+                .send(ir_ipc::Aviso::PareamentoConcluido { sucesso });
         } else if self.config.first_peer_key() != Some(chave_do_par) {
             // Sem pareamento em curso, só passa quem já está fixado — e exatamente ele.
             //
@@ -135,16 +134,12 @@ impl Daemon {
             // insistir num `Noise_IK`. Também era isso que mantinha `linked` ligado para sempre,
             // e com ele o laço de sessão que reiniciava a cada segundo.
             warn!(%de, "sem pareamento em curso e sem chave fixada que confira — recusando");
-            if let Some(transporte) = self.transporte(portador) {
-                transporte.desconectar();
-            }
+            self.recusar_enlace(portador);
             return;
         }
         if self.recusar_pela_pausa() {
             info!(%de, %portador, "pausado aqui; o enlace que chegou é recusado");
-            if let Some(transporte) = self.transporte(portador) {
-                transporte.desconectar();
-            }
+            self.recusar_enlace(portador);
             return;
         }
         self.alcance.subiu(portador);
@@ -161,8 +156,18 @@ impl Daemon {
         self.notar_estado();
     }
 
-    /// Grava o par, com o endereço por onde ele foi alcançado.
-    fn save_peer(&mut self, chave_do_par: PublicKey, de: Endereco) {
+    /// Derruba o enlace que acabou de subir por este portador: recusado.
+    fn recusar_enlace(&self, portador: Carrier) {
+        if let Some(transporte) = self.transporte(portador) {
+            transporte.desconectar();
+        }
+    }
+
+    /// Grava o par, com o endereço por onde ele foi alcançado, e diz se ficou gravado.
+    ///
+    /// Pelo mesmo caminho de toda gravação ([`Self::persistir_com`]): antes a memória mudava primeiro
+    /// e uma falha de disco deixava o par só na memória, perdido no próximo reinício.
+    fn save_peer(&mut self, chave_do_par: PublicKey, de: Endereco) -> bool {
         let pinned = PinnedPeer {
             pubkey: encode_key(&chave_do_par),
             // Texto, e é o que permite guardar tanto `ip:porta` quanto endereço de rádio sem
@@ -175,17 +180,16 @@ impl Daemon {
             // passar pela comparação dos seis dígitos nas duas telas.
             recusa_tela_de_bloqueio: false,
         };
-        self.config.peers = vec![pinned];
-        if let Err(error) = self.gravador.gravar_e_esperar(&self.config) {
-            error!(%error, "não foi possível gravar o par");
-        } else {
-            info!("par gravado");
+        if self.persistir_com(|config| config.peers = vec![pinned]) != Resposta::Feito {
+            return false;
         }
-        self.contar_ao_agente_a_permissao();
-        self.alinhar_politica_de_atencao();
-        // Arquivos passam a valer com este par agora, e não depois de reiniciar o serviço.
-        self.arquivos
-            .trocar_destino(crate::arquivos::destino(&self.config));
+        info!("par gravado");
+        // Par novo, permissão nova: o agente, a tela protegida e a política do Windows acompanham.
+        self.permissao_do_protegido_mudou();
+        // Arquivos passam a valer com este par agora, e não depois de reiniciar o serviço — pelo
+        // endereço que o alcance conhece, e não só pelo que o arquivo diz.
+        self.atualizar_destino_dos_arquivos();
+        true
     }
 
     /// Um quadro chegou. É decodificado com o limite **deste** portador.
@@ -340,6 +344,35 @@ mod tests {
         assert!(
             !bancada.daemon.config.peers.is_empty(),
             "o par precisa ficar gravado"
+        );
+    }
+
+    #[test]
+    fn parear_com_a_tela_ja_protegida_tira_a_parede_na_hora() {
+        // Gravar o par só contava ao agente: com a tela daqui bloqueada, o par recém-pareado — que
+        // pode digitar ali — seguia recusado até a tela mudar.
+        let mut bancada = Bancada::nova();
+        bancada.daemon.on_tela_protegida(true);
+        assert!(
+            bancada.daemon.recusa_protegido,
+            "sem par, ninguém digita ali"
+        );
+        bancada
+            .daemon
+            .on_fato_do_transporte(Fato::CodigoDePareamento {
+                portador: Carrier::Udp,
+                digitos: [1, 2, 3, 4, 5, 6],
+                chave_do_par: chave(),
+                de: de_onde(),
+            });
+        bancada.daemon.confirmar(true);
+
+        estabeleceu(&mut bancada, chave());
+
+        assert!(bancada.daemon.protegido_permitido());
+        assert!(
+            !bancada.daemon.recusa_protegido,
+            "o par novo pode digitar ali"
         );
     }
 

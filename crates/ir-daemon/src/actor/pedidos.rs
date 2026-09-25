@@ -65,14 +65,12 @@ impl Daemon {
             Pedido::TravarBorda(travar) => {
                 self.borda_travada = travar;
                 self.drive(ir_session::Input::LockEdge(travar));
-                let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
+                self.avisar_estado();
                 Resposta::Feito
             }
             Pedido::BloquearJuntos(juntos) => {
-                let mut nova = self.config.clone();
-                nova.bloquear_juntos = juntos;
-                let resposta = self.persistir(nova);
-                let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
+                let resposta = self.persistir_com(|config| config.bloquear_juntos = juntos);
+                self.avisar_estado();
                 resposta
             }
             Pedido::EsquecerPar { .. } => self.esquecer_par(),
@@ -92,17 +90,14 @@ impl Daemon {
     /// Guardado dos dois lados: a sessão precisa dele para desligar a degradação, e a interface
     /// precisa vê-lo de volta para dizer "fixado nas preferências" em vez de inventar um motivo.
     pub(super) fn fixar_portador(&mut self, portador: Option<Portador>) -> Resposta {
-        let mut nova = self.config.clone();
-        nova.portador_fixado =
-            portador.map(|portador| ir_painel::texto_do_portador(portador).to_owned());
-        if let Resposta::Falha(falha) = self.persistir(nova) {
+        let portador = portador.map(Portador::no_protocolo);
+        if let Resposta::Falha(falha) = self.persistir_com(|config| config.fixar(portador)) {
             return Resposta::Falha(falha);
         }
-        self.portador_fixado = portador;
         self.session
-            .pin_carrier(portador.map(Portador::no_protocolo), &mut self.out);
+            .pin_carrier(self.config.fixado(), &mut self.out);
         self.apply_commands();
-        let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
+        self.avisar_estado();
         Resposta::Feito
     }
 
@@ -139,10 +134,6 @@ impl Daemon {
         if !self.session.phase().is_established() {
             return Resposta::Falha(Falha::SemConexao);
         }
-        // Os dois tipos têm o mesmo limite, o do canal 4; a conversão não recusa nada.
-        let Some(texto) = ir_session::ClipText::new(texto.em_string()) else {
-            return Resposta::Falha(Falha::ForaDeContexto);
-        };
         self.drive(ir_session::Input::ClipboardText(texto));
         Resposta::Feito
     }
@@ -172,21 +163,10 @@ impl Daemon {
     /// A busca leva segundos e roda numa tarefa própria: o ator não espera, e o resultado vai direto
     /// aos avisos. O endereço da configuração (ou o do último par) entra como candidato marcado.
     fn procurar(&self) {
-        let configurado = self
-            .config
-            .peer_addr
-            .as_deref()
-            .and_then(Endereco::ler)
-            .or_else(|| {
-                self.config
-                    .peers
-                    .first()
-                    .and_then(|par| par.addr.as_deref())
-                    .and_then(Endereco::ler)
-            });
+        let configurado = self.config.endereco_do_par().and_then(Endereco::ler);
         let busca = self.descoberta.procurar(configurado);
         let avisos = self.avisos.clone();
-        tokio::spawn(async move {
+        self.em_fundo_async(|_| async move {
             let candidatos = busca
                 .await
                 .into_iter()
@@ -232,30 +212,28 @@ impl Daemon {
         if self.config.peers.is_empty() {
             return Resposta::Falha(Falha::ParDesconhecido);
         }
-        let mut nova = self.config.clone();
-        if let Some(par) = nova.peers.first_mut() {
-            par.recusa_tela_de_bloqueio = !permitir;
-        }
-        #[cfg(windows)]
-        let nova = self.politica_de_atencao(nova, permitir);
-        let resposta = self.persistir(nova);
+        let resposta = self.persistir_com(|config| {
+            if let Some(par) = config.peers.first_mut() {
+                par.recusa_tela_de_bloqueio = !permitir;
+            }
+        });
         if resposta == Resposta::Feito {
             tracing::info!(permitir, "digitação do par na tela de bloqueio");
-            self.contar_ao_agente_a_permissao();
-            // Com a tela já protegida, a recusa muda na hora: o par deixa de ter a parede.
-            let protegida = self.tela_protegida;
-            self.on_tela_protegida(protegida);
-            let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
+            self.permissao_do_protegido_mudou();
+            self.avisar_estado();
         }
         resposta
     }
 
-    /// Grava a configuração nova e **só então** a adota.
+    /// Muda uma cópia da configuração, grava, e **só então** a adota.
     ///
-    /// Um ponto só para toda ação que grava. A ordem é o que importa: se a gravação falha, nem o
-    /// arquivo nem a memória mudam, e os dois nunca divergem — antes a memória mudava primeiro, e
-    /// uma gravação que falhasse deixava o serviço usando um valor que o próximo reinício perderia.
-    pub(super) fn persistir(&mut self, nova: Config) -> Resposta {
+    /// Um ponto só para toda ação que grava e precisa saber se ficou gravado. A ordem é o que importa:
+    /// se a gravação falha, nem o arquivo nem a memória mudam, e os dois nunca divergem — antes a
+    /// memória mudava primeiro, e uma gravação que falhasse deixava o serviço usando um valor que o
+    /// próximo reinício perderia.
+    pub(super) fn persistir_com(&mut self, mudar: impl FnOnce(&mut Config)) -> Resposta {
+        let mut nova = self.config.clone();
+        mudar(&mut nova);
         match self.gravador.gravar_e_esperar(&nova) {
             Ok(()) => {
                 self.config = nova;
@@ -266,5 +244,15 @@ impl Daemon {
                 Resposta::Falha(Falha::Interna)
             }
         }
+    }
+
+    /// Muda a configuração já, e grava sem esperar.
+    ///
+    /// Para o que chega com a sessão de pé — o rádio do par, o nome dele, a borda que ele escolheu:
+    /// esperar o disco ali seria um tranco no ponteiro logo depois de conectar. Vale já; uma falha de
+    /// gravação fica no registro, e o valor é gravado de novo na próxima vez que chegar.
+    pub(super) fn gravar_ja(&mut self, mudar: impl FnOnce(&mut Config)) {
+        mudar(&mut self.config);
+        self.gravador.gravar(&self.config);
     }
 }

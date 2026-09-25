@@ -151,11 +151,4 @@ impl Receiver {
     pub fn buffered(&self) -> usize {
         self.held.len()
     }
-
-    /// Esvazia. Chamado a cada handshake novo.
-    pub fn reset(&mut self) {
-        self.ack = None;
-        self.next = None;
-        self.held.clear();
-    }
 }

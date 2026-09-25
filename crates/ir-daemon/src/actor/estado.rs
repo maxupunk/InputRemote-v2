@@ -38,7 +38,7 @@ impl Daemon {
             fase: self.session.phase().to_string(),
             alcance: self.alcance.to_string(),
             radio,
-            desktops: format!("{:?}", self.desktops_do_agente),
+            desktops: format!("{:?}", self.desktops_do_agente.nomes),
             economia: format!(
                 "aqui {:?}, no par {:?}",
                 self.economia_aqui, self.economia_no_par
@@ -65,19 +65,20 @@ impl Daemon {
             return;
         }
         // Sem esperar: chega com a sessão recém-estabelecida, e a falha só custa o nome na tela.
-        if let Some(par) = self.config.peers.first_mut() {
-            par.nome = Some(nome.to_owned());
-        }
-        self.gravador.gravar(&self.config);
+        self.gravar_ja(|config| {
+            if let Some(par) = config.peers.first_mut() {
+                par.nome = Some(nome.to_owned());
+            }
+        });
     }
 
     /// O que esta máquina tem para digitar e capturar.
-    fn entrada(&self) -> Entrada<'_> {
+    fn entrada(&self) -> Entrada {
         Entrada {
             agente_pronto: self.agente_pronto && self.injecao_recusada.is_none(),
             injeta_direto: self.injector.is_some(),
             captura_direto: self.capturer.is_some(),
-            desktops_do_agente: &self.desktops_do_agente,
+            agente_na_tela_de_bloqueio: self.desktops_do_agente.tela_de_bloqueio,
         }
     }
 
@@ -87,20 +88,20 @@ impl Daemon {
         Retrato {
             fase: self.session.phase(),
             politica: self.session.policy(),
-            borda: self.edge,
+            borda: self.edge(),
             maquina: self.machine,
+            impressao: &self.impressao,
             nome: &self.nome,
             par: self.config.peers.first().map(|par| ParGravado {
                 maquina: Maquina(
-                    decode_key(&par.pubkey)
-                        .map_or([0u8; 16], |chave| ir_transporte::maquina_da_chave(&chave).0),
+                    decode_key(&par.pubkey).map_or([0u8; 16], |chave| chave.machine_id().0),
                 ),
                 nome_gravado: par.nome.as_deref(),
                 ao_vivo: self.session.peer(),
                 conectado: self.linked(),
             }),
             portador: self.session.carrier(),
-            portador_fixado: self.portador_fixado,
+            portador_fixado: self.config.fixado().map(ir_ipc::Portador::from),
             rota_dupla,
             latencia: self.voltas.latencia(std::time::Instant::now()),
             entrada: self.entrada(),

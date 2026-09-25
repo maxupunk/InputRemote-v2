@@ -54,9 +54,9 @@ impl Conector for ConectorLocal {
 }
 
 /// O endereço do canal de controle, pela mesma regra de todo cliente
-/// ([`ir_ipc::cliente::endereco_do_controle`]).
+/// ([`ir_ipc::endereco::do_controle`]).
 fn endereco_configurado() -> String {
-    ir_ipc::cliente::endereco_do_controle()
+    ir_ipc::endereco::do_controle()
 }
 
 /// Abre a conexão e devolve as duas metades sobre o mesmo canal duplex.

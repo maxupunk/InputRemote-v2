@@ -78,7 +78,6 @@ impl Session {
         }
         // Toda rota é tratada como datagrama (`route`): o ritmo é o da janela, em qualquer portador.
         for _ in 0..POR_BATIDA_DATAGRAMA {
-            // Sobre stream não há janela, e a resposta é sempre sim.
             let proxima = self.seqs.peek(ChannelId::ClipboardText);
             if !self
                 .reliability

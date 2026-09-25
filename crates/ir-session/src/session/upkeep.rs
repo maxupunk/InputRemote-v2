@@ -5,7 +5,7 @@
 //! RFCOMM — num meio que não perde, as janelas só esvaziam a cada confirmação, e o custo é uma
 //! confirmação de poucos bytes a cada 20 ms enquanto houver algo pendente.
 
-use ir_proto::frame::{Frame, Sequence};
+use ir_proto::frame::ChannelAck;
 use ir_proto::message::{Control, Message};
 
 use crate::event::{CommandBatch, LinkDown};
@@ -71,14 +71,8 @@ impl Session {
             let Some(ack) = self.reliability.ack_for(channel) else {
                 continue;
             };
-            // Sequência zero e nunca contada: uma confirmação pura não faz parte do fluxo
-            // ordenado. Se ela consumisse número de sequência sem ser retransmitida, perder
-            // uma criaria um buraco que nunca seria preenchido, e tudo depois dela ficaria
-            // esperando para sempre.
-            let frame = Frame::new(Message::Control(Control::AckOnly), Sequence::ZERO)
-                .with_ack(channel, ack)
-                .in_epoch(self.incarnations.local());
-            self.dispatch_on_route(frame, out);
+            let ack = Some(ChannelAck::new(channel, ack));
+            self.dispatch_unsequenced(Message::Control(Control::AckOnly), ack, out);
             sent_any = true;
         }
         if sent_any {

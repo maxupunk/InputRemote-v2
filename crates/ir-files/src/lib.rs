@@ -57,6 +57,7 @@
 )]
 
 pub mod cota;
+mod em_curso;
 pub mod envio;
 pub mod error;
 pub mod manifesto;

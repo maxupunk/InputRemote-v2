@@ -135,11 +135,7 @@ fn endereco_de(maquina: &str, rede: Vec<Candidate>) -> Option<SocketAddr> {
 /// O identificador anunciado, em hexadecimal: o mesmo texto dos dois lados, para esta máquina se
 /// reconhecer na própria busca.
 fn id_de(maquina: MachineId) -> String {
-    use std::fmt::Write as _;
-    maquina.0.iter().fold(String::new(), |mut texto, byte| {
-        let _ = write!(texto, "{byte:02x}");
-        texto
-    })
+    format!("{maquina:x}")
 }
 
 /// Junta as fontes numa lista só, na ordem em que vale a pena tentar.

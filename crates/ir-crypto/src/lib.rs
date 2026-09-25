@@ -9,7 +9,9 @@
 //!   posterior, `Noise_IK` com a chave estática do par **fixada**.
 //!
 //! Depois do handshake, [`Transport`] cifra e decifra os quadros, com o contador explícito e a
-//! janela de repetição de [`replay`].
+//! janela de repetição de [`replay`]. O que fica entre o Noise e o socket, e é igual em todo
+//! portador — bytes de modo e espécie, prefixo de tamanho, contador implícito, fim do handshake e
+//! as duas confirmações —, está em [`enlace`].
 //!
 //! # Fronteira
 //!
@@ -29,6 +31,7 @@
     )
 )]
 
+pub mod enlace;
 pub mod error;
 pub mod handshake;
 pub mod identity;

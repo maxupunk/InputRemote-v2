@@ -32,7 +32,11 @@ impl Session {
         // tempo enquanto processa uma rajada.
         self.clock.last_rx = now;
         self.clock.mark_carrier_rx(carrier, now);
-        self.adopt_carrier_if_needed(carrier, out);
+        // Com a sessão de pé, um quadro por um portador de fora da rota é o par que já o juntou à
+        // rota dele: se ele também está de pé daqui, entra na rota deste lado também. Sem rota
+        // não há o que adotar: o único quadro admitido sem rota é o aperto de mão de um par novo,
+        // e quem abre a rota por ele — quem ouve primeiro, responde — é `incarnation`.
+        self.widen_route(carrier, out);
 
         // A confirmação vem antes de qualquer despacho: ela libera janela do nosso lado, e
         // fazê-lo primeiro impede que uma rajada encha a janela enquanto é processada.
@@ -116,31 +120,6 @@ impl Session {
         true
     }
 
-    /// Adota o portador por onde um quadro chegou, quando ainda não há nenhum.
-    ///
-    /// Sem isto, quem recebe o `Hello` primeiro não consegue responder — `send` não tem por
-    /// onde mandar — e acaba iniciando o próprio handshake, zerando as janelas e fazendo o
-    /// `Hello` retransmitido do outro lado parecer novo. A regra passa a ser simples: **quem
-    /// ouve primeiro, responde**. Receber um quadro por um portador é prova de que ele
-    /// funciona; esperar o aviso local de que ele subiu é esperar informação que já chegou.
-    ///
-    /// Com a sessão de pé, um quadro por um portador de fora da rota é o par que já juntou esse
-    /// portador à rota dele: se ele também está de pé daqui, entra na rota deste lado também.
-    fn adopt_carrier_if_needed(&mut self, carrier: Carrier, out: &mut CommandBatch) {
-        if !carrier.carries_input() {
-            return;
-        }
-        if self.route.is_some() {
-            self.widen_route(carrier, out);
-            return;
-        }
-        self.available.set(carrier, true);
-        self.route = Some(super::Route::Single(carrier));
-        if self.phase == Phase::Offline {
-            self.move_to(Phase::Handshaking, out);
-        }
-    }
-
     fn on_control(&mut self, now: Timestamp, control: Control, out: &mut CommandBatch) {
         match control {
             Control::Hello(greeting) => self.on_greeting(now, greeting, false, out),
@@ -218,14 +197,7 @@ impl Session {
     /// por isso não depende de resposta do par: age local primeiro, avisa depois.
     pub(super) fn on_emergency(&mut self, now: Timestamp, out: &mut CommandBatch) {
         match self.phase {
-            Phase::Sending => {
-                self.send(
-                    now,
-                    Message::Input(ir_proto::message::InputMessage::ReleaseAll),
-                    out,
-                );
-                self.hand_control_back(out);
-            }
+            Phase::Sending => self.abandon_control(now, out),
             // Quem está nesta tela pediu socorro: o controle fica aqui, e o par solta tudo.
             Phase::Receiving => self.reclaim(now, out),
             // Mesmo sem sessão em uso, soltar é barato e é o que o usuário pediu.

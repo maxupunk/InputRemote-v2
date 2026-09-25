@@ -23,6 +23,8 @@
 )]
 
 mod agente;
+#[cfg(test)]
+mod apoio;
 mod controle;
 mod escuta;
 mod quadros;
@@ -55,51 +57,10 @@ const FILA_DE_AVISOS: usize = 256;
 
 /// O nome do canal de controle, sobrescrevível por `IR_CONTROL_ENDPOINT` para o teste.
 ///
-/// A sobrescrita aceita um caminho completo ou só um nome curto: um valor sem separador vira
-/// `\\.\pipe\<nome>` no Windows e um socket em `TMP` no Linux. O nome curto existe porque a
-/// barra invertida do caminho de *pipe* não sobrevive a algumas camadas de shell.
+/// Resolvido por [`ir_ipc::endereco`], o mesmo lugar que a interface usa para achar o serviço.
 #[must_use]
 pub fn endereco_de_controle() -> String {
-    match std::env::var("IR_CONTROL_ENDPOINT") {
-        Ok(valor) if !valor.is_empty() => expandir_override(&valor),
-        _ => padrao(),
-    }
-}
-
-/// Expande uma sobrescrita curta para um endereço completo da plataforma.
-fn expandir_override(valor: &str) -> String {
-    let curto = !valor.contains(['\\', '/']);
-    #[cfg(windows)]
-    {
-        if curto {
-            format!(r"\\.\pipe\{valor}")
-        } else {
-            valor.to_owned()
-        }
-    }
-    #[cfg(not(windows))]
-    {
-        if curto {
-            std::env::temp_dir()
-                .join(format!("{valor}.sock"))
-                .to_string_lossy()
-                .into_owned()
-        } else {
-            valor.to_owned()
-        }
-    }
-}
-
-/// O endereço padrão da plataforma.
-fn padrao() -> String {
-    #[cfg(windows)]
-    {
-        r"\\.\pipe\inputremote-control".to_owned()
-    }
-    #[cfg(not(windows))]
-    {
-        "/run/inputremote/control.sock".to_owned()
-    }
+    ir_ipc::endereco::do_controle()
 }
 
 /// Sobe o canal de controle e devolve o emissor de avisos que o ator usa para empurrar mudanças.
@@ -128,24 +89,11 @@ pub fn iniciar_controle(
 const FILA_DE_COMANDOS: usize = 4096;
 
 /// O nome do canal do agente, sobrescrevível por `IR_AGENT_ENDPOINT` para o teste.
+///
+/// Resolvido por [`ir_ipc::endereco`], o mesmo lugar que o agente usa para achar o serviço.
 #[must_use]
 pub fn endereco_do_agente() -> String {
-    match std::env::var("IR_AGENT_ENDPOINT") {
-        Ok(valor) if !valor.is_empty() => expandir_override(&valor),
-        _ => padrao_do_agente(),
-    }
-}
-
-/// O endereço padrão do canal do agente.
-fn padrao_do_agente() -> String {
-    #[cfg(windows)]
-    {
-        r"\\.\pipe\inputremote-agent".to_owned()
-    }
-    #[cfg(not(windows))]
-    {
-        "/run/inputremote/agent.sock".to_owned()
-    }
+    ir_ipc::endereco::do_agente()
 }
 
 /// Sobe o canal do agente e devolve o emissor de comandos que o ator usa para mandar injeção.

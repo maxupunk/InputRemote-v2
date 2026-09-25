@@ -54,19 +54,17 @@ export struct EstadoUi {
     nivel-suficiente: bool,
     /// Se a digitação na tela de bloqueio está permitida para o par.
     bloqueio-permitido: bool,
-    /// O único impedimento que importa agora, ou vazio.
-    impedimento: string,
-    /// O aviso de que um Wi-Fi está economizando energia e fazendo o mouse travar, ou vazio.
-    aviso-de-rede: string,
+    /// O único aviso que importa agora, ou vazio: o que impede o produto, a tela de bloqueio do
+    /// outro computador ou o Wi-Fi que cochila — quem escolhe é `Estado::aviso_principal`.
+    aviso: string,
+    /// Se o aviso vem com o botão "Resolver" (o do Wi-Fi que cochila).
+    aviso-resolvivel: bool,
     /// Se o botão do aviso pede ao outro computador (`true`) ou a este.
-    aviso-de-rede-no-par: bool,
+    aviso-no-par: bool,
     /// Se o compartilhamento está pausado aqui: o botão vira "Retomar".
     pausado: bool,
     /// Se foi pausado no outro computador.
     pausado-no-par: bool,
-    /// O aviso de que o outro computador está na tela de bloqueio e recusando o que se digita
-    /// daqui, ou vazio.
-    aviso-do-bloqueio-do-par: string,
     /// A situação da digitação na tela de bloqueio, para Preferências.
     sobre-o-bloqueio: string,
     /// Se a borda está travada: o ponteiro não atravessa.

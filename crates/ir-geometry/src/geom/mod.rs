@@ -7,7 +7,7 @@
 
 pub(crate) mod point;
 pub(crate) mod rect;
-mod scale;
+pub(crate) mod scale;
 
 pub use point::Point;
 pub use rect::Rect;

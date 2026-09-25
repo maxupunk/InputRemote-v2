@@ -227,3 +227,84 @@ fn nenhuma_frase_do_aviso_de_rede_tem_espaco_sobrando() {
         assert!(!frase.contains("  "), "{frase}");
     }
 }
+
+#[test]
+fn a_tela_mostra_um_aviso_so_o_que_mais_impede() {
+    // Antes a tela empilhava até três faixas; o componente dela promete no máximo uma.
+    let mut estado = pronto();
+    assert_eq!(estado.aviso_principal(), None);
+
+    estado.economia_no_par = Some(EconomiaDoWifi::Ligada);
+    let rede = estado.aviso_principal().expect("há aviso");
+    assert_eq!(rede.resolver_no_par(), Some(true), "o de rede tem o botão");
+
+    estado.par_recusa_tela_de_bloqueio = true;
+    let bloqueio = estado.aviso_principal().expect("há aviso");
+    assert_eq!(bloqueio, AvisoPrincipal::BloqueioDoPar);
+    assert_eq!(bloqueio.resolver_no_par(), None);
+
+    estado.captura_pronta = false;
+    let impedimento = estado.aviso_principal().expect("há aviso");
+    assert_eq!(Some(impedimento.frase()), estado.impedimento());
+}
+
+#[test]
+fn as_frases_de_aviso_nao_tem_buraco() {
+    assert!(
+        !AVISO_DO_BLOQUEIO_DO_PAR.contains("  "),
+        "{AVISO_DO_BLOQUEIO_DO_PAR}"
+    );
+    for borda in Borda::TODAS {
+        let frase = frase_da_borda_ajustada(borda);
+        assert!(
+            frase.starts_with("O outro computador mudou de lado"),
+            "{frase}"
+        );
+        assert!(frase.contains(borda_por_extenso(borda)), "{frase}");
+    }
+}
+
+fn borda_por_extenso(borda: Borda) -> &'static str {
+    match borda {
+        Borda::Esquerda => "esquerda",
+        Borda::Direita => "direita",
+        Borda::Acima => "acima",
+        Borda::Abaixo => "abaixo",
+    }
+}
+
+#[test]
+fn so_a_falha_de_verdade_alarma() {
+    // O defeito que isto trava: um par suspenso era "normal" na cor da janela e "Conexão perdida"
+    // na notificação, porque as duas decidiam por listas diferentes.
+    use MotivoDaQueda as Q;
+    for motivo in [Q::PedidoPeloUsuario, Q::ParPausou] {
+        assert_eq!(motivo.gravidade(), Gravidade::Pedida, "{motivo:?}");
+    }
+    for motivo in [
+        Q::ServicoDoParParando,
+        Q::ParSuspenso,
+        Q::TrocandoDeMeio,
+        Q::EstaMaquinaSuspensa,
+        Q::ParRecomecou,
+    ] {
+        assert_eq!(motivo.gravidade(), Gravidade::Esperada, "{motivo:?}");
+    }
+    for motivo in [Q::ParNaoRespondeu, Q::MeioFalhou, Q::ErroDeProtocolo] {
+        assert_eq!(motivo.gravidade(), Gravidade::Falha, "{motivo:?}");
+    }
+}
+
+#[test]
+fn a_latencia_se_escreve_igual_na_tela_e_com_as_amostras_no_diagnostico() {
+    let medida = Latencia {
+        mediana_ms: 12,
+        p99_ms: 34,
+        amostras: 500,
+    };
+    assert_eq!(medida.frase(), "12 ms · 34 ms no pior caso");
+    assert_eq!(
+        medida.frase_do_diagnostico(),
+        "12 ms de mediana, 34 ms no pior caso (500 amostras em 10 s)"
+    );
+}

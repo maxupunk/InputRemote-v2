@@ -2,12 +2,14 @@
 //!
 //! Teclado por scancode ([05, §4.1](../../../docs/05-windows.md)) e ponteiro **absoluto** sobre o
 //! desktop virtual ([05, §4.2](../../../docs/05-windows.md)), para o Windows não aplicar
-//! aceleração a deltas que já vêm acelerados.
+//! aceleração a deltas que já vêm acelerados. A posição chega relativa a um monitor e é posta no
+//! desktop virtual pelo [`ArranjoLocal`].
 
 #![allow(unsafe_code)]
 #![allow(unreachable_pub)]
 
-use ir_proto::input::{Button, HidUsage, PointerPosition, WheelDelta};
+use ir_proto::input::{Button, HidUsage, WheelDelta};
+use ir_proto::screens::ScreenLayout;
 use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBD_EVENT_FLAGS, KEYBDINPUT,
@@ -93,15 +95,18 @@ fn tecla_virtual(vk: u16, pressionada: bool) -> INPUT {
 /// Botões laterais, na parte alta de `mouseData`.
 const XBUTTON1: u16 = 0x0001;
 const XBUTTON2: u16 = 0x0002;
+use crate::arranjo::ArranjoLocal;
 use crate::pendentes::Pendentes;
 use crate::windows::scancode::hid_to_scancode;
 use crate::{InjectEvent, Injector};
 
-/// O injetor por `SendInput`. Sem estado próprio: cada evento é uma chamada.
+/// O injetor por `SendInput`. Cada evento é uma chamada.
 #[derive(Debug, Default)]
 pub struct SendInputInjector {
     /// O que este injetor apertou e ainda não soltou.
     pendentes: Pendentes,
+    /// Os monitores, para a posição de um deles virar posição no desktop virtual.
+    arranjo: ArranjoLocal,
 }
 
 impl SendInputInjector {
@@ -110,6 +115,7 @@ impl SendInputInjector {
     pub const fn new() -> Self {
         Self {
             pendentes: Pendentes::nova(),
+            arranjo: ArranjoLocal::nenhum(),
         }
     }
 }
@@ -128,8 +134,15 @@ impl Injector for SendInputInjector {
                 Ok(())
             }
             InjectEvent::Wheel(delta) => inject_wheel(delta),
-            InjectEvent::Pointer(position) => send(&[pointer_input(position)]),
+            InjectEvent::Pointer(position) => {
+                let (x, y) = self.arranjo.no_desktop_virtual(position);
+                send(&[pointer_input(x, y)])
+            }
         }
+    }
+
+    fn usar_telas(&mut self, telas: &ScreenLayout) {
+        self.arranjo.usar(telas);
     }
 
     /// Solta o que **este injetor** apertou — e nada mais.
@@ -225,13 +238,13 @@ fn inject_wheel(delta: WheelDelta) -> Result<()> {
     send(&inputs)
 }
 
-fn pointer_input(position: PointerPosition) -> INPUT {
-    // Absoluto sobre o desktop virtual, em `0..=65535`. Numa tela só, a posição normalizada da
-    // mensagem já é a posição absoluta.
+/// O ponteiro absoluto sobre o desktop virtual inteiro, em `0..=65535` nos dois eixos — o
+/// referencial de `MOUSEEVENTF_VIRTUALDESK`, e não o de um monitor.
+fn pointer_input(x: u16, y: u16) -> INPUT {
     mouse_input(
         MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
-        i32::from(position.x),
-        i32::from(position.y),
+        i32::from(x),
+        i32::from(y),
         0,
     )
 }

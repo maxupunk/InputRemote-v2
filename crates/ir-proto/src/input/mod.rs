@@ -1,4 +1,5 @@
-//! Vocabulário de entrada: teclas, modificadores, botões, ponteiro e roda.
+//! Vocabulário de entrada: teclas, modificadores, botões, ponteiro e roda — e a entrada local de
+//! uma máquina, o que se injeta nela e o que se captura dela ([`Injection`], [`Capture`]).
 //!
 //! Tudo aqui é tipo de valor: `Copy` quando cabe, sem estado interno escondido, sem
 //! alocação no caminho quente (a única exceção é [`PressedKeys`], que é limitada e só
@@ -11,12 +12,14 @@
 mod button;
 mod event;
 mod hid;
+mod local;
 mod modifiers;
 mod pressed;
 
 pub use button::{Button, Buttons};
 pub use event::{PointerDelta, PointerPosition, WheelDelta};
 pub use hid::{HidUsage, teclado_completo};
+pub use local::{Capture, Injection};
 pub use modifiers::Modifiers;
 pub use pressed::PressedKeys;
 

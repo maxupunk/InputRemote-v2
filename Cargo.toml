@@ -16,6 +16,7 @@ members = [
     "crates/ir-acesso",
     "crates/ir-clip",
     "crates/ir-input",
+    "crates/ir-processo",
     "crates/ir-sessao",
     "crates/ir-canais",
     "crates/ir-energia",
@@ -53,6 +54,7 @@ ir-acesso = { path = "crates/ir-acesso", version = "0.1.0-dev" }
 ir-transferencia = { path = "crates/ir-transferencia", version = "0.1.0-dev" }
 ir-clip = { path = "crates/ir-clip", version = "0.1.0-dev" }
 ir-input = { path = "crates/ir-input", version = "0.1.0-dev" }
+ir-processo = { path = "crates/ir-processo", version = "0.1.0-dev" }
 ir-sessao = { path = "crates/ir-sessao", version = "0.1.0-dev" }
 ir-canais = { path = "crates/ir-canais", version = "0.1.0-dev" }
 ir-energia = { path = "crates/ir-energia", version = "0.1.0-dev" }

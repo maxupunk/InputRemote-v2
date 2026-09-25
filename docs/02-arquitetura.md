@@ -111,10 +111,10 @@ ir-daemon ──► ir-session ──► ir-proto ──► (nada)
     │                 └──► ir-bt  ──► ir-crypto
     ├──► ir-transferencia ──► ir-files ──► ir-proto
     │                    └──► ir-transporte
-    ├──► ir-input
+    ├──► ir-input ──► ir-geometry
     └──► ir-ipc
 
-ir-agent  ──► ir-ipc, ir-input, ir-clip
+ir-agent  ──► ir-ipc, ir-input, ir-clip, ir-geometry
 ir-ui     ──► ir-ipc          (e mais nada — a interface não conhece o produto)
 ```
 
@@ -147,7 +147,7 @@ Por isso `ir-ipc` tem dois vocabulários:
 | Módulo | Vocabulário | Quem consome |
 |---|---|---|
 | `status`, `ui`, `vocabulario` | tipos próprios (`Portador`, `Borda`, `Nivel`, `Maquina`, `Nome`, `Recursos`) | `ir-ui` |
-| `agent` | tipos de `ir-proto` (`HidUsage`, `Button`, `PointerPosition`) | `ir-agent` |
+| `agent` | tipos de `ir-proto` (`Injection`, `Capture`, `PointerPosition`) | `ir-agent` |
 
 A exceção do canal do agente é deliberada: ele carrega injeção de entrada, e ali os tipos do
 protocolo são exatamente os certos. A interface nunca vê esse módulo, porque `Injetar` não

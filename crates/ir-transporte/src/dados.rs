@@ -141,9 +141,7 @@ impl Porta {
     ///
     /// Se a porta não puder ser vinculada — quase sempre porque outra instância já a ocupa.
     pub async fn abrir(porta: u16, identidade: Arc<Identity>) -> Result<Self> {
-        let endereco: SocketAddr = format!("0.0.0.0:{porta}")
-            .parse()
-            .context("porta inválida")?;
+        let endereco = SocketAddr::from(([0, 0, 0, 0], porta));
         let escuta = bulk::bind(endereco)
             .await
             .with_context(|| format!("vinculando o TCP de dados em {endereco}"))?;

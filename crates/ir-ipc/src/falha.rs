@@ -108,14 +108,7 @@ impl Falha {
             Self::Interna => {
                 "Exporte o diagnóstico em Preferências e abra um relato com ele anexado."
             }
-            Self::SemPermissao => {
-                "Peça a um administrador para incluir seu usuário no grupo inputremote desta \
-                 máquina. Vale na hora, sem reiniciar."
-            }
-            Self::ServicoIndisponivel => {
-                "Confira se o serviço do InputRemote está em execução. A janela reconecta sozinha \
-                 quando ele voltar."
-            }
+            Self::SemPermissao | Self::ServicoIndisponivel => self.o_que_fazer_sem_o_servico(),
             Self::PoliticaIndisponivel => {
                 "Este computador não lê o próprio teclado e mouse, então não controla o outro. \
                  Escolha \"Os dois\" ou \"Só o outro controla este\"."
@@ -136,6 +129,32 @@ impl Falha {
         }
     }
 
+    /// O que fazer quando a janela não alcança o serviço — a instrução da plataforma em que ela está.
+    ///
+    /// Um lugar só para a falha do pedido e para a faixa da janela desconectada: antes eram três
+    /// textos, e o desta falha dava a instrução do Linux (o grupo `inputremote`) também no Windows,
+    /// o que ensina a pessoa a desconfiar das instruções.
+    const fn o_que_fazer_sem_o_servico(self) -> &'static str {
+        match self {
+            Self::SemPermissao if cfg!(windows) => {
+                "Reinstale a versão atual do InputRemote como administrador. Esta janela reconecta \
+                 sozinha quando a permissão estiver certa."
+            }
+            Self::SemPermissao => {
+                "Peça a um administrador: \"sudo usermod -aG inputremote <seu usuário>\". Vale na \
+                 hora, sem reiniciar, e esta janela reconecta sozinha."
+            }
+            _ if cfg!(windows) => {
+                "Confira o serviço \"InputRemote\" em Serviços do Windows. Esta janela reconecta \
+                 sozinha quando ele voltar."
+            }
+            _ => {
+                "Suba o serviço com \"sudo systemctl enable --now inputremote\". Esta janela \
+                 reconecta sozinha quando ele voltar."
+            }
+        }
+    }
+
     /// O que fazer nas falhas que entraram depois da varredura de melhorias (log 45) — separadas só
     /// para cada função caber no limite de tamanho ([09, §1](../../../docs/09-padroes-de-codigo.md)).
     const fn o_que_fazer_nas_mais_novas(self) -> &'static str {
@@ -152,7 +171,8 @@ impl Falha {
                 "Atualize o InputRemote no outro computador para a mesma versão deste."
             }
             Self::EnderecoInvalido => {
-                "Digite como 192.168.0.10:52525 para a rede, ou AA:BB:CC:DD:EE:FF para o Bluetooth."
+                "Use o IP do outro computador, como 192.168.0.10 (a porta é opcional), ou o \
+                 endereço Bluetooth dele, como AC:50:DE:47:EB:28."
             }
             Self::SistemaRecusou => {
                 "Veja o registro do serviço para o motivo, ou faça a mudança pelas configurações \
@@ -241,11 +261,18 @@ mod tests {
     }
 
     #[test]
-    fn sem_permissao_nao_manda_reiniciar() {
+    fn sem_permissao_da_a_instrucao_da_plataforma() {
         // A permissão é conferida na hora da conexão. Mandar reiniciar seria ensinar de novo a
-        // instrução errada que custou uma tarde de "continua do mesmo jeito".
+        // instrução errada que custou uma tarde de "continua do mesmo jeito" — e mandar ao grupo
+        // do Linux quem está no Windows ensinaria a desconfiar das instruções.
         let acao = Falha::SemPermissao.o_que_fazer();
-        assert!(acao.contains("sem reiniciar"), "{acao}");
+        if cfg!(windows) {
+            assert!(!acao.contains("usermod"), "{acao}");
+            assert!(!acao.contains("grupo"), "{acao}");
+        } else {
+            assert!(acao.contains("sem reiniciar"), "{acao}");
+            assert!(acao.contains("usermod"), "{acao}");
+        }
     }
 
     #[test]

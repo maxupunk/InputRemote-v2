@@ -31,6 +31,27 @@ pub(super) fn denormalise(fraction: u16, span: u32) -> i32 {
     i32::try_from(offset).unwrap_or(i32::MAX)
 }
 
+/// Converte uma fração de um trecho `inner`, que começa `offset` pixels depois do início de um
+/// trecho `outer`, na fração correspondente de `outer`.
+///
+/// É a posição dentro de um monitor vista no desktop virtual inteiro. Uma divisão só, arredondada
+/// como [`normalise`]: passar por pixels arredondaria duas vezes e deslocaria até meio pixel. Com os
+/// dois trechos iguais e sem deslocamento — uma tela só —, devolve a própria fração.
+pub(crate) fn reframe(fraction: u16, offset: i64, inner: u32, outer: u32) -> u16 {
+    let outer_last = u64::from(outer).saturating_sub(1);
+    if outer_last == 0 {
+        return 0;
+    }
+    let full = u64::from(u16::MAX);
+    let inner_last = u64::from(inner).saturating_sub(1);
+    let offset = u64::try_from(offset.max(0)).unwrap_or(0);
+    // O pixel exato é `offset + fraction * inner_last / full`; a fração dele em `outer` é esse
+    // pixel vezes `full / outer_last`. Em u64: cada parcela cabe em 48 bits.
+    let numerator = offset * full + u64::from(fraction) * inner_last;
+    let scaled = (numerator + outer_last / 2) / outer_last;
+    u16::try_from(scaled.min(full)).unwrap_or(u16::MAX)
+}
+
 /// O deslocamento da última coluna ou linha de um retângulo de largura `span`.
 ///
 /// Saturado: uma dimensão maior que `i32::MAX` não existe em tela real, e saturar é melhor
@@ -77,6 +98,25 @@ mod tests {
                 assert_eq!(back, px, "span={span}, px={px}, fração={fraction}");
             }
         }
+    }
+
+    #[test]
+    fn reframing_into_the_same_span_is_the_identity() {
+        for span in [1u32, 2, 800, 1920, 3840] {
+            for fraction in [0u16, 1, 17, 32_767, 65_534, u16::MAX] {
+                let expected = if span == 1 { 0 } else { fraction };
+                assert_eq!(reframe(fraction, 0, span, span), expected, "span={span}");
+            }
+        }
+    }
+
+    #[test]
+    fn reframing_agrees_with_the_pixel_it_names() {
+        // O pixel 1920 de um trecho de 3200, visto de dentro de um trecho de 1280 que começa nele.
+        let fraction = normalise(0, 1280);
+        assert_eq!(reframe(fraction, 1920, 1280, 3200), normalise(1920, 3200));
+        let last = normalise(1279, 1280);
+        assert_eq!(reframe(last, 1920, 1280, 3200), u16::MAX);
     }
 
     #[test]

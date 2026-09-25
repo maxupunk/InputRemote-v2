@@ -9,6 +9,7 @@ use ir_proto::screens::{Edge, MonitorInfo, ScreenLayout};
 
 use super::Desktop;
 use crate::geom::Point;
+use crate::geom::scale::reframe;
 
 impl Desktop {
     /// Converte um ponto do desktop na posição normalizada que viaja no protocolo.
@@ -42,6 +43,38 @@ impl Desktop {
         }
     }
 
+    /// Converte uma posição do protocolo — fração dentro de um monitor — na fração do retângulo
+    /// que envolve **todos** os monitores, `0..=u16::MAX` nos dois eixos.
+    ///
+    /// É o referencial em que os injetores põem o ponteiro: `MOUSEEVENTF_VIRTUALDESK` no Windows e
+    /// o eixo absoluto do `uinput`, que o compositor estende sobre as telas todas. Entregar a
+    /// fração do monitor direto punha, com dois monitores, o ponteiro no lugar errado. O monitor
+    /// desconhecido cai no principal, como em [`Desktop::from_position`]; com uma tela só, a fração
+    /// volta igual.
+    #[must_use]
+    pub fn to_virtual_fraction(&self, position: PointerPosition) -> (u16, u16) {
+        let inner = self
+            .monitor(position.monitor)
+            .unwrap_or_else(|| self.primary())
+            .bounds;
+        let outer = self.bounds;
+        let offset = |low: i32, origin: i32| i64::from(low) - i64::from(origin);
+        (
+            reframe(
+                position.x,
+                offset(inner.left(), outer.left()),
+                inner.width(),
+                outer.width(),
+            ),
+            reframe(
+                position.y,
+                offset(inner.top(), outer.top()),
+                inner.height(),
+                outer.height(),
+            ),
+        )
+    }
+
     /// O arranjo na forma que viaja no fio.
     ///
     /// O caminho de volta de [`Desktop::from_layout`]. Existe para que a sessão possa
@@ -71,11 +104,13 @@ impl Desktop {
     /// Se o ponto está na borda dada do desktop, pronto para atravessar.
     #[must_use]
     pub fn is_at_edge(&self, point: Point, edge: Edge) -> bool {
+        // A coordenada da borda é de `Rect::edge`; aqui só se decide de que lado dela é "além".
+        let limit = self.bounds.edge(edge);
         match edge {
-            Edge::Left => point.x <= self.bounds.left(),
-            Edge::Right => point.x >= self.bounds.right(),
-            Edge::Top => point.y <= self.bounds.top(),
-            Edge::Bottom => point.y >= self.bounds.bottom(),
+            Edge::Left => point.x <= limit,
+            Edge::Right => point.x >= limit,
+            Edge::Top => point.y <= limit,
+            Edge::Bottom => point.y >= limit,
         }
     }
 }
@@ -131,6 +166,90 @@ mod tests {
                 "{point:?} voltou como {back:?}"
             );
         }
+    }
+
+    fn at(monitor: u8, x: u16, y: u16) -> PointerPosition {
+        PointerPosition {
+            monitor: MonitorId(monitor),
+            x,
+            y,
+        }
+    }
+
+    /// Dois monitores lado a lado, o segundo à direita e mais baixo.
+    fn right_of_primary() -> Desktop {
+        desktop(vec![
+            info(0, 0, 0, 1920, 1080),
+            info(1, 1920, 0, 1280, 1024),
+        ])
+    }
+
+    #[test]
+    fn from_position_lands_on_the_named_monitor() {
+        let d = right_of_primary();
+        assert_eq!(d.from_position(at(1, 0, 0)), Point::new(1920, 0));
+        assert_eq!(
+            d.from_position(at(1, u16::MAX, u16::MAX)),
+            Point::new(3199, 1023)
+        );
+        assert_eq!(d.from_position(at(0, u16::MAX, 0)), Point::new(1919, 0));
+        let left = side_by_side();
+        assert_eq!(left.from_position(at(1, 0, 0)), Point::new(-1280, 0));
+        assert_eq!(left.from_position(at(0, 0, 0)), Point::new(0, 0));
+    }
+
+    #[test]
+    fn virtual_fraction_names_the_same_pixel_across_the_whole_desktop() {
+        // Regressão: o injetor recebia a fração do monitor como se fosse do desktop inteiro, e com
+        // dois monitores o ponteiro ia para o lugar errado.
+        for d in [right_of_primary(), side_by_side()] {
+            let bounds = d.bounds();
+            for monitor in d.monitors() {
+                for (x, y) in [(0, 0), (u16::MAX, u16::MAX), (0, u16::MAX)] {
+                    let position = at(monitor.id.0, x, y);
+                    let pixel = d.from_position(position);
+                    assert_eq!(
+                        d.to_virtual_fraction(position),
+                        (bounds.fraction_x(pixel), bounds.fraction_y(pixel)),
+                        "{position:?} no arranjo {bounds:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn virtual_fraction_with_a_negative_origin() {
+        let d = side_by_side();
+        // O monitor da esquerda começa no início do desktop virtual; o principal, 1280 px depois.
+        assert_eq!(d.to_virtual_fraction(at(1, 0, 0)), (0, 0));
+        let (x, _) = d.to_virtual_fraction(at(0, 0, 0));
+        assert_eq!(x, d.bounds().fraction_x(Point::new(0, 0)));
+        assert!(x > u16::MAX / 3 && x < u16::MAX / 2, "{x}");
+        assert_eq!(d.to_virtual_fraction(at(0, u16::MAX, 0)).0, u16::MAX);
+    }
+
+    #[test]
+    fn virtual_fraction_of_a_single_monitor_is_the_position_itself() {
+        let d = single();
+        for (x, y) in [
+            (0, 0),
+            (1, 2),
+            (32_767, 40_000),
+            (65_534, 17),
+            (u16::MAX, u16::MAX),
+        ] {
+            let (vx, vy) = d.to_virtual_fraction(at(0, x, y));
+            assert!(
+                vx.abs_diff(x) <= 1 && vy.abs_diff(y) <= 1,
+                "({x}, {y}) -> ({vx}, {vy})"
+            );
+        }
+        assert_eq!(
+            d.to_virtual_fraction(at(200, 123, 456)),
+            (123, 456),
+            "monitor desconhecido cai no principal"
+        );
     }
 
     #[test]

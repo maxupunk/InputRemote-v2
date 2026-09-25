@@ -43,11 +43,7 @@ pub(crate) async fn despejar(
         // O usuário copiou outra coisa: esta cópia para aqui, e o outro lado apaga o que já
         // gravou — a montagem dele só vira arquivo de verdade no fim.
         if entrada.fila.cancelando() {
-            let cancelar = BulkMessage::Cancel {
-                id: envio.id(),
-                reason: CancelReason::UserRequested,
-            };
-            let _ = remetente.lock().await.enviar_agora(cancelar).await;
+            cancelar(remetente, envio, CancelReason::UserRequested).await;
             info!("cópia cancelada: o usuário copiou outra coisa");
             let feitos = (envio.enviados(), total);
             let fase = Fase::Parada(Motivo::Cancelada);
@@ -60,14 +56,7 @@ pub(crate) async fn despejar(
             Err(erro) => {
                 warn!(erro = %erro.sem_caminho(), "leitura falhou no meio do envio");
                 debug!(%erro, "detalhe da leitura que falhou");
-                // O identificador **desta** transferência. Era `TransferId(0)`, e quem recebe
-                // ignora mensagem de outra transferência — então o cancelamento nunca chegava, e a
-                // recepção do outro lado ficava aberta até o enlace cair.
-                let cancelar = BulkMessage::Cancel {
-                    id: envio.id(),
-                    reason: CancelReason::WriteFailed,
-                };
-                let _ = remetente.lock().await.enviar_agora(cancelar).await;
+                cancelar(remetente, envio, CancelReason::WriteFailed).await;
                 let feitos = (envio.enviados(), total);
                 anunciar(
                     &ajuste.avisos,
@@ -100,4 +89,18 @@ pub(crate) async fn despejar(
             );
         }
     }
+}
+
+/// Diz ao outro lado que esta cópia parou, para ele apagar o que já gravou.
+///
+/// Com o identificador **desta** transferência. Era `TransferId(0)`, e quem recebe ignora mensagem
+/// de outra transferência — então o cancelamento nunca chegava, e a recepção do outro lado ficava
+/// aberta até o enlace cair. Falhar ao mandar não importa: se o enlace caiu, a montagem de lá vai
+/// embora do mesmo jeito.
+async fn cancelar(remetente: &Arc<Mutex<Remetente>>, envio: &Envio, motivo: CancelReason) {
+    let mensagem = BulkMessage::Cancel {
+        id: envio.id(),
+        reason: motivo,
+    };
+    let _ = remetente.lock().await.enviar_agora(mensagem).await;
 }

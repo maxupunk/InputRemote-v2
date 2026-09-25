@@ -22,33 +22,27 @@
 //! sempre, soltar tudo antes de qualquer outra coisa ([`link`](super::link)).
 
 use ir_proto::carrier::Carrier;
-use ir_proto::frame::Frame;
+use ir_proto::frame::{ChannelAck, Frame, Sequence};
+use ir_proto::message::Message;
 
 pub use ir_proto::route::Route;
 
 use crate::event::{CarrierChoice, Command, CommandBatch, Notice};
 use crate::session::Session;
+use crate::session::state::PerInputCarrier;
 
 /// Por qual portador cada quadro novo chegou primeiro.
 ///
 /// É o placar da rota dupla, e o dado que responde "vale a pena?": se a rede vence quase sempre,
 /// o Bluetooth está ali de reserva; se as vitórias se dividem, cada um está cobrindo os picos do
 /// outro. Conta só quadros **novos** — a cópia que chega depois já perdeu, e é descartada.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CarrierWins {
-    /// Quantos quadros novos chegaram primeiro pelo Bluetooth.
-    pub rfcomm: u64,
-    /// Quantos chegaram primeiro pela rede.
-    pub udp: u64,
-}
+pub type CarrierWins = PerInputCarrier<u64>;
 
 impl CarrierWins {
     /// Conta uma vitória deste portador.
     pub(super) const fn count(&mut self, carrier: Carrier) {
-        match carrier {
-            Carrier::Rfcomm => self.rfcomm = self.rfcomm.saturating_add(1),
-            Carrier::Udp => self.udp = self.udp.saturating_add(1),
-            Carrier::Tcp => {}
+        if let Some(wins) = self.get_mut(carrier) {
+            *wins = wins.saturating_add(1);
         }
     }
 }
@@ -113,6 +107,25 @@ impl Session {
             carrier: current,
             frame,
         });
+    }
+
+    /// Despacha, fora do fluxo ordenado, uma mensagem que não entra na janela nem é retransmitida:
+    /// a confirmação pura e o adeus.
+    ///
+    /// Sequência zero e nunca contada. Se ela consumisse número de sequência sem ser retransmitida,
+    /// perder uma criaria um buraco que nunca seria preenchido, e tudo depois dela ficaria esperando
+    /// para sempre.
+    pub(super) fn dispatch_unsequenced(
+        &self,
+        message: Message,
+        ack: Option<ChannelAck>,
+        out: &mut CommandBatch,
+    ) {
+        let mut frame = Frame::new(message, Sequence::ZERO).in_epoch(self.incarnations.local());
+        if let Some(ack) = ack {
+            frame = frame.with_ack(ack.channel, ack.ack);
+        }
+        self.dispatch_on_route(frame, out);
     }
 
     /// Se a sessão pode juntar portadores numa rota dupla.

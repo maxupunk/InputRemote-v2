@@ -52,6 +52,17 @@ impl Nivel {
     pub fn suficiente(self) -> bool {
         self >= Self::TelaDeBloqueio
     }
+
+    /// O nível do protocolo correspondente — o que viaja no `Hello`.
+    #[must_use]
+    pub const fn no_protocolo(self) -> PrivilegedInputLevel {
+        match self {
+            Self::Nenhum => PrivilegedInputLevel::None,
+            Self::SoDesbloqueado => PrivilegedInputLevel::UnlockedOnly,
+            Self::TelaDeBloqueio => PrivilegedInputLevel::LockScreen,
+            Self::TelaDeLogin => PrivilegedInputLevel::LoginScreen,
+        }
+    }
 }
 
 impl From<PrivilegedInputLevel> for Nivel {
@@ -133,6 +144,7 @@ mod tests {
         for nivel in [P::None, P::UnlockedOnly, P::LockScreen, P::LoginScreen] {
             assert_eq!(Nivel::from(nivel).suficiente(), nivel.meets_requirement());
             assert_eq!(Nivel::from(nivel).rotulo(), nivel.label());
+            assert_eq!(Nivel::from(nivel).no_protocolo(), nivel);
         }
         assert!(Nivel::TelaDeLogin > Nivel::TelaDeBloqueio);
         assert!(Nivel::TelaDeBloqueio > Nivel::SoDesbloqueado);

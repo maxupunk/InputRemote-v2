@@ -14,18 +14,59 @@ use ir_session::{Injection, Input};
 use tracing::{info, warn};
 
 use super::Daemon;
+use crate::config::{Config, PinnedPeer};
 
 /// As teclas do Ctrl+Alt+Del, para onde ele é só um acorde (o Linux).
 #[cfg(not(windows))]
 const CTRL_ALT_DEL: [HidUsage; 3] = [HidUsage(0xE0), HidUsage(0xE2), HidUsage(0x4C)];
 
+/// Se o par gravado nesta configuração pode digitar no desktop protegido daqui.
+///
+/// Sem par, ninguém pode — e é isso que faz esquecer o par devolver a política do Windows. É também
+/// o que decide a política: ligada exatamente quando isto é verdade.
+fn permitido_em(config: &Config) -> bool {
+    config
+        .peers
+        .first()
+        .is_some_and(PinnedPeer::permite_tela_de_bloqueio)
+}
+
+/// Quem aplica a política de Ctrl+Alt+Del do Windows, só quando este processo é o serviço.
+#[cfg(windows)]
+pub(super) fn aplicador_de_atencao(
+    config: &Config,
+    de_fundo: &tokio::sync::mpsc::UnboundedSender<super::DeFundo>,
+) -> Option<ir_sessao::atencao::Aplicador> {
+    if !ir_sessao::como_servico() {
+        return None; // em primeiro plano, como usuário, a política da máquina não é nossa
+    }
+    let de_fundo = de_fundo.clone();
+    Some(ir_sessao::atencao::Aplicador::novo(
+        config.politica_de_atencao_anterior,
+        move |anterior| {
+            let _ = de_fundo.send(super::DeFundo::PoliticaDeAtencao(anterior));
+        },
+    ))
+}
+
 impl Daemon {
     /// Se o par pode digitar no desktop protegido daqui.
     pub(crate) fn protegido_permitido(&self) -> bool {
-        self.config
-            .peers
-            .first()
-            .is_some_and(crate::config::PinnedPeer::permite_tela_de_bloqueio)
+        permitido_em(&self.config)
+    }
+
+    /// A permissão do desktop protegido pode ter mudado — ligada, desligada, par novo, par
+    /// esquecido —, e a configuração nova já está gravada: a mudança passa a valer em todo lugar.
+    ///
+    /// Um caminho só. Eram quatro sequências, e divergiram: esquecer o par não contava ao agente, não
+    /// reavaliava a tela já protegida e não devolvia a política do Windows; parear não reavaliava a
+    /// tela. Quem chama avisa a janela, junto com o que mais mudou.
+    pub(crate) fn permissao_do_protegido_mudou(&mut self) {
+        self.alinhar_politica_de_atencao();
+        self.contar_ao_agente_a_permissao();
+        // Com a tela já protegida, a recusa muda na hora: o par ganha ou perde a parede.
+        let protegida = self.tela_protegida;
+        self.on_tela_protegida(protegida);
     }
 
     /// Passou a recusar, ou voltou a aceitar, digitação no desktop protegido: o par fica sabendo.
@@ -43,7 +84,7 @@ impl Daemon {
     /// O par contou que recusa, ou voltou a aceitar, digitação daqui no desktop protegido dele.
     pub(crate) fn on_par_recusa_protegido(&mut self, recusa: bool) {
         self.par_recusa_protegido = recusa;
-        let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
+        self.avisar_estado();
     }
 
     /// O par pediu Ctrl+Alt+Del aqui.
@@ -55,10 +96,7 @@ impl Daemon {
         info!("o par pediu Ctrl+Alt+Del");
         #[cfg(windows)]
         {
-            let Ok(runtime) = tokio::runtime::Handle::try_current() else {
-                return;
-            };
-            runtime.spawn_blocking(|| {
+            self.em_fundo(|_| {
                 use ir_sessao::atencao;
                 let politica = atencao::politica();
                 if !politica.permite_servicos() {
@@ -120,60 +158,27 @@ impl Daemon {
         true
     }
 
-    /// Liga, ou devolve, a política do Windows que deixa o serviço gerar Ctrl+Alt+Del.
+    /// Leva a política do Windows que deixa o serviço gerar Ctrl+Alt+Del ao que a permissão pede:
+    /// ligada com ela, devolvida ao que era sem ela — ou sem par.
     ///
     /// É o mesmo consentimento da tela de bloqueio, dado pelo mesmo administrador, e por isso anda
-    /// junto com ele ([04, §6](../../../docs/04-seguranca.md)). O `reg.exe` roda aqui, no laço:
-    /// é uma ação rara, pedida à mão e com elevação, e a configuração precisa sair dela já com o
-    /// valor anterior guardado. Devolve a configuração a gravar.
-    #[cfg(windows)]
-    #[allow(clippy::unused_self)] // mora no ator com o resto da permissão, que é dele
-    pub(crate) fn politica_de_atencao(
-        &self,
-        mut nova: crate::config::Config,
-        permitir: bool,
-    ) -> crate::config::Config {
-        use ir_sessao::atencao::{PoliticaDeAtencao, gravar_politica, politica};
-        if !ir_sessao::como_servico() {
-            return nova; // em primeiro plano, como usuário, a política da máquina não é nossa
-        }
-        if permitir {
-            let atual = politica();
-            if !atual.permite_servicos() {
-                match gravar_politica(atual.com_servicos()) {
-                    Ok(()) => {
-                        info!(?atual, "política de Ctrl+Alt+Del ligada para o serviço");
-                        nova.politica_de_atencao_anterior = Some(atual.numero());
-                    }
-                    Err(erro) => warn!(%erro, "não foi possível ligar a política de Ctrl+Alt+Del"),
-                }
-            }
-        } else if let Some(anterior) = nova.politica_de_atencao_anterior.take()
-            && let Err(erro) = gravar_politica(PoliticaDeAtencao::do_numero(anterior))
-        {
-            warn!(%erro, "não foi possível devolver a política de Ctrl+Alt+Del");
-        }
-        nova
-    }
-
-    /// Com a permissão valendo, a política do Windows que deixa o serviço gerar Ctrl+Alt+Del vem
-    /// junto — sozinha, sem ninguém ter de passar pelas Preferências (log 53). O valor de antes fica
-    /// gravado, para ser devolvido se a permissão for desligada.
-    #[cfg(windows)]
-    pub(crate) fn alinhar_politica_de_atencao(&mut self) {
-        if !self.protegido_permitido() {
-            return;
-        }
-        let nova = self.politica_de_atencao(self.config.clone(), true);
-        if nova.politica_de_atencao_anterior != self.config.politica_de_atencao_anterior {
-            let _ = self.persistir(nova);
+    /// junto com ele ([04, §6](../../../docs/04-seguranca.md)); na subida, sozinha, sem ninguém ter de
+    /// passar pelas Preferências (log 53). O `reg.exe` roda fora do laço, em ordem
+    /// ([`ir_sessao::atencao::Aplicador`]), e o valor de antes volta por [`Self::on_politica_de_atencao`].
+    #[cfg_attr(not(windows), allow(clippy::unused_self, clippy::missing_const_for_fn))]
+    pub(crate) fn alinhar_politica_de_atencao(&self) {
+        #[cfg(windows)]
+        if let Some(aplicador) = &self.atencao {
+            aplicador.pedir(self.protegido_permitido());
         }
     }
 
-    /// Fora do Windows, o Ctrl+Alt+Del é só um acorde, e não há política a ligar.
-    #[cfg(not(windows))]
-    #[allow(clippy::unused_self)]
-    pub(crate) const fn alinhar_politica_de_atencao(&mut self) {}
+    /// O valor a devolver mudou: gravado, para ser devolvido mesmo depois de reiniciar.
+    pub(crate) fn on_politica_de_atencao(&mut self, anterior: Option<u32>) {
+        if self.config.politica_de_atencao_anterior != anterior {
+            self.gravar_ja(|config| config.politica_de_atencao_anterior = anterior);
+        }
+    }
 
     /// O `logind` disse se a tela desta máquina está bloqueada, ou no login (Linux).
     ///
@@ -191,7 +196,6 @@ mod tests {
 
     use super::*;
     use crate::actor::bancada::Bancada;
-    use crate::config::PinnedPeer;
 
     fn com_par(bancada: &mut Bancada, permitido: bool) {
         bancada.daemon.config.peers = vec![PinnedPeer {
@@ -254,6 +258,45 @@ mod tests {
         com_par(&mut bancada, true);
         bancada.daemon.on_tela_protegida(true);
         assert!(!bancada.daemon.barrar_no_protegido(tecla(true)));
+    }
+
+    #[test]
+    fn a_politica_do_windows_fica_ligada_so_com_par_e_permissao() {
+        // A decisão que leva a política: sem par — esquecido —, ela é devolvida, e não fica ligada
+        // para quem não pode mais digitar aqui.
+        let mut bancada = Bancada::nova();
+        assert!(!permitido_em(&bancada.daemon.config), "sem par");
+        com_par(&mut bancada, true);
+        assert!(permitido_em(&bancada.daemon.config));
+        com_par(&mut bancada, false);
+        assert!(!permitido_em(&bancada.daemon.config), "o par recusado");
+        com_par(&mut bancada, true);
+        let _ = bancada.daemon.esquecer_par();
+        assert!(!permitido_em(&bancada.daemon.config), "o par esquecido");
+    }
+
+    #[test]
+    fn esquecer_o_par_recusa_na_hora_a_tela_ja_protegida_e_conta_ao_agente() {
+        // Esquecer o par não reavaliava nada: com a tela bloqueada, o par esquecido seguia sem parede,
+        // e o agente seguia deixando digitar no desktop protegido.
+        let mut bancada = Bancada::nova();
+        com_par(&mut bancada, true);
+        bancada.daemon.on_fato(ir_ipc::FatoDoAgente::Pronto {
+            desktops: vec!["Default".to_owned(), "Winlogon".to_owned()],
+            tela_de_bloqueio: true,
+        });
+        bancada.daemon.on_tela_protegida(true);
+        assert!(!bancada.daemon.recusa_protegido);
+        while bancada.agente.try_recv().is_ok() {}
+
+        assert_eq!(bancada.daemon.esquecer_par(), ir_ipc::Resposta::Feito);
+
+        assert!(bancada.daemon.recusa_protegido, "a parede sobe na hora");
+        let mut contou = false;
+        while let Ok(comando) = bancada.agente.try_recv() {
+            contou |= comando == ir_ipc::ComandoDoAgente::PermitirDesktopProtegido(false);
+        }
+        assert!(contou, "o agente precisa saber que não pode mais");
     }
 
     #[test]

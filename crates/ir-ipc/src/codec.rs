@@ -6,6 +6,8 @@
 //! O limite de tamanho existe pelo mesmo motivo que no protocolo de rede: o serviço roda
 //! privilegiado, e um cliente local que anuncie uma mensagem de 4 GB não pode fazê-lo alocar.
 
+use std::io::{Read, Write};
+
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -95,6 +97,54 @@ pub fn decodificar<T: DeserializeOwned>(corpo: &[u8]) -> Result<T, ErroDeCodec> 
     }
 }
 
+/// Codifica, escreve e esvazia uma mensagem num canal bloqueante.
+///
+/// É o que a janela, o agente, o ajudante de clipboard e a ferramenta de bancada fazem a cada
+/// mensagem; o esvaziamento vai junto porque um quadro parado no *buffer* é um pedido que o serviço
+/// nunca vê.
+///
+/// # Errors
+///
+/// O erro de E/S da escrita; um erro de [`codificar`] volta como [`std::io::ErrorKind::InvalidData`].
+pub fn escrever_em<T: Serialize, W: Write + ?Sized>(
+    escrita: &mut W,
+    mensagem: &T,
+) -> std::io::Result<()> {
+    let quadro = codificar(mensagem).map_err(invalido)?;
+    escrita.write_all(&quadro)?;
+    escrita.flush()
+}
+
+/// Lê uma mensagem inteira de um canal bloqueante. `Ok(None)` no fim limpo do fluxo.
+///
+/// O tamanho anunciado é conferido contra o limite **antes** de alocar o corpo.
+///
+/// # Errors
+///
+/// O erro de E/S da leitura — um fluxo que acaba no meio do corpo inclusive; prefixo ou corpo
+/// inválidos voltam como [`std::io::ErrorKind::InvalidData`].
+pub fn ler_de<T: DeserializeOwned, R: Read + ?Sized>(
+    leitura: &mut R,
+) -> std::io::Result<Option<T>> {
+    let mut prefixo = [0u8; PREFIXO];
+    if let Err(erro) = leitura.read_exact(&mut prefixo) {
+        return if erro.kind() == std::io::ErrorKind::UnexpectedEof {
+            Ok(None)
+        } else {
+            Err(erro)
+        };
+    }
+    let tamanho = tamanho_anunciado(&prefixo).map_err(invalido)?;
+    let mut corpo = vec![0u8; tamanho];
+    leitura.read_exact(&mut corpo)?;
+    decodificar(&corpo).map(Some).map_err(invalido)
+}
+
+/// Um erro de enquadramento, no vocabulário de quem lê e escreve em canal.
+fn invalido(erro: ErroDeCodec) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::InvalidData, erro)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -141,6 +191,50 @@ mod tests {
         let mut corpo = quadro.get(PREFIXO..).expect("corpo").to_vec();
         corpo.push(0);
         assert_eq!(decodificar::<Pedido>(&corpo), Err(ErroDeCodec::Malformada));
+    }
+
+    #[test]
+    fn escrever_e_ler_num_canal_devolvem_a_mesma_mensagem() {
+        let mut canal = Vec::new();
+        escrever_em(&mut canal, &Pedido::Estado).expect("escreve");
+        escrever_em(&mut canal, &Pedido::Acompanhar).expect("escreve");
+        let mut leitura = canal.as_slice();
+        assert_eq!(
+            ler_de::<Pedido, _>(&mut leitura).expect("lê"),
+            Some(Pedido::Estado)
+        );
+        assert_eq!(
+            ler_de::<Pedido, _>(&mut leitura).expect("lê"),
+            Some(Pedido::Acompanhar)
+        );
+        assert_eq!(
+            ler_de::<Pedido, _>(&mut leitura).expect("fim"),
+            None,
+            "fim limpo"
+        );
+    }
+
+    #[test]
+    fn um_canal_que_acaba_no_meio_do_corpo_e_erro_e_nao_fim() {
+        let mut canal = Vec::new();
+        escrever_em(&mut canal, &Pedido::Estado).expect("escreve");
+        // Um segundo quadro que promete nove bytes e entrega dois.
+        canal.extend_from_slice(&[9, 0, 0, 0, 1, 2]);
+        let mut leitura = canal.as_slice();
+        assert!(
+            ler_de::<Pedido, _>(&mut leitura)
+                .expect("primeiro")
+                .is_some()
+        );
+        assert!(ler_de::<Pedido, _>(&mut leitura).is_err());
+    }
+
+    #[test]
+    fn um_anuncio_absurdo_no_canal_e_dado_invalido() {
+        let prefixo = u32::MAX.to_le_bytes();
+        let mut leitura = prefixo.as_slice();
+        let erro = ler_de::<Pedido, _>(&mut leitura).expect_err("recusa");
+        assert_eq!(erro.kind(), std::io::ErrorKind::InvalidData);
     }
 
     #[test]

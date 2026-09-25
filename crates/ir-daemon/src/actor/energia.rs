@@ -22,23 +22,15 @@ const INTERVALO_DO_PEDIDO_DO_PAR: std::time::Duration = std::time::Duration::fro
 impl Daemon {
     /// Verifica a placa daqui, fora do ator. Sem runtime (os testes síncronos) não há verificação.
     pub(crate) fn verificar_economia(&self) {
-        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
-            return;
-        };
-        let de_fundo = self.de_fundo.clone();
-        runtime.spawn_blocking(move || {
+        self.em_fundo(|de_fundo| {
             let _ = de_fundo.send(super::DeFundo::Economia(ir_energia::verificar()));
         });
     }
 
     /// Desliga a economia da placa daqui, fora do ator, e verifica de novo em seguida.
     pub(crate) fn desligar_economia_aqui(&self) {
-        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
-            return;
-        };
-        let de_fundo = self.de_fundo.clone();
         let avisos = self.avisos.clone();
-        runtime.spawn_blocking(move || {
+        self.em_fundo(move |de_fundo| {
             match ir_energia::desligar() {
                 Ok(()) => info!("economia de energia do Wi-Fi desligada"),
                 Err(erro) => {
@@ -66,7 +58,7 @@ impl Daemon {
         }
         if mudou {
             info!(?economia, "economia de energia do Wi-Fi desta máquina");
-            let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
+            self.avisar_estado();
         }
     }
 
@@ -79,7 +71,7 @@ impl Daemon {
             info!(?estado, "economia de energia do Wi-Fi do par");
         }
         self.economia_no_par = estado;
-        let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
+        self.avisar_estado();
     }
 
     /// O par pediu, pela sessão, que a placa daqui pare de cochilar.
@@ -111,16 +103,8 @@ impl Daemon {
             self.desligar_economia_aqui();
             return Resposta::Feito;
         }
-        let entende = self.session.phase().is_established()
-            && self
-                .session
-                .peer()
-                .is_some_and(|par| par.version >= ir_proto::version::NETWORK_POWER);
         if !self.session.phase().is_established() {
             return Resposta::Falha(Falha::SemConexao);
-        }
-        if !entende {
-            return Resposta::Falha(Falha::ParDesatualizado);
         }
         self.drive(Input::DisablePeerNetworkPowerSaving);
         Resposta::Feito

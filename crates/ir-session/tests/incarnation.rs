@@ -269,3 +269,28 @@ fn a_hello_from_an_older_session_does_not_restart_the_current_one() {
 
     assert_stays_up(&mut pair, "depois de um Hello de uma sessão anterior");
 }
+
+#[test]
+fn a_hello_over_tcp_does_not_open_a_session() {
+    // O TCP é o canal de dados. Um aperto de mão por ele deixaria a época do par conhecida sem
+    // rota por onde responder; pelo portador de entrada, quem ouve primeiro responde.
+    let mut pair = Pair::matched();
+    pair.set_delivery(false);
+    pair.feed(Side::Client, Input::CarrierUp(Carrier::Udp));
+    let (_, hello) = sent_frames(&pair, Side::Client)
+        .into_iter()
+        .find(|(_, frame)| matches!(frame.message, Message::Control(Control::Hello(_))))
+        .expect("quem abre a sessão manda Hello");
+    pair.clear_log();
+
+    let received = |carrier| Input::Received {
+        carrier,
+        frame: hello.clone(),
+    };
+    pair.feed(Side::Server, received(Carrier::Tcp));
+    assert_eq!(pair.server.phase(), Phase::Offline);
+    assert!(sent_frames(&pair, Side::Server).is_empty());
+
+    pair.feed(Side::Server, received(Carrier::Udp));
+    assert_eq!(pair.server.phase(), Phase::Ready);
+}

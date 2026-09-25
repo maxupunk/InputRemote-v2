@@ -9,9 +9,12 @@ use ir_proto::screens::ScreenLayout;
 use crate::actor::Daemon;
 use crate::actor::bancada::{Bancada, CapturaDeMentira};
 
-/// Um injetor que só anota o que recebeu.
+/// Um injetor que só anota o que recebeu, e o último arranjo de telas.
 #[derive(Clone, Default)]
-struct Anotador(Arc<Mutex<Vec<InjectEvent>>>);
+struct Anotador(
+    Arc<Mutex<Vec<InjectEvent>>>,
+    Arc<Mutex<Option<ScreenLayout>>>,
+);
 
 impl Injector for Anotador {
     fn inject(&mut self, event: InjectEvent) -> ir_input::Result<()> {
@@ -21,6 +24,10 @@ impl Injector for Anotador {
 
     fn release_all(&mut self) -> ir_input::Result<()> {
         Ok(())
+    }
+
+    fn usar_telas(&mut self, telas: &ScreenLayout) {
+        *self.1.lock().unwrap() = Some(telas.clone());
     }
 }
 
@@ -49,6 +56,16 @@ fn conduzindo() -> (Bancada, Anotador) {
         .definir_telas(ScreenLayout::single(1920, 1080).unwrap());
     bancada.daemon.ajustar_conducao();
     (bancada, anotador)
+}
+
+#[test]
+fn o_injetor_recebe_o_arranjo_local_para_por_o_ponteiro_no_monitor_certo() {
+    // Sem o arranjo, o `uinput` entregava a fração de um monitor como fração do desktop inteiro.
+    let (_bancada, anotador) = conduzindo();
+    assert_eq!(
+        *anotador.1.lock().unwrap(),
+        Some(ScreenLayout::single(1920, 1080).unwrap())
+    );
 }
 
 fn mover(daemon: &mut Daemon, dx: i32, dy: i32) {

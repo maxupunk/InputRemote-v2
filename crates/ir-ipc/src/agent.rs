@@ -12,7 +12,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use ir_proto::input::{Button, HidUsage, PointerPosition, WheelDelta};
+use ir_proto::input::{Capture, Injection, PointerPosition};
 
 /// O que o serviço manda ao agente.
 ///
@@ -23,24 +23,11 @@ use ir_proto::input::{Button, HidUsage, PointerPosition, WheelDelta};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum ComandoDoAgente {
-    /// Injete esta tecla.
-    Tecla {
-        /// Qual.
-        usage: HidUsage,
-        /// `true` para pressionar.
-        pressionada: bool,
-    },
-    /// Injete este botão.
-    Botao {
-        /// Qual.
-        botao: Button,
-        /// `true` para pressionar.
-        pressionado: bool,
-    },
-    /// Injete este movimento de roda.
-    Roda(WheelDelta),
-    /// Ponha o ponteiro aqui.
-    Ponteiro(PointerPosition),
+    /// Injete isto: tecla, botão, roda ou ponteiro.
+    ///
+    /// O tipo é o que a sessão pede e o injetor recebe, sem tradução no caminho: eram três enums e
+    /// duas traduções, cada uma com um curinga que descartaria calado uma variante nova.
+    Injetar(Injection),
     /// Solte tudo, agora.
     ///
     /// O comando mais importante do produto. O agente o obedece antes de qualquer coisa que
@@ -78,6 +65,11 @@ pub enum FatoDoAgente {
     Pronto {
         /// Em quais desktops as threads foram amarradas, para o diagnóstico.
         desktops: Vec<String>,
+        /// Se entre eles está o seguro, e o agente alcança a tela de bloqueio e a de login.
+        ///
+        /// Decidido pelo agente, com a regra de `ir_input::desktop`: o serviço não reinterpreta os
+        /// nomes.
+        tela_de_bloqueio: bool,
     },
     /// O desktop que está recebendo entrada mudou.
     ///
@@ -85,46 +77,16 @@ pub enum FatoDoAgente {
     /// notificação do sistema para isto, então o agente descobre consultando
     /// ([00b, §2](../../../docs/00-licoes-do-deskflow.md)).
     DesktopMudou {
-        /// O nome do desktop que passou a receber entrada.
+        /// O nome do desktop que passou a receber entrada, para o registro.
         nome: String,
+        /// Se ele é protegido — tudo que não é a área de trabalho. Decidido pelo agente.
+        protegido: bool,
     },
-    /// Uma tecla local mudou de estado.
-    TeclaLocal {
-        /// Qual.
-        usage: HidUsage,
-        /// `true` para pressionada.
-        pressionada: bool,
-    },
-    /// Um botão local mudou de estado.
-    BotaoLocal {
-        /// Qual.
-        botao: Button,
-        /// `true` para pressionado.
-        pressionado: bool,
-    },
-    /// O ponteiro local se moveu, em deslocamento relativo.
+    /// A entrada local: tecla, botão, roda ou ponteiro, como a captura a viu.
     ///
-    /// Enviado enquanto o controle está no par: o cursor local fica preso, e o que interessa é
-    /// só o quanto ele tentou andar.
-    PonteiroLocal {
-        /// Deslocamento horizontal.
-        dx: i32,
-        /// Deslocamento vertical.
-        dy: i32,
-    },
-    /// O ponteiro local está nesta posição absoluta de tela.
-    ///
-    /// Enviado enquanto o controle é local. É **absoluta**, e não relativa, porque o serviço
-    /// precisa saber onde o cursor realmente está para disparar a travessia na borda certa;
-    /// acumular deltas a partir de uma origem arbitrária faria a borda cair no lugar errado.
-    PonteiroAbsoluto {
-        /// Posição horizontal, em pixels de tela.
-        x: i32,
-        /// Posição vertical, em pixels de tela.
-        y: i32,
-    },
-    /// A roda local girou.
-    RodaLocal(WheelDelta),
+    /// O tipo é o mesmo que a captura do Linux entrega direto ao serviço, e os dois seguem pelo
+    /// mesmo caminho até a sessão.
+    Capturado(Capture),
     /// O usuário acionou o atalho de emergência.
     Emergencia,
     /// O arranjo de telas mudou.
@@ -143,6 +105,8 @@ pub enum FatoDoAgente {
     InjecaoRecusada {
         /// Em qual desktop.
         desktop: String,
+        /// Se esse desktop é protegido: aí a recusa é a política, e não o sistema.
+        protegido: bool,
     },
 }
 
@@ -159,9 +123,11 @@ mod tests {
             FatoDoAgente::Emergencia,
             FatoDoAgente::DesktopMudou {
                 nome: "Winlogon".to_owned(),
+                protegido: true,
             },
             FatoDoAgente::InjecaoRecusada {
                 desktop: "Winlogon".to_owned(),
+                protegido: true,
             },
         ];
         for fato in fatos {
@@ -181,14 +147,34 @@ mod tests {
     }
 
     #[test]
+    fn a_entrada_atravessa_o_canal_do_agente_sem_traducao() {
+        use ir_proto::ids::MonitorId;
+        let comando = ComandoDoAgente::Injetar(Injection::Pointer(PointerPosition {
+            monitor: MonitorId(1),
+            x: 7,
+            y: 9,
+        }));
+        let fato = FatoDoAgente::Capturado(Capture::PointerMotion { dx: -3, dy: 4 });
+        let mut canal = Vec::new();
+        crate::codec::escrever_em(&mut canal, &comando).expect("codifica");
+        crate::codec::escrever_em(&mut canal, &fato).expect("codifica");
+        let mut leitura = canal.as_slice();
+        let lido: Option<ComandoDoAgente> = crate::codec::ler_de(&mut leitura).expect("decodifica");
+        assert_eq!(lido, Some(comando));
+        let lido: Option<FatoDoAgente> = crate::codec::ler_de(&mut leitura).expect("decodifica");
+        assert_eq!(lido, Some(fato));
+    }
+
+    #[test]
     fn a_recusa_de_injecao_diz_em_qual_desktop() {
         // Sem o desktop, o diagnóstico não distingue "recusou na tela de bloqueio" de
         // "recusou no desktop normal" — que são problemas completamente diferentes.
         let fato = FatoDoAgente::InjecaoRecusada {
             desktop: "Winlogon".to_owned(),
+            protegido: true,
         };
         match fato {
-            FatoDoAgente::InjecaoRecusada { desktop } => assert_eq!(desktop, "Winlogon"),
+            FatoDoAgente::InjecaoRecusada { desktop, .. } => assert_eq!(desktop, "Winlogon"),
             _ => panic!("variante errada"),
         }
     }

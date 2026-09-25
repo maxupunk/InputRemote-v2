@@ -6,8 +6,8 @@
 
 use std::time::{Instant, UNIX_EPOCH};
 
-use evdev::{InputEvent, InputEventKind, Key, RelativeAxisType};
-use ir_proto::input::{Button, WheelDelta};
+use evdev::{InputEvent, InputEventKind, RelativeAxisType};
+use ir_proto::input::WheelDelta;
 
 use super::aceleracao::Acelerador;
 use super::touchpad::{self, Touchpad};
@@ -91,7 +91,7 @@ fn traduzir(tipo: InputEventKind, valor: i32, movimento: &mut (i32, i32)) -> Opt
         // tecla que continua apertada.
         InputEventKind::Key(tecla) if valor == 0 || valor == 1 => {
             let pressed = valor == 1;
-            if let Some(button) = botao(tecla) {
+            if let Some(button) = super::keymap::key_to_button(tecla) {
                 return Some(CaptureEvent::Button { button, pressed });
             }
             super::keymap::key_to_hid(tecla).map(|usage| CaptureEvent::Key { usage, pressed })
@@ -105,20 +105,11 @@ fn roda(marcacoes: i32) -> i16 {
     i16::try_from(marcacoes.saturating_mul(i32::from(WheelDelta::NOTCH))).unwrap_or(0)
 }
 
-/// O botão do mouse que esta tecla do `evdev` é, se for um.
-const fn botao(tecla: Key) -> Option<Button> {
-    Some(match tecla {
-        Key::BTN_LEFT => Button::Left,
-        Key::BTN_RIGHT => Button::Right,
-        Key::BTN_MIDDLE => Button::Middle,
-        Key::BTN_SIDE => Button::Back,
-        Key::BTN_EXTRA => Button::Forward,
-        _ => return None,
-    })
-}
-
 #[cfg(test)]
 mod tests {
+    use evdev::Key;
+    use ir_proto::input::Button;
+
     use super::*;
 
     #[test]

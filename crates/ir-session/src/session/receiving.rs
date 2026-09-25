@@ -10,7 +10,7 @@
 //!   percebe que ele encostou na borda que devolve o controle.
 
 use ir_geometry::{Movement, advance};
-use ir_proto::input::{InputState, PointerPosition};
+use ir_proto::input::{Button, HidUsage, InputState, Modifiers, PointerPosition};
 use ir_proto::message::{Control, Feedback, InputMessage, Message, PointerMessage};
 
 use crate::event::{Command, CommandBatch, Injection, Notice};
@@ -45,10 +45,7 @@ impl Session {
         }
         self.start_receiving(now);
 
-        if let Some(desktop) = self.local_screens.as_ref() {
-            self.pointer = desktop.from_position(position);
-        }
-        out.push(Command::Inject(Injection::Pointer(position)));
+        self.place_pointer(position, out);
         out.push(Command::Notify(Notice::ControlMoved { remote: false }));
 
         // O estado veio junto com a entrega, então já se começa sincronizado.
@@ -57,12 +54,23 @@ impl Session {
 
     /// O par levou o controle de volta pela borda dele.
     pub(super) fn on_leave_screen(&mut self, out: &mut CommandBatch) {
+        if self.stop_receiving(out) {
+            out.push(Command::Notify(Notice::ControlMoved { remote: true }));
+        }
+    }
+
+    /// Para de injetar o que o par manda: solta o que ele tinha apertado aqui, e esta máquina volta
+    /// a usar a própria tela.
+    ///
+    /// Devolve se parou — `false` quando não se estava recebendo, e aí nada muda. É o caminho único
+    /// de toda saída de [`Phase::Receiving`] que não seja queda: o par voltando pela borda dele, o
+    /// ponteiro voltando pela daqui, e a retomada.
+    pub(super) fn stop_receiving(&mut self, out: &mut CommandBatch) -> bool {
         if self.phase != Phase::Receiving {
-            return;
+            return false;
         }
         self.release_everything(out);
-        self.phase = Phase::Ready;
-        out.push(Command::Notify(Notice::ControlMoved { remote: true }));
+        self.move_to(Phase::Ready, out)
     }
 
     pub(super) fn on_input_message(&mut self, message: InputMessage, out: &mut CommandBatch) {
@@ -78,34 +86,10 @@ impl Session {
         }
 
         match message {
-            InputMessage::KeyDown { usage, .. } => {
-                self.input_state.apply_key(usage, true);
-                out.push(Command::Inject(Injection::Key {
-                    usage,
-                    pressed: true,
-                }));
-            }
-            InputMessage::KeyUp { usage, .. } => {
-                self.input_state.apply_key(usage, false);
-                out.push(Command::Inject(Injection::Key {
-                    usage,
-                    pressed: false,
-                }));
-            }
-            InputMessage::ButtonDown { button, .. } => {
-                self.input_state.apply_button(button, true);
-                out.push(Command::Inject(Injection::Button {
-                    button,
-                    pressed: true,
-                }));
-            }
-            InputMessage::ButtonUp { button, .. } => {
-                self.input_state.apply_button(button, false);
-                out.push(Command::Inject(Injection::Button {
-                    button,
-                    pressed: false,
-                }));
-            }
+            InputMessage::KeyDown { usage, .. } => self.inject_key(usage, true, out),
+            InputMessage::KeyUp { usage, .. } => self.inject_key(usage, false, out),
+            InputMessage::ButtonDown { button, .. } => self.inject_button(button, true, out),
+            InputMessage::ButtonUp { button, .. } => self.inject_button(button, false, out),
             InputMessage::Wheel { delta, .. } => {
                 out.push(Command::Inject(Injection::Wheel(delta)));
             }
@@ -126,12 +110,7 @@ impl Session {
         self.align_modifiers(message.declared_modifiers(), out);
 
         match message {
-            PointerMessage::Position { position, .. } => {
-                if let Some(desktop) = self.local_screens.as_ref() {
-                    self.pointer = desktop.from_position(position);
-                }
-                out.push(Command::Inject(Injection::Pointer(position)));
-            }
+            PointerMessage::Position { position, .. } => self.place_pointer(position, out),
             PointerMessage::Motion { delta, .. } => {
                 let Some(desktop) = self.local_screens.as_ref() else {
                     return; // sem arranjo não há como converter delta em posição
@@ -175,21 +154,13 @@ impl Session {
 
         let to_release: Vec<_> = self.input_state.keys.difference(&desired.keys).collect();
         for usage in to_release {
-            self.input_state.apply_key(usage, false);
-            out.push(Command::Inject(Injection::Key {
-                usage,
-                pressed: false,
-            }));
+            self.inject_key(usage, false, out);
             released = released.saturating_add(1);
         }
 
         let to_press: Vec<_> = desired.keys.difference(&self.input_state.keys).collect();
         for usage in to_press {
-            self.input_state.apply_key(usage, true);
-            out.push(Command::Inject(Injection::Key {
-                usage,
-                pressed: true,
-            }));
+            self.inject_key(usage, true, out);
             pressed = pressed.saturating_add(1);
         }
 
@@ -200,11 +171,7 @@ impl Session {
             .iter()
             .collect();
         for button in stuck {
-            self.input_state.apply_button(button, false);
-            out.push(Command::Inject(Injection::Button {
-                button,
-                pressed: false,
-            }));
+            self.inject_button(button, false, out);
             released = released.saturating_add(1);
         }
 
@@ -214,11 +181,7 @@ impl Session {
             .iter()
             .collect();
         for button in missing {
-            self.input_state.apply_button(button, true);
-            out.push(Command::Inject(Injection::Button {
-                button,
-                pressed: true,
-            }));
+            self.inject_button(button, true, out);
             pressed = pressed.saturating_add(1);
         }
 
@@ -233,41 +196,48 @@ impl Session {
         if applied == declared {
             return;
         }
-        let mut desired = self.input_state.clone();
-        desired.modifiers = declared;
-        for usage in MODIFIER_USAGES {
-            let bit = ir_proto::input::Modifiers::from_usage(usage);
-            let Some(bit) = bit else { continue };
+        for usage in HidUsage::MODIFIERS {
+            let Some(bit) = Modifiers::from_usage(usage) else {
+                continue;
+            };
             let should = declared.contains(bit);
             if should != applied.contains(bit) {
-                self.input_state.apply_key(usage, should);
-                out.push(Command::Inject(Injection::Key {
-                    usage,
-                    pressed: should,
-                }));
+                self.inject_key(usage, should, out);
             }
         }
     }
 
+    /// Aplica uma tecla ao estado injetado, e a injeta.
+    ///
+    /// As duas coisas juntas, sempre: o estado é o que foi injetado, e é comparando com ele que a
+    /// reconciliação decide o que falta soltar.
+    fn inject_key(&mut self, usage: HidUsage, pressed: bool, out: &mut CommandBatch) {
+        self.input_state.apply_key(usage, pressed);
+        out.push(Command::Inject(Injection::Key { usage, pressed }));
+    }
+
+    /// Aplica um botão ao estado injetado, e o injeta. Ver [`Self::inject_key`].
+    fn inject_button(&mut self, button: Button, pressed: bool, out: &mut CommandBatch) {
+        self.input_state.apply_button(button, pressed);
+        out.push(Command::Inject(Injection::Button { button, pressed }));
+    }
+
+    /// Põe o ponteiro onde o par disse, e o injeta lá.
+    fn place_pointer(&mut self, position: PointerPosition, out: &mut CommandBatch) {
+        if let Some(desktop) = self.local_screens.as_ref() {
+            self.pointer = desktop.from_position(position);
+        }
+        out.push(Command::Inject(Injection::Pointer(position)));
+    }
+
     /// Avisa o par de que o ponteiro voltou pela borda, e para de injetar.
     pub(super) fn report_edge_return(&mut self, now: Timestamp, out: &mut CommandBatch) {
-        if self.phase != Phase::Receiving {
-            return;
-        }
-        let position = self.local_screens.as_ref().map_or(
-            PointerPosition {
-                monitor: ir_proto::ids::MonitorId(0),
-                x: 0,
-                y: 0,
-            },
-            |d| d.to_position(self.pointer),
-        );
-
         // Solta tudo **antes** de anunciar: se a mensagem se perder, o servidor cai por
         // tempo e o estado local já está limpo de qualquer jeito.
-        self.release_everything(out);
-        self.phase = Phase::Ready;
-
+        if !self.stop_receiving(out) {
+            return;
+        }
+        let position = self.local_position();
         self.send(
             now,
             Message::Feedback(Feedback::EdgeReached {
@@ -283,15 +253,3 @@ impl Session {
         matches!(self.phase, Phase::Receiving)
     }
 }
-
-/// Os oito modificadores, na ordem do relatório HID.
-const MODIFIER_USAGES: [ir_proto::input::HidUsage; 8] = [
-    ir_proto::input::HidUsage::LEFT_CTRL,
-    ir_proto::input::HidUsage::LEFT_SHIFT,
-    ir_proto::input::HidUsage::LEFT_ALT,
-    ir_proto::input::HidUsage::LEFT_GUI,
-    ir_proto::input::HidUsage::RIGHT_CTRL,
-    ir_proto::input::HidUsage::RIGHT_SHIFT,
-    ir_proto::input::HidUsage::RIGHT_ALT,
-    ir_proto::input::HidUsage::RIGHT_GUI,
-];

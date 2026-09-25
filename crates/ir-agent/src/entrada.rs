@@ -2,9 +2,11 @@
 
 use std::sync::{Arc, Mutex};
 
+use ir_geometry::Desktop;
 use ir_input::{Capturer, InjectEvent, Injector};
 use ir_ipc::{ComandoDoAgente, FatoDoAgente};
 use ir_proto::input::PointerPosition;
+use ir_proto::screens::ScreenLayout;
 use tracing::warn;
 
 use crate::{Escrita, enviar};
@@ -13,12 +15,23 @@ use crate::{Escrita, enviar};
 pub(crate) struct Entrada {
     pub(crate) injetor: Option<Box<dyn Injector>>,
     pub(crate) capturador: Option<Box<dyn Capturer>>,
+    /// Os monitores desta sessão, para prender o ponteiro no pixel certo.
+    pub(crate) telas: Option<Desktop>,
 }
 
 impl Entrada {
+    /// O arranjo de telas desta sessão chegou, ou mudou: o injetor e o ponteiro preso passam a usá-lo.
+    pub(crate) fn usar_telas(&mut self, arranjo: &ScreenLayout) {
+        if let Some(injetor) = self.injetor.as_mut() {
+            injetor.usar_telas(arranjo);
+        }
+        self.telas = Desktop::from_layout(arranjo);
+    }
+
     /// Executa um comando do serviço.
     pub(crate) fn executar(&mut self, comando: ComandoDoAgente, escrita: &Arc<Mutex<Escrita>>) {
         match comando {
+            ComandoDoAgente::Injetar(evento) => self.injetar(evento, escrita),
             ComandoDoAgente::SoltarTudo => self.soltar_tudo(),
             ComandoDoAgente::SuprimirEntradaLocal(ligado) => {
                 if let Some(capturador) = self.capturador.as_ref() {
@@ -41,47 +54,47 @@ impl Entrada {
             ComandoDoAgente::SequenciaDeAtencao => {
                 warn!("Ctrl+Alt+Del pedido, mas ainda não implementado");
             }
-            outro => self.injetar(outro, escrita),
+            // `Encerrar` é do laço principal, que sai antes de chegar aqui; o curinga cobre as
+            // variantes futuras do enum não exaustivo.
+            _ => {}
         }
     }
 
     /// Injeta o que o comando pedir, e conta ao serviço se o sistema recusar.
-    fn injetar(&mut self, comando: ComandoDoAgente, escrita: &Arc<Mutex<Escrita>>) {
-        let Some(evento) = para_evento(comando) else {
-            return;
-        };
+    fn injetar(&mut self, evento: InjectEvent, escrita: &Arc<Mutex<Escrita>>) {
         let Some(injetor) = self.injetor.as_mut() else {
             return;
         };
         let resultado = injetor.inject(evento);
-        let desktop = injetor.desktop().unwrap_or_else(|| "Default".to_owned());
         if let Err(erro) = resultado {
+            let desktop = injetor
+                .desktop()
+                .unwrap_or_else(|| ir_input::desktop::PADRAO.to_owned());
             // Do ponto de vista do usuário, nada aconteceu — ele não teria como saber. Por isso
             // a recusa é contada, e não só registrada ([05, §4.4](../../../docs/05-windows.md)).
             warn!(%erro, desktop, "injeção recusada");
-            let _ = enviar(escrita, &FatoDoAgente::InjecaoRecusada { desktop });
+            let protegido = ir_input::desktop::protegido(&desktop);
+            let _ = enviar(
+                escrita,
+                &FatoDoAgente::InjecaoRecusada { desktop, protegido },
+            );
         }
     }
 
-    /// Põe o ponteiro local na posição normalizada, convertida para pixels desta tela.
+    /// Põe o ponteiro local na posição do protocolo, convertida para pixels desta sessão.
     ///
-    /// A conversão é feita **aqui**, e não no serviço: quem sabe o tamanho da tela do usuário é
-    /// quem está na sessão dele. Um serviço na sessão 0 leria métricas que não são as dele.
+    /// A conversão é feita **aqui**, e não no serviço: quem sabe o arranjo de telas do usuário é
+    /// quem está na sessão dele. Um serviço na sessão 0 leria métricas que não são as dele. A
+    /// posição é relativa ao monitor que ela nomeia — a mesma conversão da sessão
+    /// ([`Desktop::from_position`]); tratá-la como fração do desktop virtual inteiro prendia o
+    /// ponteiro no lugar errado com dois monitores.
     fn prender(&self, posicao: PointerPosition) {
-        let Some(capturador) = self.capturador.as_ref() else {
+        let (Some(capturador), Some(telas)) = (self.capturador.as_ref(), self.telas.as_ref())
+        else {
             return;
         };
-        // A posição normalizada é sobre o desktop virtual inteiro, como a injeção: com dois monitores,
-        // converter pela tela principal prendia o ponteiro no lugar errado.
-        let (origem_x, origem_y, largura, altura) = ir_input::desktop_virtual()
-            .or_else(|| ir_input::primary_screen_size().map(|(l, a)| (0, 0, l, a)))
-            .unwrap_or((0, 0, 1920, 1080));
-        let escala = |valor: u16, tamanho: u32| {
-            i32::try_from(u64::from(valor) * u64::from(tamanho) / 65_535).unwrap_or(0)
-        };
-        let x = origem_x.saturating_add(escala(posicao.x, largura));
-        let y = origem_y.saturating_add(escala(posicao.y, altura));
-        capturador.warp_pointer(x, y);
+        let ponto = telas.from_position(posicao);
+        capturador.warp_pointer(ponto.x, ponto.y);
     }
 
     /// Solta tudo que possa estar pressionado. O comando mais importante do produto.
@@ -100,21 +113,4 @@ impl Drop for Entrada {
     fn drop(&mut self) {
         self.soltar_tudo();
     }
-}
-
-/// Converte um comando de injeção no evento do backend de entrada.
-fn para_evento(comando: ComandoDoAgente) -> Option<InjectEvent> {
-    Some(match comando {
-        ComandoDoAgente::Tecla { usage, pressionada } => InjectEvent::Key {
-            usage,
-            pressed: pressionada,
-        },
-        ComandoDoAgente::Botao { botao, pressionado } => InjectEvent::Button {
-            button: botao,
-            pressed: pressionado,
-        },
-        ComandoDoAgente::Roda(delta) => InjectEvent::Wheel(delta),
-        ComandoDoAgente::Ponteiro(posicao) => InjectEvent::Pointer(posicao),
-        _ => return None,
-    })
 }

@@ -1,12 +1,12 @@
-//! As traduções entre o vocabulário da sessão e o da interface — e o do agente.
+//! As traduções entre o vocabulário da sessão e o da interface.
 //!
 //! Uma por conceito, num lugar só: a borda, a política e o portador tinham nome em três vocabulários
 //! (protocolo, interface, arquivo de configuração), e cada módulo do serviço convertia do seu jeito.
+//! A borda e o portador entre protocolo e interface são `From` do próprio `ir-ipc`; o texto do
+//! arquivo é do `ir-configuracao`. Aqui fica o resto.
 
-use ir_ipc::{Borda, ComandoDoAgente, LinkState, Politica, Portador};
-use ir_proto::carrier::Carrier;
-use ir_proto::screens::Edge;
-use ir_session::{Injection, Phase, Policy};
+use ir_ipc::{LinkState, Politica};
+use ir_session::{Phase, Policy};
 
 /// A fase da sessão, traduzida para o enlace que a interface mostra.
 #[must_use]
@@ -40,46 +40,6 @@ pub const fn policy_de(politica: Politica) -> Policy {
     }
 }
 
-/// A borda do protocolo, no vocabulário da interface.
-#[must_use]
-pub const fn borda_de(edge: Edge) -> Borda {
-    match edge {
-        Edge::Left => Borda::Esquerda,
-        Edge::Right => Borda::Direita,
-        Edge::Top => Borda::Acima,
-        Edge::Bottom => Borda::Abaixo,
-    }
-}
-
-/// O portador do protocolo, no vocabulário da interface.
-#[must_use]
-pub const fn portador_de(carrier: Carrier) -> Portador {
-    match carrier {
-        Carrier::Rfcomm => Portador::Bluetooth,
-        Carrier::Udp => Portador::RedeLocal,
-        Carrier::Tcp => Portador::RedeDeArquivos,
-    }
-}
-
-/// O portador como fica no arquivo de configuração.
-#[must_use]
-pub const fn texto_do_portador(portador: Portador) -> &'static str {
-    match portador {
-        Portador::Bluetooth => "bluetooth",
-        Portador::RedeLocal | Portador::RedeDeArquivos => "rede",
-    }
-}
-
-/// O portador fixado no arquivo de configuração, se o texto for um dos conhecidos.
-#[must_use]
-pub fn portador_do_texto(texto: Option<&str>) -> Option<Portador> {
-    match texto? {
-        "bluetooth" => Some(Portador::Bluetooth),
-        "rede" => Some(Portador::RedeLocal),
-        _ => None,
-    }
-}
-
 /// A economia de energia do Wi-Fi, como a sessão a conta, no vocabulário da tela — só quando
 /// atrapalha.
 #[must_use]
@@ -94,39 +54,9 @@ pub const fn economia_na_tela(
     }
 }
 
-/// Um comando de injeção da sessão, no vocabulário do agente.
-#[must_use]
-pub const fn comando_do_agente(injection: Injection) -> Option<ComandoDoAgente> {
-    Some(match injection {
-        Injection::Key { usage, pressed } => ComandoDoAgente::Tecla {
-            usage,
-            pressionada: pressed,
-        },
-        Injection::Button { button, pressed } => ComandoDoAgente::Botao {
-            botao: button,
-            pressionado: pressed,
-        },
-        Injection::Wheel(delta) => ComandoDoAgente::Roda(delta),
-        Injection::Pointer(position) => ComandoDoAgente::Ponteiro(position),
-        _ => return None,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn o_portador_vai_ao_arquivo_e_volta_igual() {
-        for portador in [Portador::Bluetooth, Portador::RedeLocal] {
-            assert_eq!(
-                portador_do_texto(Some(texto_do_portador(portador))),
-                Some(portador)
-            );
-        }
-        assert_eq!(portador_do_texto(Some("pombo-correio")), None);
-        assert_eq!(portador_do_texto(None), None);
-    }
 
     #[test]
     fn a_politica_vai_e_volta() {

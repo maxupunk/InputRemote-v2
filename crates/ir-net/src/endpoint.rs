@@ -11,6 +11,8 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use ir_crypto::enlace::{Confirmacao, Desfecho};
+use ir_crypto::turno::Rodadas;
 use ir_crypto::{Identity, PublicKey};
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
@@ -21,6 +23,8 @@ use crate::link::SecureLink;
 pub use crate::vocabulario::{NetCommand, NetEvent};
 
 mod rechave;
+#[cfg(test)]
+mod testes;
 use crate::wire::{self, Kind, Mode};
 
 /// Buffer de recepção. Cobre o maior datagrama do produto (1200 B de texto claro + folga).
@@ -32,8 +36,7 @@ enum State {
     AwaitingConfirm {
         link: SecureLink,
         peer_static: PublicKey,
-        local_ok: bool,
-        peer_ok: bool,
+        confirmacao: Confirmacao,
     },
     Established {
         link: SecureLink,
@@ -49,7 +52,7 @@ pub struct Endpoint {
     events: mpsc::UnboundedSender<NetEvent>,
     state: State,
     /// Rodadas de reconexão desde o último enlace, para a regra de [`crate::turno`].
-    rodadas: u32,
+    rodadas: Rodadas,
     /// Se um pareamento que chega de fora é atendido ([`NetCommand::AcceptPairing`]).
     aceitar_pareamento: bool,
     /// Quando saiu a última tentativa de trocar as chaves ([`rechave`]).
@@ -82,7 +85,7 @@ impl Endpoint {
             identity,
             events: evt_tx,
             state: State::Idle,
-            rodadas: 0,
+            rodadas: Rodadas::default(),
             aceitar_pareamento: true,
             rechave_tentada: None,
         };
@@ -140,11 +143,8 @@ impl Endpoint {
 
     /// Conecta como iniciador — na reconexão, só se for a vez deste lado ([`crate::turno`]).
     async fn connect(&mut self, peer: SocketAddr, mode: ConnectMode) {
-        if let ConnectMode::Reconnect(peer_key) = mode {
-            self.rodadas = self.rodadas.wrapping_add(1);
-            if !crate::turno::discar_nesta_rodada(self.identity.public(), peer_key, self.rodadas) {
-                return;
-            }
+        if !self.rodadas.discar(self.identity.public(), mode) {
+            return;
         }
         match handshake::drive_initiator(&self.socket, peer, &self.identity, mode).await {
             Ok(established) => self.on_established(peer, established),
@@ -226,7 +226,7 @@ impl Endpoint {
     fn on_established(&mut self, peer: SocketAddr, established: handshake::Established) {
         let link = SecureLink::new(Arc::clone(&self.socket), peer, established.transport);
         let peer_static = established.peer_static;
-        self.rodadas = 0;
+        self.rodadas.zerar();
         if let Some(code) = established.code {
             // Pareamento: mostra o código e espera a confirmação dos dois lados antes de
             // deixar qualquer quadro de sessão passar.
@@ -238,8 +238,7 @@ impl Endpoint {
             self.state = State::AwaitingConfirm {
                 link,
                 peer_static,
-                local_ok: false,
-                peer_ok: false,
+                confirmacao: Confirmacao::default(),
             };
         } else {
             // Reconexão: a identidade já está fixada, então o enlace já vale.
@@ -285,51 +284,48 @@ impl Endpoint {
     }
 
     fn peer_confirmed(&mut self) {
-        if let State::AwaitingConfirm { peer_ok, .. } = &mut self.state {
-            *peer_ok = true;
+        if let State::AwaitingConfirm { confirmacao, .. } = &mut self.state {
+            let desfecho = confirmacao.do_par();
+            self.seguir(desfecho);
         }
-        self.promote_if_ready();
     }
 
     /// O usuário respondeu à comparação de códigos.
+    ///
+    /// A resposta vai ao par nos dois casos. Se ela não sair, o erro é contado — antes ele era
+    /// engolido, e o par ficava esperando uma confirmação que ninguém sabia que tinha se perdido.
     async fn confirm_pairing(&mut self, ok: bool) {
-        let State::AwaitingConfirm { link, local_ok, .. } = &mut self.state else {
+        let State::AwaitingConfirm {
+            link, confirmacao, ..
+        } = &mut self.state
+        else {
             return;
         };
-        if ok {
-            *local_ok = true;
-            let _ = link.send(Kind::PairConfirm, &[]).await;
-            self.promote_if_ready();
-        } else {
-            let _ = link.send(Kind::PairReject, &[]).await;
-            let _ = self.events.send(NetEvent::LinkDown("códigos diferentes"));
-            self.state = State::Idle;
+        let (kind, desfecho) = confirmacao.local(ok);
+        if let Err(error) = link.send(kind, &[]).await {
+            let _ = self.events.send(NetEvent::Error(error.to_string()));
         }
+        self.seguir(desfecho);
     }
 
-    /// Estabelece o enlace quando os dois lados confirmaram.
-    fn promote_if_ready(&mut self) {
-        let ready = matches!(
-            &self.state,
-            State::AwaitingConfirm {
-                local_ok: true,
-                peer_ok: true,
-                ..
+    /// Executa o que as confirmações decidiram.
+    fn seguir(&mut self, desfecho: Desfecho) {
+        match desfecho {
+            Desfecho::Esperar => {}
+            Desfecho::Derrubar => self.tear_down("códigos diferentes"),
+            Desfecho::Promover => {
+                let old = core::mem::replace(&mut self.state, State::Idle);
+                if let State::AwaitingConfirm {
+                    link, peer_static, ..
+                } = old
+                {
+                    let peer = link.peer();
+                    let _ = self
+                        .events
+                        .send(NetEvent::Established { peer_static, peer });
+                    self.state = State::Established { link, peer_static };
+                }
             }
-        );
-        if !ready {
-            return;
-        }
-        let old = core::mem::replace(&mut self.state, State::Idle);
-        if let State::AwaitingConfirm {
-            link, peer_static, ..
-        } = old
-        {
-            let peer = link.peer();
-            let _ = self
-                .events
-                .send(NetEvent::Established { peer_static, peer });
-            self.state = State::Established { link, peer_static };
         }
     }
 

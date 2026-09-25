@@ -31,13 +31,7 @@ pub(crate) fn abrir(
     })
 }
 
-/// Com quem trocar arquivos, pelo que a configuração diz agora.
-///
-/// O endereço configurado à mão vence; sem ele, vale o endereço por onde o par foi pareado.
+/// Com quem trocar arquivos, pelo que a configuração diz agora ([`config::Config::endereco_do_par`]).
 pub(crate) fn destino(cfg: &config::Config) -> ir_transferencia::Destino {
-    ir_transferencia::Destino::da_configuracao(
-        cfg.first_peer_key(),
-        cfg.peer_addr.as_deref(),
-        cfg.peers.first().and_then(|par| par.addr.as_deref()),
-    )
+    ir_transferencia::Destino::da_configuracao(cfg.first_peer_key(), cfg.endereco_do_par(), None)
 }

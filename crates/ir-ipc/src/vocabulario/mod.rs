@@ -14,6 +14,7 @@
 //! e ali os tipos do protocolo são exatamente os certos.
 
 pub mod capacidade;
+pub mod endereco;
 pub mod identidade;
 pub mod portador;
 

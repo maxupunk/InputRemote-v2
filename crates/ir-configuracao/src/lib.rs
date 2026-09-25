@@ -1,8 +1,9 @@
 //! Configuração e identidade persistentes da máquina.
 //!
-//! Tudo pertence à máquina, não ao usuário ([02, §7](../../../docs/02-arquitetura.md)). Para o
-//! teste em primeiro plano, o diretório de estado vem de `IR_DATA_DIR` (padrão `./ir-state`), o
-//! que evita depender de privilégio antes da instalação como serviço.
+//! Tudo pertence à máquina, não ao usuário ([02, §7](../../../docs/02-arquitetura.md)). O diretório
+//! de estado é decidido num lugar só ([`data_dir`]): `IR_DATA_DIR` quando vem de fora (a unidade do
+//! `systemd` e os testes), `%ProgramData%\InputRemote` no serviço do Windows, e `./ir-state` no teste
+//! em primeiro plano — o que evita depender de privilégio antes da instalação como serviço.
 //!
 //! Saiu do `ir-daemon` quando a rota dupla o levou ao teto de tamanho de crate
 //! ([ADR-0012](../../../docs/adr/0012-rota-dupla.md)): o que a máquina guarda em disco já era uma
@@ -24,13 +25,15 @@ mod politica;
 
 pub use gravador::Gravador;
 pub use politica::{
-    edge_para_texto, politica_do_texto, politica_na_subida, politica_sustentada, texto_da_politica,
+    edge_do_texto, edge_para_texto, politica_do_texto, politica_na_subida, politica_sustentada,
+    portador_do_texto, texto_da_politica, texto_do_portador,
 };
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use ir_crypto::{Identity, PublicKey};
+use ir_proto::carrier::Carrier;
 use ir_proto::screens::Edge;
 use ir_session::Policy;
 use serde::{Deserialize, Serialize};
@@ -144,7 +147,7 @@ impl Default for Config {
         Self {
             politica: politica_padrao(),
             peer_edge: "right".to_owned(),
-            port: 52525,
+            port: ir_proto::DEFAULT_PORT,
             screen_width: 1920,
             screen_height: 1080,
             peer_addr: None,
@@ -174,13 +177,27 @@ impl Config {
     ///
     /// Erro se o texto não nomear uma borda.
     pub fn edge(&self) -> Result<Edge> {
-        match self.peer_edge.as_str() {
-            "left" => Ok(Edge::Left),
-            "right" => Ok(Edge::Right),
-            "top" => Ok(Edge::Top),
-            "bottom" => Ok(Edge::Bottom),
-            other => bail!("borda inválida: {other}"),
-        }
+        edge_do_texto(&self.peer_edge)
+    }
+
+    /// O portador fixado nas preferências, ou nenhum — a escolha automática.
+    #[must_use]
+    pub fn fixado(&self) -> Option<Carrier> {
+        portador_do_texto(self.portador_fixado.as_deref())
+    }
+
+    /// Fixa um portador nas preferências, ou volta à escolha automática.
+    pub fn fixar(&mut self, portador: Option<Carrier>) {
+        self.portador_fixado = portador.map(|portador| texto_do_portador(portador).to_owned());
+    }
+
+    /// Onde o par está, pelo que o arquivo diz: o endereço configurado à mão vence; sem ele, vale o
+    /// endereço por onde o par foi pareado.
+    #[must_use]
+    pub fn endereco_do_par(&self) -> Option<&str> {
+        self.peer_addr
+            .as_deref()
+            .or_else(|| self.peers.first().and_then(|par| par.addr.as_deref()))
     }
 
     /// Onde os arquivos recebidos ficam.
@@ -189,7 +206,7 @@ impl Config {
         self.recebidos
             .as_deref()
             .filter(|texto| !texto.trim().is_empty())
-            .map_or_else(|| dir.join("recebidos"), PathBuf::from)
+            .map_or_else(|| recebidos_padrao(dir), PathBuf::from)
     }
 
     /// A primeira chave de par fixada, se houver.
@@ -205,18 +222,33 @@ impl Config {
     /// Erro de E/S ao escrever.
     pub fn save(&self, dir: &Path) -> Result<()> {
         let text = toml::to_string_pretty(self).context("serializando config")?;
-        let path = dir.join("config.toml");
-        let tmp = dir.join("config.toml.tmp");
-        std::fs::write(&tmp, text).context("gravando config temporária")?;
-        std::fs::rename(&tmp, &path).context("trocando config")?;
-        Ok(())
+        gravar_atomico(dir, "config.toml", text.as_bytes(), false).context("gravando config")
     }
 }
 
-/// O diretório de estado, de `IR_DATA_DIR` ou `./ir-state`.
+/// A pasta de recebidos quando a configuração não escolhe outra: dentro da pasta de estado.
 #[must_use]
-pub fn data_dir() -> PathBuf {
-    std::env::var_os("IR_DATA_DIR").map_or_else(|| PathBuf::from("ir-state"), PathBuf::from)
+pub fn recebidos_padrao(dir: &Path) -> PathBuf {
+    dir.join("recebidos")
+}
+
+/// O diretório de estado.
+///
+/// `IR_DATA_DIR` vence sempre: é por ele que a unidade do `systemd` aponta `/var/lib/inputremote`,
+/// e que os testes e o desenvolvimento escolhem uma pasta própria. Sem ele, o serviço do Windows
+/// (`servico_do_windows`) guarda em `%ProgramData%\InputRemote`, que o SYSTEM sabe escrever e nenhum
+/// usuário comum adultera; o teste em primeiro plano, em `./ir-state`.
+#[must_use]
+pub fn data_dir(servico_do_windows: bool) -> PathBuf {
+    if let Some(dir) = std::env::var_os("IR_DATA_DIR") {
+        return PathBuf::from(dir);
+    }
+    if servico_do_windows {
+        let base = std::env::var_os("ProgramData")
+            .map_or_else(|| PathBuf::from(r"C:\ProgramData"), PathBuf::from);
+        return base.join("InputRemote");
+    }
+    PathBuf::from("ir-state")
 }
 
 /// Carrega a configuração, criando o padrão se ainda não existir.
@@ -250,30 +282,43 @@ pub fn load_identity(dir: &Path) -> Result<Identity> {
         return Identity::from_secret_bytes(&bytes).context("identidade inválida");
     }
     let identity = Identity::generate();
-    let tmp = dir.join("identity.key.tmp");
-    let _ = std::fs::remove_file(&tmp);
-    write_private(&tmp, identity.secret_bytes().as_bytes()).context("gravando identidade")?;
-    std::fs::rename(&tmp, &path).context("trocando identidade")?;
+    gravar_atomico(
+        dir,
+        "identity.key",
+        identity.secret_bytes().as_bytes(),
+        true,
+    )
+    .context("gravando identidade")?;
     Ok(identity)
 }
 
-/// Grava um arquivo que **nasce** legível só pelo dono.
+/// Grava `nome` em `dir` de forma atômica: um temporário, `sync_all`, e só então a troca.
 ///
-/// Gravar e depois restringir deixava um instante em que a chave era legível por todos — e o erro
-/// da restrição era ignorado. No Windows quem fecha é o DACL da pasta de estado, aplicado pelo
-/// serviço a cada subida (`ir-acesso`).
-fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+/// Uma rotina só para a configuração e a chave. Eram duas, e só a da chave fazia `sync_all`: uma
+/// queda de energia logo depois de gravar a configuração podia deixar um `config.toml` vazio.
+///
+/// `privado` faz o arquivo **nascer** legível só pelo dono. Gravar e depois restringir deixava um
+/// instante em que a chave era legível por todos — e o erro da restrição era ignorado. No Windows
+/// quem fecha é o DACL da pasta de estado, aplicado pelo serviço a cada subida (`ir-acesso`).
+fn gravar_atomico(dir: &Path, nome: &str, bytes: &[u8], privado: bool) -> std::io::Result<()> {
     use std::io::Write;
+    let tmp = dir.join(format!("{nome}.tmp"));
+    // Um temporário de uma gravação interrompida não pode impedir esta.
+    let _ = std::fs::remove_file(&tmp);
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
-    {
+    if privado {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-    let mut file = options.open(path)?;
+    #[cfg(not(unix))]
+    let _ = privado;
+    let mut file = options.open(&tmp)?;
     file.write_all(bytes)?;
-    file.sync_all()
+    file.sync_all()?;
+    drop(file);
+    std::fs::rename(&tmp, dir.join(nome))
 }
 
 /// Restringe ao dono a permissão de um arquivo de chave que já existe.
@@ -305,12 +350,7 @@ fn restrict(path: &Path) -> Result<()> {
 /// Grava a chave pública de um par em hexadecimal.
 #[must_use]
 pub fn encode_key(key: &PublicKey) -> String {
-    use core::fmt::Write;
-    let mut out = String::with_capacity(64);
-    for byte in key.0 {
-        let _ = write!(out, "{byte:02x}");
-    }
-    out
+    ir_proto::ids::Hex(&key.0).to_string()
 }
 
 /// Lê uma chave pública de 64 hexadecimais.

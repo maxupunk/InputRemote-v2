@@ -22,6 +22,32 @@ impl PublicKey {
     pub fn fingerprint(&self) -> Fingerprint {
         Fingerprint::from_hash(blake3::hash(&self.0).as_bytes())
     }
+
+    /// Se esta chave vem antes da outra na ordem que desempata as duas pontas: a **maior**, em
+    /// ordem de bytes, vem antes.
+    ///
+    /// Uma ordem só para toda regra que precisa que os dois lados cheguem à mesma conclusão sem
+    /// trocar mensagem — quem disca ([`crate::turno`]), qual enlace sobrevive a uma colisão no
+    /// canal de arquivos, quem pede a troca de chaves por idade. Cada regra escolhe o que fazer com
+    /// o resultado; a comparação em si não pode divergir entre elas. Chaves iguais não precedem uma
+    /// à outra.
+    #[must_use]
+    pub fn precede(&self, outra: &Self) -> bool {
+        self.0 > outra.0
+    }
+
+    /// O identificador de máquina desta chave: os 16 primeiros bytes dela.
+    ///
+    /// Um lugar só: o serviço, a descoberta e o canal de arquivos derivavam cada um o seu, e é por
+    /// esse número que a descoberta reconhece o par fixado na rede.
+    #[must_use]
+    pub fn machine_id(&self) -> ir_proto::ids::MachineId {
+        let mut bytes = [0u8; 16];
+        if let Some(inicio) = self.0.get(..16) {
+            bytes.copy_from_slice(inicio);
+        }
+        ir_proto::ids::MachineId(bytes)
+    }
 }
 
 /// A impressão digital legível de uma chave pública: 5 grupos de 4 caracteres.
@@ -201,6 +227,24 @@ mod tests {
                 assert!(ALPHABET.contains(&ch), "{ch} fora do alfabeto");
             }
         }
+    }
+
+    #[test]
+    fn the_larger_key_precedes_and_equal_keys_do_not() {
+        let (menor, maior) = (PublicKey([4; 32]), PublicKey([9; 32]));
+        assert!(maior.precede(&menor));
+        assert!(!menor.precede(&maior));
+        assert!(!maior.precede(&maior), "chaves iguais não desempatam");
+    }
+
+    #[test]
+    fn the_machine_id_is_the_first_sixteen_bytes() {
+        let mut bytes = [0u8; 32];
+        for (i, byte) in bytes.iter_mut().enumerate() {
+            *byte = u8::try_from(i).unwrap();
+        }
+        let id = PublicKey(bytes).machine_id();
+        assert_eq!(id.0.to_vec(), (0u8..16).collect::<Vec<_>>());
     }
 
     #[test]

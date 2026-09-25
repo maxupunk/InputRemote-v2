@@ -6,8 +6,9 @@
 //! O contador recebido só avança **depois** de a tag conferir. Se avançasse antes, um corpo
 //! forjado queimaria aquele número e o quadro legítimo seguinte — que virá com ele — deixaria de
 //! abrir. Um atacante que só consegue escrever lixo no socket não deve conseguir dessincronizar
-//! um enlace que, sem ele, funcionaria.
+//! um enlace que, sem ele, funcionaria. A regra mora no [`ContadorImplicito`], o mesmo do rádio.
 
+use ir_crypto::enlace::ContadorImplicito;
 use ir_crypto::{Opener, Sealer, Transport};
 use tokio::io::{AsyncRead, AsyncWrite, ReadHalf, WriteHalf};
 
@@ -17,48 +18,49 @@ use crate::error::Result;
 /// Um enlace cifrado sobre um *stream*, com contador implícito nas duas direções.
 ///
 /// A forma de uma mão só, usada no handshake e em teste. A transferência usa
-/// [`Self::split`].
+/// [`Self::split`]. Por dentro já são as duas metades, e cada método só as chama.
 #[derive(Debug)]
 pub struct BulkLink<C> {
-    frames: Frames<C>,
-    transport: Transport,
-    /// Quantos quadros já foram **abertos com sucesso**.
-    received: u64,
+    receiver: BulkReceiver<ReadHalf<C>>,
+    sender: BulkSender<WriteHalf<C>>,
 }
 
 impl<C: Channel> BulkLink<C> {
     /// Monta o enlace sobre um *stream* que já passou pelo handshake.
     #[must_use]
-    pub const fn new(frames: Frames<C>, transport: Transport) -> Self {
+    pub fn new(frames: Frames<C>, transport: Transport) -> Self {
+        let (reader, writer) = frames.split();
+        let (sealer, opener) = transport.split();
         Self {
-            frames,
-            transport,
-            received: 0,
+            receiver: BulkReceiver {
+                reader,
+                opener,
+                contagem: ContadorImplicito::novo(),
+            },
+            sender: BulkSender { writer, sealer },
         }
     }
 
-    /// Cifra e manda um quadro, sem forçar a saída.
+    /// Cifra e manda um quadro, sem forçar a saída. Ver [`BulkSender::send`].
     ///
     /// # Errors
     ///
     /// [`NetError::Crypto`](crate::NetError::Crypto) se o Noise recusar;
     /// [`NetError::Io`](crate::NetError::Io) em falha de socket.
     pub async fn send(&mut self, plaintext: &[u8]) -> Result<()> {
-        let (_, ciphertext) = self.transport.seal(plaintext)?;
-        self.frames.send(&ciphertext).await
+        self.sender.send(plaintext).await
     }
 
-    /// Cifra, manda e força a saída.
+    /// Cifra, manda e força a saída. Ver [`BulkSender::send_now`].
     ///
     /// # Errors
     ///
     /// Os mesmos de [`Self::send`].
     pub async fn send_now(&mut self, plaintext: &[u8]) -> Result<()> {
-        let (_, ciphertext) = self.transport.seal(plaintext)?;
-        self.frames.send_now(&ciphertext).await
+        self.sender.send_now(plaintext).await
     }
 
-    /// Espera o próximo quadro e o decifra.
+    /// Espera o próximo quadro e o decifra. Ver [`BulkReceiver::recv`].
     ///
     /// # Errors
     ///
@@ -66,11 +68,7 @@ impl<C: Channel> BulkLink<C> {
     /// [`NetError::Crypto`](crate::NetError::Crypto) se a tag não conferir — e aí o enlace
     /// **precisa** cair, porque a contagem das duas pontas divergiu.
     pub async fn recv(&mut self) -> Result<Vec<u8>> {
-        let ciphertext = self.frames.recv().await?;
-        let counter = self.received.wrapping_add(1);
-        let plaintext = self.transport.open(counter, &ciphertext)?;
-        self.received = counter;
-        Ok(plaintext)
+        self.receiver.recv().await
     }
 
     /// Separa o enlace em duas metades independentes, para cifrar e decifrar ao mesmo tempo.
@@ -78,16 +76,7 @@ impl<C: Channel> BulkLink<C> {
     /// Nenhuma trava e nenhum estado compartilhado mutável: ver [`Transport::split`].
     #[must_use]
     pub fn split(self) -> (BulkReceiver<ReadHalf<C>>, BulkSender<WriteHalf<C>>) {
-        let (reader, writer) = self.frames.split();
-        let (sealer, opener) = self.transport.split();
-        (
-            BulkReceiver {
-                reader,
-                opener,
-                received: self.received,
-            },
-            BulkSender { writer, sealer },
-        )
+        (self.receiver, self.sender)
     }
 }
 
@@ -131,7 +120,7 @@ impl<W: AsyncWrite + Unpin + Send> BulkSender<W> {
 pub struct BulkReceiver<R> {
     reader: FrameReader<R>,
     opener: Opener,
-    received: u64,
+    contagem: ContadorImplicito,
 }
 
 impl<R: AsyncRead + Unpin + Send> BulkReceiver<R> {
@@ -142,10 +131,10 @@ impl<R: AsyncRead + Unpin + Send> BulkReceiver<R> {
     /// Como [`BulkLink::recv`].
     pub async fn recv(&mut self) -> Result<Vec<u8>> {
         let ciphertext = self.reader.recv().await?;
-        let counter = self.received.wrapping_add(1);
-        let plaintext = self.opener.open(counter, &ciphertext)?;
-        self.received = counter;
-        Ok(plaintext)
+        let opener = &mut self.opener;
+        Ok(self
+            .contagem
+            .abrir(|counter| opener.open(counter, &ciphertext))?)
     }
 }
 
@@ -213,7 +202,7 @@ mod tests {
         let (mut here, mut there) = linked();
         let plaintext = b"doze bytes..";
         here.send_now(plaintext).await.unwrap();
-        let body = there.frames.recv().await.unwrap();
+        let body = there.receiver.reader.recv().await.unwrap();
         assert_eq!(
             body.len(),
             plaintext.len() + 16,
@@ -300,8 +289,12 @@ mod tests {
         raw.flush().await.unwrap();
 
         assert!(matches!(receiver.recv().await, Err(NetError::Crypto(_))));
-        assert_eq!(receiver.received, 0, "a falha não pode ter avançado nada");
+        assert_eq!(
+            receiver.receiver.contagem.recebidos(),
+            0,
+            "a falha não pode ter avançado nada"
+        );
         assert_eq!(receiver.recv().await.unwrap(), b"legitimo");
-        assert_eq!(receiver.received, 1);
+        assert_eq!(receiver.receiver.contagem.recebidos(), 1);
     }
 }

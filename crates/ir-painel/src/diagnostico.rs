@@ -35,12 +35,7 @@ pub struct Extras {
 pub fn relatorio(estado: &Estado, extras: &Extras) -> String {
     let latencia = estado.latencia.map_or_else(
         || "sem medida".to_owned(),
-        |medida| {
-            format!(
-                "{} ms de mediana, {} ms no pior caso ({} amostras em 10 s)",
-                medida.mediana_ms, medida.p99_ms, medida.amostras
-            )
-        },
+        |medida| medida.frase_do_diagnostico(),
     );
     let queda = estado
         .ultima_queda

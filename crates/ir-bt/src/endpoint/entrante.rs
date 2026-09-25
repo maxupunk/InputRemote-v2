@@ -5,6 +5,8 @@
 
 #[cfg(doc)]
 use super::BtCommand;
+use ir_crypto::enlace::Confirmacao;
+
 use super::{BtEvent, Endpoint, Estado, FALHAS_ATE_PERDER_O_RADIO};
 use crate::addr::BdAddr;
 use crate::canal::Quadros;
@@ -12,6 +14,7 @@ use crate::error::{BtError, Result};
 use crate::handshake;
 use crate::link::EnlaceSeguro;
 use crate::radio::Radio;
+use crate::wire::Mode;
 
 impl<R: Radio> Endpoint<R> {
     /// Alguém ligou para esta máquina: responde ao handshake. Devolve se o laço continua.
@@ -39,8 +42,21 @@ impl<R: Radio> Endpoint<R> {
             }
         };
         let mut quadros = Quadros::novo(canal);
-        match handshake::conduzir_respondedor(&mut quadros, &self.identity).await {
-            Ok(pronto) => self.estabelecer(quadros, peer, pronto, true),
+        let (modo, mensagem) = match handshake::esperar_inicio(&mut quadros).await {
+            Ok(inicio) => inicio,
+            Err(erro) => {
+                self.relatar(&erro);
+                return true;
+            }
+        };
+        if modo == Mode::Pair && !self.aceitar_pareamento {
+            // Antes de qualquer criptografia, como na rede: recusar custa um byte lido, e quem
+            // ligou não chega a ver código nenhum. O canal cai junto com `quadros`.
+            tracing::warn!(%peer, "pedido de pareamento recusado: há par, e a janela de pareamento não está aberta");
+            return true;
+        }
+        match handshake::responder(&mut quadros, &self.identity, modo, &mensagem).await {
+            Ok(pronto) => self.estabelecer(quadros, peer, pronto),
             Err(erro) => self.relatar(&erro),
         }
         true
@@ -52,15 +68,10 @@ impl<R: Radio> Endpoint<R> {
         quadros: Quadros<R::Canal>,
         peer: BdAddr,
         pronto: handshake::Established,
-        entrante: bool,
     ) {
-        if pronto.code.is_some() && !self.aceitar_pareamento && entrante {
-            tracing::warn!(%peer, "pedido de pareamento recusado: há par, e a janela de pareamento não está aberta");
-            return; // o canal cai junto com `quadros`
-        }
         let enlace = EnlaceSeguro::novo(quadros, pronto.transport);
         let peer_static = pronto.peer_static;
-        self.rodadas = 0;
+        self.rodadas.zerar();
         if let Some(code) = pronto.code {
             // Pareamento: mostra o código e espera as duas confirmações antes de deixar qualquer
             // quadro de sessão passar.
@@ -73,8 +84,7 @@ impl<R: Radio> Endpoint<R> {
                 enlace,
                 peer_static,
                 peer,
-                local_ok: false,
-                peer_ok: false,
+                confirmacao: Confirmacao::default(),
             };
         } else {
             // Reconexão: a identidade já está fixada, então o enlace já vale.

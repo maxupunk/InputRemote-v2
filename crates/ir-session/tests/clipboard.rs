@@ -11,8 +11,9 @@ use common::{Pair, Side};
 use ir_proto::carrier::Carrier;
 use ir_proto::input::HidUsage;
 use ir_proto::limits::MAX_CLIPBOARD_TEXT_OFF_TCP;
+use ir_proto::message::{ClipboardMessage, Message};
 use ir_session::event::Notice;
-use ir_session::{ClipText, Command, Injection, Input};
+use ir_session::{ClipText, Command, Injection, Input, Phase, Route};
 
 fn texto(conteudo: &str) -> ClipText {
     ClipText::new(conteudo.to_owned()).unwrap()
@@ -191,4 +192,48 @@ fn a_queda_esquece_o_que_estava_indo() {
         recebidos(&pair, Side::Client).is_empty(),
         "texto de uma sessão encerrada apareceu na seguinte"
     );
+}
+
+/// Quantos pedaços de texto este lado mandou desde a última limpeza.
+fn pedacos_enviados(pair: &Pair, side: Side) -> usize {
+    pair.count(side, |command| {
+        matches!(
+            command,
+            Command::Send { frame, .. }
+                if matches!(frame.message, Message::Clipboard(ClipboardMessage::Chunk { .. }))
+        )
+    })
+}
+
+#[test]
+fn o_aperto_de_mao_pelo_portador_fixado_esquece_o_texto_nos_dois_lados() {
+    // Com a sessão de pé pela rede, o Bluetooth fixado aparece: é aperto de mão novo, e o par o
+    // acompanha encerrando a sessão dele — o que esquece o texto do lado de lá. Se este lado não
+    // esquecesse também, continuaria mandando pedaços de uma oferta que o par já descartou.
+    let mut pair = conectado(Carrier::Udp);
+    pair.pin(Side::Server, Some(Carrier::Rfcomm));
+    pair.feed(
+        Side::Server,
+        Input::ClipboardText(ClipText::new(texto_longo(100_000)).unwrap()),
+    );
+    assert!(
+        pedacos_enviados(&pair, Side::Server) > 0,
+        "a oferta começou a sair"
+    );
+
+    pair.feed(Side::Server, Input::CarrierUp(Carrier::Rfcomm));
+    pair.feed(Side::Client, Input::CarrierUp(Carrier::Rfcomm));
+    assert_eq!(pair.server.route(), Some(Route::Single(Carrier::Rfcomm)));
+    assert_eq!(pair.client.phase(), Phase::Ready);
+    pair.clear_log();
+    for _ in 0..50 {
+        pair.advance(5);
+    }
+
+    assert_eq!(
+        pedacos_enviados(&pair, Side::Server),
+        0,
+        "pedaço de uma oferta da sessão anterior saiu na seguinte"
+    );
+    assert!(recebidos(&pair, Side::Client).is_empty());
 }

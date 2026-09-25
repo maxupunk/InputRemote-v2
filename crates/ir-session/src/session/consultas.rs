@@ -61,10 +61,8 @@ impl Session {
     /// antes de o transporte perceber a queda.
     #[must_use]
     pub fn carrier_silence(&self, carrier: Carrier, now: Timestamp) -> Option<Millis> {
-        let route = self.route?;
-        route
-            .uses(carrier)
-            .then(|| now.since(self.clock.carrier_rx(carrier)))
+        let last = self.clock.carrier_rx.get(carrier)?;
+        self.route?.uses(carrier).then(|| now.since(*last))
     }
 
     /// O par, depois do handshake.

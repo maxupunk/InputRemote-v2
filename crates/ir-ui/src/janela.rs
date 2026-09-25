@@ -186,7 +186,7 @@ impl Contexto {
             Aviso::PareamentoFalhou(falha) => self.falha_no_pareamento(falha),
             Aviso::Falhou(falha) => self.recado(Some(falha)),
             Aviso::BordaAjustada(borda) => {
-                self.informar(crate::ponte::frase_da_borda_ajustada(borda));
+                self.informar(ir_ipc::status::frase_da_borda_ajustada(borda));
             }
             Aviso::PareamentoConcluido { sucesso: false } => {
                 // Uma recusa que a própria janela pediu já está na tela com o motivo certo, e o

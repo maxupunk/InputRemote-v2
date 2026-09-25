@@ -81,6 +81,18 @@ impl HidUsage {
     /// Meta/Win/Super direito.
     pub const RIGHT_GUI: Self = Self(0xE7);
 
+    /// Os oito modificadores, na ordem do relatório HID — a mesma dos bits de `super::Modifiers`.
+    pub const MODIFIERS: [Self; 8] = [
+        Self::LEFT_CTRL,
+        Self::LEFT_SHIFT,
+        Self::LEFT_ALT,
+        Self::LEFT_GUI,
+        Self::RIGHT_CTRL,
+        Self::RIGHT_SHIFT,
+        Self::RIGHT_ALT,
+        Self::RIGHT_GUI,
+    ];
+
     /// Se o valor está na faixa atribuída da página 0x07.
     ///
     /// Um valor fora da faixa não é recusado pelo decodificador — ele é **descartado pelo
@@ -117,20 +129,9 @@ impl core::fmt::Display for HidUsage {
 mod tests {
     use super::*;
 
-    const MODIFIERS: [HidUsage; 8] = [
-        HidUsage::LEFT_CTRL,
-        HidUsage::LEFT_SHIFT,
-        HidUsage::LEFT_ALT,
-        HidUsage::LEFT_GUI,
-        HidUsage::RIGHT_CTRL,
-        HidUsage::RIGHT_SHIFT,
-        HidUsage::RIGHT_ALT,
-        HidUsage::RIGHT_GUI,
-    ];
-
     #[test]
     fn the_eight_modifiers_are_contiguous_and_recognised() {
-        for (index, usage) in MODIFIERS.iter().enumerate() {
+        for (index, usage) in HidUsage::MODIFIERS.iter().enumerate() {
             assert!(usage.is_modifier(), "{usage} deveria ser modificador");
             assert!(usage.is_assigned());
             let expected = 0xE0 + u16::try_from(index).unwrap();

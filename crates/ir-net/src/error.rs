@@ -51,3 +51,12 @@ pub enum NetError {
     #[error("o par encerrou a conexão")]
     Closed,
 }
+
+impl From<ir_crypto::enlace::Excesso> for NetError {
+    fn from(excesso: ir_crypto::enlace::Excesso) -> Self {
+        Self::TooLarge {
+            size: excesso.tamanho,
+            limit: excesso.limite,
+        }
+    }
+}

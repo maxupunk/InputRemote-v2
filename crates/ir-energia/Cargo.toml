@@ -9,6 +9,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+ir-processo.workspace = true
 
 [lints]
 workspace = true

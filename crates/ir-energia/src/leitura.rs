@@ -23,11 +23,7 @@ pub fn economia_do_iw(saida: &str) -> Economia {
 /// "desempenho máximo".
 #[must_use]
 pub fn economia_do_powercfg(saida: &str) -> Economia {
-    let indices: Vec<u32> = saida
-        .split_whitespace()
-        .filter_map(|palavra| palavra.strip_prefix("0x"))
-        .filter_map(|hex| u32::from_str_radix(hex, 16).ok())
-        .collect();
+    let indices: Vec<u32> = ir_processo::ferramenta::numeros_hex(saida).collect();
     match indices.as_slice() {
         [tomada, bateria] => match (*tomada, *bateria) {
             (0, 0) => Economia::Desligada,

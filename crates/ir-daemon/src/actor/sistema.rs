@@ -10,7 +10,7 @@
 //! No Windows os avisos vêm do SCM (`service.rs`); no Linux, de um gancho do `systemd` em
 //! `system-sleep`, que manda `SIGUSR1` antes de dormir e `SIGUSR2` ao acordar.
 
-use ir_session::{LinkDown, Phase};
+use ir_session::LinkDown;
 use tracing::info;
 
 use super::Daemon;
@@ -23,11 +23,7 @@ impl Daemon {
         match evento {
             EventoDoSistema::Suspendendo => self.suspender(),
             EventoDoSistema::Retomou => self.retomar_do_sono(),
-            EventoDoSistema::SessaoMudou => {
-                if !self.agente_pronto {
-                    self.relancar_agente_ja();
-                }
-            }
+            EventoDoSistema::SessaoMudou => self.garantir_agente_agora(),
             EventoDoSistema::TelaBloqueada => self.bloquear_o_par_junto(),
         }
     }
@@ -47,11 +43,10 @@ impl Daemon {
         info!("o par bloqueou a tela dele: bloqueando esta");
         if let Some(agente) = self.comandos_do_agente() {
             let _ = agente.send(ir_ipc::ComandoDoAgente::BloquearTela);
-        } else if cfg!(target_os = "linux") {
+        } else {
             // O serviço é root: bloqueia todas as sessões gráficas desta máquina.
-            let _ = std::process::Command::new("loginctl")
-                .arg("lock-sessions")
-                .spawn();
+            #[cfg(target_os = "linux")]
+            ir_servico::logind::bloquear_sessoes();
         }
     }
 
@@ -59,12 +54,7 @@ impl Daemon {
     fn suspender(&mut self) {
         info!("a máquina vai suspender: soltando tudo e avisando o par");
         self.dormindo = true;
-        if self.session.phase() != Phase::Offline {
-            let agora = self.now();
-            self.session
-                .stop(agora, LinkDown::Suspending, &mut self.out);
-            self.apply_commands();
-        }
+        self.encerrar_sessao(LinkDown::Suspending);
         self.notar_estado();
     }
 
@@ -75,9 +65,7 @@ impl Daemon {
         self.alcance.esquecer_esperas();
         self.reconnect_if_needed();
         self.verificar_economia();
-        if !self.agente_pronto {
-            self.relancar_agente_ja();
-        }
+        self.garantir_agente_agora();
     }
 }
 
@@ -85,7 +73,7 @@ impl Daemon {
 #[allow(clippy::expect_used)]
 mod tests {
     use ir_proto::carrier::Carrier;
-    use ir_session::Input;
+    use ir_session::{Input, Phase};
 
     use super::*;
     use crate::actor::bancada::Bancada;

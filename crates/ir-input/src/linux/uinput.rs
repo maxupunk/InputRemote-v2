@@ -23,10 +23,14 @@ use evdev::{
     UinputAbsSetup,
 };
 use ir_proto::input::{Button, HidUsage, PointerPosition, WheelDelta};
+use ir_proto::screens::ScreenLayout;
 
+use crate::arranjo::ArranjoLocal;
 use crate::error::{InputError, Result};
-use crate::linux::keymap::{all_keys, hid_to_key};
+use crate::linux::keymap::{all_keys, button_to_key, hid_to_key};
+use crate::linux::nome_virtual;
 use crate::pendentes::Pendentes;
+use crate::roda::AcumuladorDeRoda;
 use crate::{InjectEvent, Injector};
 
 /// O maior valor absoluto de um eixo do ponteiro. `0..=65535` cobre o desktop virtual inteiro,
@@ -39,6 +43,10 @@ pub struct UinputInjector {
     pointer: VirtualDevice,
     /// O que este injetor apertou e ainda não soltou.
     pendentes: Pendentes,
+    /// Os monitores, para a posição de um deles virar posição no desktop virtual.
+    arranjo: ArranjoLocal,
+    /// A roda fina que ainda não completou uma marcação — `REL_WHEEL` só anda marcações inteiras.
+    roda: AcumuladorDeRoda,
 }
 
 impl core::fmt::Debug for UinputInjector {
@@ -61,6 +69,8 @@ impl UinputInjector {
             keyboard,
             pointer,
             pendentes: Pendentes::nova(),
+            arranjo: ArranjoLocal::nenhum(),
+            roda: AcumuladorDeRoda::novo(f32::from(WheelDelta::NOTCH)),
         })
     }
 
@@ -75,7 +85,9 @@ impl UinputInjector {
     }
 
     fn button_event(&mut self, button: Button, pressed: bool) -> Result<()> {
-        let key = button_key(button);
+        let Some(key) = button_to_key(button) else {
+            return Err(InputError::Unsupported);
+        };
         let value = i32::from(pressed);
         self.pointer
             .emit(&[InputEvent::new(EventType::KEY, key.code(), value)])
@@ -84,8 +96,9 @@ impl UinputInjector {
 
     fn wheel_event(&mut self, delta: WheelDelta) -> Result<()> {
         let mut events = Vec::new();
-        let notches_v = i32::from(delta.dy) / i32::from(WheelDelta::NOTCH);
-        let notches_h = i32::from(delta.dx) / i32::from(WheelDelta::NOTCH);
+        // A roda fina do touchpad de precisão chega abaixo de uma marcação; o resto fica guardado
+        // até completar uma, em vez de sumir na divisão.
+        let (notches_h, notches_v) = self.roda.acumular(f32::from(delta.dx), f32::from(delta.dy));
         if notches_v != 0 {
             events.push(InputEvent::new(
                 EventType::RELATIVE,
@@ -109,20 +122,12 @@ impl UinputInjector {
     }
 
     fn pointer_event(&mut self, position: PointerPosition) -> Result<()> {
-        // Para uma tela só, a posição normalizada da mensagem (`0..=65535` sobre o monitor) já é
-        // a posição absoluta sobre a tela. O caso multi-monitor é um refinamento posterior.
+        // A posição chega relativa a um monitor; o eixo absoluto cobre o desktop virtual inteiro.
+        let (x, y) = self.arranjo.no_desktop_virtual(position);
         self.pointer
             .emit(&[
-                InputEvent::new(
-                    EventType::ABSOLUTE,
-                    AbsoluteAxisType::ABS_X.0,
-                    i32::from(position.x),
-                ),
-                InputEvent::new(
-                    EventType::ABSOLUTE,
-                    AbsoluteAxisType::ABS_Y.0,
-                    i32::from(position.y),
-                ),
+                InputEvent::new(EventType::ABSOLUTE, AbsoluteAxisType::ABS_X.0, i32::from(x)),
+                InputEvent::new(EventType::ABSOLUTE, AbsoluteAxisType::ABS_Y.0, i32::from(y)),
             ])
             .map_err(|e| InputError::Io(e.to_string()))
     }
@@ -146,6 +151,10 @@ impl Injector for UinputInjector {
         }
     }
 
+    fn usar_telas(&mut self, telas: &ScreenLayout) {
+        self.arranjo.usar(telas);
+    }
+
     /// Solta o que **este injetor** apertou — e nada mais.
     ///
     /// Soltava toda tecla e todo botão que o dispositivo sabe emitir. Aqui isso não abre menu como
@@ -166,7 +175,8 @@ impl Injector for UinputInjector {
 
         let buttons: Vec<InputEvent> = botoes
             .into_iter()
-            .map(|b| InputEvent::new(EventType::KEY, button_key(b).code(), 0))
+            .filter_map(button_to_key)
+            .map(|key| InputEvent::new(EventType::KEY, key.code(), 0))
             .collect();
         if buttons.is_empty() {
             return Ok(());
@@ -177,17 +187,6 @@ impl Injector for UinputInjector {
     }
 }
 
-/// O botão do Linux para um botão do ponteiro do protocolo.
-fn button_key(button: Button) -> Key {
-    match button {
-        Button::Left => Key::BTN_LEFT,
-        Button::Right => Key::BTN_RIGHT,
-        Button::Middle => Key::BTN_MIDDLE,
-        Button::Back => Key::BTN_SIDE,
-        Button::Forward => Key::BTN_EXTRA,
-    }
-}
-
 fn build_keyboard() -> Result<VirtualDevice> {
     let mut keys = AttributeSet::<Key>::new();
     for key in all_keys() {
@@ -195,7 +194,7 @@ fn build_keyboard() -> Result<VirtualDevice> {
     }
     VirtualDeviceBuilder::new()
         .map_err(|e| InputError::Device(e.to_string()))?
-        .name("InputRemote Keyboard")
+        .name(&nome_virtual("Keyboard"))
         .with_keys(&keys)
         .map_err(|e| InputError::Device(e.to_string()))?
         .build()
@@ -204,8 +203,8 @@ fn build_keyboard() -> Result<VirtualDevice> {
 
 fn build_pointer() -> Result<VirtualDevice> {
     let mut buttons = AttributeSet::<Key>::new();
-    for button in Button::ALL {
-        buttons.insert(button_key(button));
+    for key in Button::ALL.into_iter().filter_map(button_to_key) {
+        buttons.insert(key);
     }
     let mut rel = AttributeSet::<RelativeAxisType>::new();
     rel.insert(RelativeAxisType::REL_WHEEL);
@@ -217,7 +216,7 @@ fn build_pointer() -> Result<VirtualDevice> {
 
     VirtualDeviceBuilder::new()
         .map_err(|e| InputError::Device(e.to_string()))?
-        .name("InputRemote Pointer")
+        .name(&nome_virtual("Pointer"))
         .with_keys(&buttons)
         .map_err(|e| InputError::Device(e.to_string()))?
         .with_relative_axes(&rel)

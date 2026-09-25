@@ -39,6 +39,8 @@ mod testes;
 use std::sync::Arc;
 use std::time::Duration;
 
+use ir_crypto::enlace::Confirmacao;
+use ir_crypto::turno::Rodadas;
 use ir_crypto::{Identity, PublicKey};
 use tokio::sync::mpsc;
 
@@ -67,8 +69,7 @@ enum Estado<C> {
         enlace: EnlaceSeguro<C>,
         peer_static: PublicKey,
         peer: BdAddr,
-        local_ok: bool,
-        peer_ok: bool,
+        confirmacao: Confirmacao,
     },
     /// Com enlace de pé. O endereço do par não fica guardado aqui: quem redisca é o serviço, que
     /// o tem na configuração, e estado que ninguém lê é estado que sai de sincronia calado.
@@ -100,7 +101,7 @@ pub struct Endpoint<R: Radio> {
     estado: Estado<R::Canal>,
     /// Quantas reconexões foram pedidas desde o último enlace, para a vez de discar
     /// ([`ir_crypto::turno`]).
-    rodadas: u32,
+    rodadas: Rodadas,
     /// Quantos quadros velhos demais foram descartados desde o último registro.
     descartados: u64,
     /// Se um pareamento que chega de fora é atendido ([`BtCommand::AcceptPairing`]).
@@ -136,7 +137,7 @@ impl<R: Radio> Endpoint<R> {
             identity,
             events: evt_tx,
             estado: Estado::Ocioso,
-            rodadas: 0,
+            rodadas: Rodadas::default(),
             descartados: 0,
             aceitar_pareamento: true,
             falhas_da_escuta: 0,
@@ -233,15 +234,8 @@ impl<R: Radio> Endpoint<R> {
     /// discando, e o aperto de mão vence o prazo dos dois lados. A regra de quem disca é a mesma da
     /// rede ([`ir_crypto::turno`]).
     async fn conectar(&mut self, peer: BdAddr, mode: ConnectMode) {
-        if let ConnectMode::Reconnect(chave_do_par) = mode {
-            self.rodadas = self.rodadas.wrapping_add(1);
-            if !ir_crypto::turno::discar_nesta_rodada(
-                self.identity.public(),
-                chave_do_par,
-                self.rodadas,
-            ) {
-                return;
-            }
+        if !self.rodadas.discar(self.identity.public(), mode) {
+            return;
         }
         let canal = match self.radio.conectar(peer).await {
             Ok(canal) => canal,
@@ -249,7 +243,7 @@ impl<R: Radio> Endpoint<R> {
         };
         let mut quadros = Quadros::novo(canal);
         match handshake::conduzir_iniciador(&mut quadros, &self.identity, mode).await {
-            Ok(pronto) => self.estabelecer(quadros, peer, pronto, false),
+            Ok(pronto) => self.estabelecer(quadros, peer, pronto),
             Err(erro) => {
                 self.relatar(&erro);
                 self.derrubar("handshake falhou");
@@ -277,12 +271,7 @@ impl<R: Radio> Endpoint<R> {
         };
         match especie {
             Kind::SessionFrame => self.entregar(conteudo),
-            Kind::PairConfirm => {
-                if let Estado::AguardandoConfirmacao { peer_ok, .. } = &mut self.estado {
-                    *peer_ok = true;
-                }
-                self.promover_se_pronto();
-            }
+            Kind::PairConfirm => self.par_confirmou(),
             Kind::PairReject => self.derrubar("o par recusou o pareamento"),
         }
     }

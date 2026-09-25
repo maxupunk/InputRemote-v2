@@ -74,9 +74,7 @@ impl Daemon {
             );
             return Resposta::Falha(Falha::SemCaptura);
         }
-        let mut nova = self.config.clone();
-        texto.clone_into(&mut nova.politica);
-        let resposta = self.persistir(nova);
+        let resposta = self.persistir_com(|config| texto.clone_into(&mut config.politica));
         if resposta == Resposta::Feito {
             info!(
                 politica = texto,
@@ -89,22 +87,21 @@ impl Daemon {
 
     /// Muda de que lado fica o outro computador, e a mudança já vale — sem derrubar a sessão.
     pub(super) fn trocar_borda(&mut self, edge: Edge) -> Resposta {
-        if edge == self.edge {
+        if edge == self.edge() {
             return Resposta::Feito;
         }
         let texto = edge_para_texto(edge);
         let chosen_at = agora_em_ms();
-        let mut nova = self.config.clone();
-        texto.clone_into(&mut nova.peer_edge);
-        nova.borda_escolhida_em = Some(chosen_at);
-        let resposta = self.persistir(nova);
+        let resposta = self.persistir_com(|config| {
+            texto.clone_into(&mut config.peer_edge);
+            config.borda_escolhida_em = Some(chosen_at);
+        });
         if resposta == Resposta::Feito {
             info!(borda = texto, "borda trocada pela interface; já valendo");
-            self.edge = edge;
             // A sessão em uso ajusta a borda e avisa o par; se o controle estava atravessando,
             // volta antes. Nada de refazer a sessão.
             self.drive(Input::SetPeerEdge { edge, chosen_at });
-            let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
+            self.avisar_estado();
         }
         resposta
     }
@@ -112,63 +109,45 @@ impl Daemon {
     /// O outro computador mudou de lado na tela dele, e este passou a usar a borda oposta: grava,
     /// e a janela conta por que a posição mudou sozinha.
     pub(crate) fn adotar_borda(&mut self, edge: Edge, chosen_at: u64) {
-        self.edge = edge;
         let texto = edge_para_texto(edge);
-        texto.clone_into(&mut self.config.peer_edge);
-        // O horário do par, e não o de agora: senão esta ponta venceria a próxima comparação.
-        self.config.borda_escolhida_em = Some(chosen_at);
         // Sem esperar: o anúncio chega com a sessão de pé. Vale já; uma falha de gravação fica no
-        // registro, e o par anuncia de novo na próxima sessão.
-        self.gravador.gravar(&self.config);
+        // registro, e o par anuncia de novo na próxima sessão. O horário do par, e não o de agora:
+        // senão esta ponta venceria a próxima comparação.
+        self.gravar_ja(|config| {
+            texto.clone_into(&mut config.peer_edge);
+            config.borda_escolhida_em = Some(chosen_at);
+        });
         info!(
             borda = texto,
             "o outro computador mudou de lado; este acompanhou"
         );
-        let _ = self
-            .avisos
-            .send(Aviso::BordaAjustada(ir_painel::borda_de(edge)));
-        let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
+        let _ = self.avisos.send(Aviso::BordaAjustada(edge.into()));
+        self.avisar_estado();
     }
 
     /// Encerra a sessão em uso e põe no lugar uma nova, com esta política.
     fn recriar_sessao(&mut self, politica: Policy) {
-        // Primeiro soltar, depois qualquer outra coisa. `stop` se despede do par, emite o
-        // `ReleaseAll` e devolve a entrada local — é o mesmo caminho de toda queda, e não uma
-        // soltura escrita de novo aqui, onde poderia divergir.
-        if self.session.phase() != Phase::Offline {
-            let agora = self.now();
-            // Não "pedido pelo usuário": o par entenderia pausa. A sessão nova vem em seguida.
-            self.session
-                .stop(agora, LinkDown::Reconfiguring, &mut self.out);
-            self.apply_commands();
-        }
+        // Primeiro soltar, depois qualquer outra coisa. Não "pedido pelo usuário": o par entenderia
+        // pausa. A sessão nova vem em seguida.
+        self.encerrar_sessao(LinkDown::Reconfiguring);
         // O ponteiro fica onde está: onde o serviço conduz o cursor (Linux), uma sessão nova no
         // canto faria o cursor saltar na próxima vez que a mão se mexesse.
         let (x, y) = self.session.pointer_xy();
         self.session = nova_sessao(
             politica,
-            self.edge,
+            self.edge(),
             self.identidade_local.clone(),
             self.config.borda_escolhida_em,
         );
-        if let Some(arranjo) = self.ultimo_arranjo.clone() {
-            self.drive(Input::LocalScreens(arranjo));
-        }
+        // A sessão nova nasce sem saber nada: o mesmo que a da subida precisa saber.
+        self.alimentar_sessao_nova();
         self.session.sync_pointer(x, y);
         let _ = self.garantir_entrada_local();
         self.last_phase = Phase::Offline;
-        // A sessão nova nasce sem a fixação de portador e sem o rádio daqui.
-        let fixado = self.portador_fixado.map(ir_ipc::Portador::no_protocolo);
-        self.session.pin_carrier(fixado, &mut self.out);
-        self.apply_commands();
-        if self.borda_travada {
-            self.drive(ir_session::Input::LockEdge(true));
-        }
-        self.anunciar_radio_proprio();
         // Pelos portadores que estão de pé, e não por um presumido: refazer a sessão sobre um
         // enlace de Bluetooth não pode reiniciá-la dizendo que ela é de rede.
         self.retomar_sessao();
-        let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
+        self.avisar_estado();
     }
 }
 

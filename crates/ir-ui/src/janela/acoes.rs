@@ -126,15 +126,10 @@ impl Contexto {
     /// A conexão caiu sem ninguém pedir: um aviso fora da janela, porque quem estava usando o
     /// teclado do outro computador não está olhando para ela.
     ///
-    /// Uma pausa, ou uma queda que a pessoa mesma provocou, não avisa: ela já sabe.
+    /// Uma pausa, uma queda que alguém pediu ou uma que é comportamento normal não avisa
+    /// ([`ponte::queda_merece_aviso`]).
     pub(super) fn avisar_queda(&self, estado: &ir_ipc::Estado) {
-        use ir_ipc::MotivoDaQueda as Q;
-        if estado.pausa.is_some()
-            || matches!(
-                estado.ultima_queda,
-                Some(Q::PedidoPeloUsuario | Q::TrocandoDeMeio)
-            )
-        {
+        if !ponte::queda_merece_aviso(estado) {
             return;
         }
         let aberta = self

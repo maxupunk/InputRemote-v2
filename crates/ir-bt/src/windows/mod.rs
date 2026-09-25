@@ -21,7 +21,7 @@ use tokio::sync::{Mutex, mpsc};
 
 use self::ponte::CanalDeSocket;
 use crate::addr::{BdAddr, CANAL};
-use crate::error::{BtError, Result};
+use crate::error::{BtError, FalhaDeConexao, Result, para_erro};
 use crate::radio::{Dispositivo, Radio};
 
 /// Quantas conexões o sistema enfileira enquanto não as aceitamos.
@@ -115,7 +115,7 @@ impl Radio for RadioWindows {
 
         match ligacao {
             Ok(sock) => Ok(CanalDeSocket::novo(sock)),
-            Err(erro) => Err(traduzir(&erro, alvo)),
+            Err(erro) => Err(para_erro(classificar(erro), alvo)),
         }
     }
 
@@ -133,12 +133,9 @@ impl Radio for RadioWindows {
     }
 }
 
-/// Traduz a falha de conexão no que o usuário precisa ouvir.
-///
-/// A exigência está escrita no ADR-0005: distinguir "não pareado no sistema" de "pareado, mas o
-/// serviço não responde". Um código de erro cru não faz essa distinção, e é ela que diz à pessoa
-/// se o problema é dela ou nosso.
-fn traduzir(erro: &std::io::Error, alvo: BdAddr) -> BtError {
+/// Diz qual situação é a falha de conexão que o Winsock devolveu. A mensagem é de
+/// [`para_erro`], a mesma do Linux.
+fn classificar(erro: std::io::Error) -> FalhaDeConexao {
     /// `WSAENETDOWN`: o rádio caiu no meio.
     const REDE_CAIU: i32 = 10050;
     /// `WSAETIMEDOUT`: o par não respondeu no prazo do rádio.
@@ -151,16 +148,39 @@ fn traduzir(erro: &std::io::Error, alvo: BdAddr) -> BtError {
     const INVALIDO: i32 = 10022;
 
     match erro.raw_os_error() {
-        Some(RECUSADA | EXPIROU) => BtError::SemResposta,
-        Some(codigo) if codigo == SEM_ALCANCE.0 || codigo == SEM_ALCANCE.1 => BtError::SemResposta,
-        Some(INVALIDO) => BtError::NaoPareado(alvo.to_string()),
-        Some(REDE_CAIU) => BtError::SemRadio("o rádio Bluetooth caiu".to_owned()),
-        _ => BtError::Io(std::io::Error::new(erro.kind(), erro.to_string())),
+        Some(RECUSADA) => FalhaDeConexao::Recusada,
+        Some(EXPIROU) => FalhaDeConexao::SemAlcance,
+        Some(codigo) if codigo == SEM_ALCANCE.0 || codigo == SEM_ALCANCE.1 => {
+            FalhaDeConexao::SemAlcance
+        }
+        Some(INVALIDO) => FalhaDeConexao::NaoPareado,
+        Some(REDE_CAIU) => FalhaDeConexao::RadioCaiu,
+        _ => FalhaDeConexao::Outra(erro),
     }
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn os_codigos_do_winsock_viram_a_situacao_certa() {
+        let casos = [
+            (10061, "Recusada"),
+            (10060, "SemAlcance"),
+            (10064, "SemAlcance"),
+            (10065, "SemAlcance"),
+            (10022, "NaoPareado"),
+            (10050, "RadioCaiu"),
+            (5, "Outra"),
+        ];
+        for (codigo, esperado) in casos {
+            let falha = format!(
+                "{:?}",
+                super::classificar(std::io::Error::from_raw_os_error(codigo))
+            );
+            assert!(falha.starts_with(esperado), "{codigo}: {falha}");
+        }
+    }
+
     /// Só roda com rádio de verdade (`cargo test -p ir-bt -- --ignored`). Não abre o canal 23, então
     /// convive com o serviço instalado rodando.
     #[test]

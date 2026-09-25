@@ -4,7 +4,6 @@
 //! — um quadro no socket, uma injeção, a supressão da entrada local. É a periferia de
 //! [02, §4](../../../docs/02-arquitetura.md).
 
-use ir_input::InjectEvent;
 use ir_ipc::ComandoDoAgente;
 use ir_proto::carrier::Carrier;
 use ir_session::{Command, Injection, Notice};
@@ -45,7 +44,7 @@ impl Daemon {
                     bytes = texto.as_str().len(),
                     "texto de clipboard recebido do par"
                 );
-                if let Some(texto) = ir_ipc::TextoDoClipboard::novo(texto.into_string()) {
+                if let Some(texto) = ir_ipc::TextoDoClipboard::new(texto.into_string()) {
                     let _ = self.avisos.send(ir_ipc::Aviso::TextoRecebido(texto));
                 }
             }
@@ -100,7 +99,7 @@ impl Daemon {
             _ => {}
         }
         if let Notice::RouteChanged { .. } = notice {
-            let _ = self.avisos.send(ir_ipc::Aviso::EstadoMudou(self.estado()));
+            self.avisar_estado();
         }
     }
 
@@ -127,9 +126,7 @@ impl Daemon {
         // Com agente de pé (o caso do Windows), quem toca no teclado é ele: o serviço está na
         // sessão 0 e o `SendInput` dele não chegaria ao desktop de ninguém.
         if let Some(agente) = self.comandos_do_agente() {
-            if let Some(comando) = ir_painel::comando_do_agente(injection) {
-                let _ = agente.send(comando);
-            }
+            let _ = agente.send(ComandoDoAgente::Injetar(injection));
             return;
         }
         if self.barrar_no_protegido(injection) {
@@ -143,10 +140,7 @@ impl Daemon {
         let Some(injector) = self.injector.as_mut() else {
             return; // o servidor não injeta
         };
-        let Some(event) = to_inject_event(injection) else {
-            return;
-        };
-        if let Err(error) = injector.inject(event) {
+        if let Err(error) = injector.inject(injection) {
             // Recusa é o sintoma do endurecimento no Windows; não derruba a sessão sozinha.
             debug!(%error, "injeção recusada");
         }
@@ -188,24 +182,27 @@ impl Daemon {
             let _ = agente.send(ComandoDoAgente::PrenderPonteiro(position));
             return;
         }
-        if let Some(capturer) = self.capturer.as_ref() {
-            let (w, h) = self.screen;
-            let x = i32::try_from(u32::from(position.x) * w / 65_535).unwrap_or(0);
-            let y = i32::try_from(u32::from(position.y) * h / 65_535).unwrap_or(0);
-            capturer.warp_pointer(x, y);
+        // A posição é relativa a um monitor do arranjo local — a mesma conversão da sessão. Era
+        // tratada como fração da tela principal, o que com dois monitores punha o cursor no errado.
+        if let Some(capturer) = self.capturer.as_ref()
+            && let Some(telas) = self.telas_locais()
+        {
+            let ponto = telas.from_position(position);
+            capturer.warp_pointer(ponto.x, ponto.y);
         }
     }
-}
 
-/// Converte um comando de injeção da sessão no evento do backend de entrada.
-fn to_inject_event(injection: Injection) -> Option<InjectEvent> {
-    Some(match injection {
-        Injection::Key { usage, pressed } => InjectEvent::Key { usage, pressed },
-        Injection::Button { button, pressed } => InjectEvent::Button { button, pressed },
-        Injection::Wheel(delta) => InjectEvent::Wheel(delta),
-        Injection::Pointer(position) => InjectEvent::Pointer(position),
-        _ => return None,
-    })
+    /// O arranjo de telas desta máquina, como a sessão o usa; sem arranjo ainda, a tela da
+    /// configuração.
+    fn telas_locais(&self) -> Option<ir_geometry::Desktop> {
+        if let Some(arranjo) = &self.ultimo_arranjo {
+            return ir_geometry::Desktop::from_layout(arranjo);
+        }
+        let (largura, altura) = self.screen;
+        ir_geometry::Desktop::from_layout(
+            &ir_proto::screens::ScreenLayout::single(largura, altura).ok()?,
+        )
+    }
 }
 
 /// Registra um aviso da sessão. Nunca inclui conteúdo digitado

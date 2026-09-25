@@ -21,7 +21,6 @@ use tokio::sync::{mpsc, watch};
 use tracing::info;
 
 use crate::actor::{CaptureRx, Daemon, Entradas, Parts};
-use ir_transporte::Endereco;
 
 /// Ponto de entrada.
 ///
@@ -62,28 +61,42 @@ async fn executar(
     parada: watch::Receiver<bool>,
     sistema: mpsc::UnboundedReceiver<ir_servico::EventoDoSistema>,
 ) -> Result<()> {
+    let dir = pasta_de_estado();
     // O guarda esvazia a fila do registro ao sair; soltá-lo antes perderia as últimas linhas.
-    let _registro = ir_servico::registro::iniciar(&config::data_dir().join("logs"));
+    let _registro = ir_servico::registro::iniciar(&dir.join("logs"));
     #[cfg(windows)]
     if ir_sessao::como_servico() {
-        ir_servico::scm::fechar_pasta_de_estado(&config::data_dir());
+        ir_servico::scm::fechar_pasta_de_estado(&dir, &config::recebidos_padrao(&dir));
     }
     // Como serviço não há console: um erro de subida que não for ao registro some sem rastro.
-    let resultado = subir_e_rodar(parada, sistema).await;
+    let resultado = subir_e_rodar(dir, parada, sistema).await;
     if let Err(erro) = &resultado {
         tracing::error!(erro = format!("{erro:#}"), "o serviço não conseguiu subir");
     }
     resultado
 }
 
+/// O diretório de estado, decidido uma vez ([`config::data_dir`]) e criado antes de o registro e a
+/// proteção da pasta precisarem dele.
+fn pasta_de_estado() -> std::path::PathBuf {
+    #[cfg(windows)]
+    let servico = ir_sessao::como_servico();
+    #[cfg(not(windows))]
+    let servico = false;
+    let dir = config::data_dir(servico);
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
 /// Carrega o estado, sobe transportes, entrada e canais, e roda o ator até a parada.
 async fn subir_e_rodar(
+    dir: std::path::PathBuf,
     parada: watch::Receiver<bool>,
     sistema: mpsc::UnboundedReceiver<ir_servico::EventoDoSistema>,
 ) -> Result<()> {
-    let (dir, cfg, identity, politica, edge) = carregar()?;
+    let (cfg, identity, politica, edge) = carregar(&dir)?;
     let screen = tamanho_da_tela(&cfg);
-    let maquina = ir_transporte::maquina_da_chave(&identity.public());
+    let maquina = identity.public().machine_id();
     let abertos = ir_transporte::abrir(cfg.port, &identity, maquina).await?;
 
     let (capturer, injector, capture_rx, captura) = build_io();
@@ -91,10 +104,10 @@ async fn subir_e_rodar(
 
     let canais = abrir_canais()?;
     let (de_fundo, de_fundo_rx) = tokio::sync::mpsc::unbounded_channel();
-    fundo::repassar_radio_tardio(abertos.radio_tardio, de_fundo.clone());
-    fundo::repassar_sistema(sistema, de_fundo.clone());
+    fundo::repassar_radio_tardio(abertos.radio_tardio, &de_fundo);
+    fundo::repassar_sistema(sistema, &de_fundo);
     #[cfg(target_os = "linux")]
-    fundo::vigiar_a_tela(de_fundo.clone());
+    fundo::vigiar_a_tela(&de_fundo);
     let arquivos = arquivos::abrir(&cfg, &dir, &identity, &canais.avisos, &abertos.descoberta);
 
     let mut daemon = Daemon::new(Parts {
@@ -109,14 +122,12 @@ async fn subir_e_rodar(
         capturer,
         captura,
         screen,
-        // `ip:porta` ou endereço de rádio: é o endereço que diz o portador.
-        peer: cfg.peer_addr.as_deref().and_then(Endereco::ler),
         data_dir: dir,
         config: cfg,
         avisos: canais.avisos,
         machine: ir_ipc::Maquina(maquina.0),
+        impressao: identity.public().fingerprint().as_str().to_owned(),
         nome: ir_ipc::Nome::coagido(&ir_transporte::nome_da_maquina()),
-        edge,
         agente: canais.agente,
         identidade_local: identidade,
         arquivos,
@@ -139,24 +150,24 @@ async fn subir_e_rodar(
     Ok(())
 }
 
-/// O que a máquina guarda: diretório de estado, configuração, identidade, papel e borda.
-fn carregar() -> Result<(
-    std::path::PathBuf,
+/// O que a máquina guarda: configuração, identidade, papel e borda.
+fn carregar(
+    dir: &std::path::Path,
+) -> Result<(
     config::Config,
     Arc<ir_crypto::Identity>,
     Policy,
     ir_proto::screens::Edge,
 )> {
-    let dir = config::data_dir();
-    let mut cfg = config::load_config(&dir).context("carregando configuração")?;
-    let identity = Arc::new(config::load_identity(&dir).context("carregando identidade")?);
-    let politica = config::politica_na_subida(&mut cfg, &dir, ir_input::capture_supported())?;
+    let mut cfg = config::load_config(dir).context("carregando configuração")?;
+    let identity = Arc::new(config::load_identity(dir).context("carregando identidade")?);
+    let politica = config::politica_na_subida(&mut cfg, dir, ir_input::capture_supported())?;
     let edge = cfg.edge()?;
     info!(
         "InputRemote — {politica}, impressão digital {}",
         identity.fingerprint()
     );
-    Ok((dir, cfg, identity, politica, edge))
+    Ok((cfg, identity, politica, edge))
 }
 
 /// Tamanho de tela: da plataforma quando ela sabe, senão da configuração.
@@ -164,18 +175,18 @@ fn tamanho_da_tela(cfg: &config::Config) -> (u32, u32) {
     ir_input::primary_screen_size().unwrap_or((cfg.screen_width, cfg.screen_height))
 }
 
-/// Dá partida no ator: as telas, a primeira tentativa de conexão e o agente.
+/// Dá partida no ator: as telas, a primeira tentativa de conexão e o agente. O que a sessão precisa
+/// saber ao nascer ela já soube em [`Daemon::new`].
 fn dar_partida(daemon: &mut Daemon, screen: (u32, u32)) {
     feed_screens(daemon, screen);
     // No Linux a captura e o injetor abrem os dois, e o serviço passa a conduzir o cursor.
     let _ = daemon.garantir_entrada_local();
     daemon.alinhar_politica_de_atencao();
-    daemon.anunciar_radio_proprio();
     daemon.anunciar_abertura();
     daemon.verificar_economia();
     daemon.connect_if_possible();
     // O agente nasce junto com o serviço; o laço periódico só cuida de ressubi-lo se ele cair.
-    daemon.garantir_agente();
+    daemon.garantir_agente_agora();
 }
 
 /// Os dois canais de IPC do serviço, já no ar.
@@ -260,7 +271,7 @@ fn segurar_canal(cap_tx: mpsc::UnboundedSender<ir_input::CaptureEvent>) {
 /// e a nova precisa nascer com a mesma.
 fn identidade_local(identity: &ir_crypto::Identity) -> LocalIdentity {
     LocalIdentity {
-        machine: ir_transporte::maquina_da_chave(&identity.public()),
+        machine: identity.public().machine_id(),
         name: MachineName::coagido(&ir_transporte::nome_da_maquina()),
         capabilities: Capabilities {
             privileged_input: PrivilegedInputLevel::UnlockedOnly,

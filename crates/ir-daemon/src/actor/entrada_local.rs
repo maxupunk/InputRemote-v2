@@ -73,7 +73,7 @@ impl Daemon {
                 info!("captura ligada: este computador voltou a poder controlar o outro");
                 self.capturer = Some(capturador);
                 self.ajustar_conducao();
-                let _ = self.avisos.send(ir_ipc::Aviso::EstadoMudou(self.estado()));
+                self.avisar_estado();
             }
             Err(erro) => tracing::debug!(%erro, "a captura ainda não abre"),
         }

@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use ir_input::{CaptureEvent, Capturer, Injector};
-use ir_ipc::{Aviso, ComandoDoAgente, Maquina, Nome, Portador};
+use ir_ipc::{Aviso, ComandoDoAgente, Maquina, Nome};
 use ir_proto::input::PointerDelta;
 use ir_proto::screens::{Edge, ScreenLayout};
 use ir_session::{CommandBatch, Input, LocalIdentity, Phase, Session, Timestamp};
@@ -103,23 +103,24 @@ pub(crate) struct Daemon {
     ticks: u32,
     /// Por onde o serviço empurra avisos para as interfaces conectadas.
     pub(crate) avisos: broadcast::Sender<Aviso>,
-    /// Esta máquina, para a impressão digital aparecer na tela de pareamento.
+    /// Esta máquina.
     machine: Maquina,
+    /// A impressão digital desta máquina, para a tela de pareamento.
+    impressao: String,
     /// O nome desta máquina.
     nome: Nome,
-    /// A borda que dá para o par.
-    edge: Edge,
-    /// O portador que o usuário fixou, se ele fixou algum.
-    ///
-    /// Guardado aqui porque a interface precisa vê-lo de volta, e porque é ele que transforma
-    /// "escolhido" em "fixado nas preferências" na frase que aparece na tela.
-    pub(crate) portador_fixado: Option<Portador>,
     /// A última fase informada às interfaces, para só avisar quando muda de verdade.
     last_phase: Phase,
     /// Por onde o serviço manda comandos ao agente.
     agente: broadcast::Sender<ComandoDoAgente>,
     /// Se há agente conectado e pronto para capturar e injetar.
     agente_pronto: bool,
+    /// Quando relançar o agente que não está pronto ([`agente`]).
+    zelador_do_agente: ir_sessao::Zelador,
+    /// Quem liga e devolve a política de Ctrl+Alt+Del do Windows, fora do laço ([`protegido`]).
+    /// Só como serviço: em primeiro plano, como usuário, a política da máquina não é nossa.
+    #[cfg(windows)]
+    atencao: Option<ir_sessao::atencao::Aplicador>,
     /// Se a sessão pediu a supressão da entrada local, que o agente precisa ver renovada.
     pub(crate) suprimindo: bool,
     /// Se a máquina está indo dormir: aí não se disca, até ela acordar ([`sistema`]).
@@ -134,8 +135,8 @@ pub(crate) struct Daemon {
     pub(crate) ultima_queda: Option<ir_ipc::MotivoDaQueda>,
     /// Se o compartilhamento está pausado, e de que lado ([`pausa`]).
     pub(crate) pausa: Option<ir_ipc::Pausa>,
-    /// Os desktops em que o agente consegue injetar — `Winlogon` é a tela de bloqueio.
-    pub(crate) desktops_do_agente: Vec<String>,
+    /// Os desktops em que o agente consegue injetar, e se entre eles está a tela de bloqueio.
+    pub(crate) desktops_do_agente: agente::DesktopsDoAgente,
     /// Se esta máquina está recusando digitação do par no desktop protegido ([`protegido`]).
     pub(crate) recusa_protegido: bool,
     /// Quando o sistema recusou por último uma injeção na área de trabalho, se foi há pouco.
@@ -155,7 +156,7 @@ pub(crate) struct Daemon {
     /// Quem esta máquina é, para recriar a sessão numa troca de papel ou de borda.
     identidade_local: LocalIdentity,
     /// O último arranjo de telas conhecido, para a sessão recriada nascer sabendo onde ficam.
-    ultimo_arranjo: Option<ScreenLayout>,
+    pub(crate) ultimo_arranjo: Option<ScreenLayout>,
     /// Por onde pedir um envio de arquivos. O ator encaminha e segue; não conduz nada.
     pub(crate) arquivos: ir_transferencia::Pedidos,
     /// Quem está por perto para parear. A busca roda fora do ator e responde direto à janela.
@@ -241,6 +242,7 @@ impl Daemon {
             DeFundo::Radio(aberto) => self.on_radio_tardio(aberto),
             DeFundo::Sistema(evento) => self.on_sistema(evento),
             DeFundo::TelaProtegida(protegida) => self.on_tela_protegida(protegida),
+            DeFundo::PoliticaDeAtencao(anterior) => self.on_politica_de_atencao(anterior),
         }
     }
 
@@ -257,8 +259,19 @@ impl Daemon {
         let fase = self.session.phase();
         if fase != self.last_phase {
             self.last_phase = fase;
-            let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
+            self.avisar_estado();
         }
+    }
+
+    /// Conta às interfaces o estado de agora.
+    pub(crate) fn avisar_estado(&self) {
+        let _ = self.avisos.send(Aviso::EstadoMudou(self.estado()));
+    }
+
+    /// A borda que dá para o par, pelo que a configuração diz. O texto foi conferido na subida, e
+    /// só se grava texto que veio de uma borda.
+    pub(crate) fn edge(&self) -> Edge {
+        self.config.edge().unwrap_or(Edge::Right)
     }
 
     /// Roda o ator até os canais fecharem.
@@ -330,7 +343,6 @@ impl Daemon {
             CaptureEvent::Wheel(delta) => Input::LocalWheel(delta),
             CaptureEvent::Key { usage, pressed } => Input::LocalKey { usage, pressed },
             CaptureEvent::Button { button, pressed } => Input::LocalButton { button, pressed },
-            _ => return,
         };
         self.capturado(event, input);
     }
@@ -370,7 +382,13 @@ impl Daemon {
     ///
     /// Guardado, e não só repassado: se a sessão for recriada numa troca de papel ou de borda, a
     /// nova precisa nascer sabendo onde ficam as telas, senão a primeira travessia não acha a borda.
+    ///
+    /// O injetor local (o `uinput` do Linux) também o recebe: é com ele que a posição de um
+    /// monitor vira posição no desktop virtual inteiro.
     pub(crate) fn definir_telas(&mut self, arranjo: ScreenLayout) {
+        if let Some(injetor) = self.injector.as_mut() {
+            injetor.usar_telas(&arranjo);
+        }
         self.ultimo_arranjo = Some(arranjo.clone());
         self.drive(Input::LocalScreens(arranjo));
     }

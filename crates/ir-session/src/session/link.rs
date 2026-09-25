@@ -6,7 +6,6 @@
 //! cometer (`docs/02-arquitetura.md` §8).
 
 use ir_proto::carrier::Carrier;
-use ir_proto::frame::{Frame, Sequence};
 use ir_proto::message::{Control, DisconnectReason, ErrorCode, Greeting, Message};
 use ir_proto::version;
 
@@ -93,20 +92,7 @@ impl Session {
         why: CarrierChoice,
         out: &mut CommandBatch,
     ) {
-        self.route = Some(super::Route::Single(carrier));
-        self.peer = None;
-        self.refusals.peer = false;
-        self.last_pointer_rx = None;
-        // Sequências zeradas: uma herdada da sessão anterior faria o par descartar as
-        // primeiras mensagens da nova.
-        self.seqs.reset();
-        self.reliability.reset();
-        // Encarnação nova: o par descarta o que ainda estiver voando da anterior, e daqui em
-        // diante só um aperto de mão dele conta.
-        self.incarnations.start_local();
-        self.incarnations.forget_peer();
-        self.clock = Clock::started_at(now);
-
+        self.open_incarnation(now, carrier);
         if !self.move_to(Phase::Handshaking, out) {
             return;
         }
@@ -114,6 +100,36 @@ impl Session {
 
         let greeting = self.greeting();
         self.send(now, Message::Control(Control::Hello(greeting)), out);
+    }
+
+    /// Abre uma encarnação desta ponta pelo portador dado, do zero.
+    ///
+    /// É o começo de toda sessão — a que esta ponta inicia e a que ela abre para responder a quem
+    /// ouviu primeiro (`incarnation`). Um caminho só, para as duas pontas começarem com o mesmo
+    /// estado: um aperto de mão que esquece o clipboard só de um lado deixa os dois fora de passo.
+    pub(super) fn open_incarnation(&mut self, now: Timestamp, carrier: Carrier) {
+        self.reset_incarnation_state();
+        self.route = Some(super::Route::Single(carrier));
+        // Época nova: o par descarta o que ainda estiver voando da anterior.
+        self.incarnations.start_local();
+        self.clock = Clock::started_at(now);
+    }
+
+    /// Esquece tudo o que pertencia à encarnação que acabou: o par, o que ele disse, e a numeração.
+    ///
+    /// Sequências zeradas: uma herdada da sessão anterior faria o par descartar as primeiras
+    /// mensagens da nova. E, esquecida a época do par, daqui em diante só um aperto de mão dele
+    /// conta.
+    fn reset_incarnation_state(&mut self) {
+        self.peer = None;
+        self.refusals.peer = false;
+        self.peer_screens = None;
+        self.last_pointer_rx = None;
+        self.pending_pointer = ir_proto::input::PointerDelta::ZERO;
+        self.seqs.reset();
+        self.reliability.reset();
+        self.area.reset();
+        self.incarnations.forget_peer();
     }
 
     fn greeting(&self) -> Greeting {
@@ -194,10 +210,7 @@ impl Session {
         self.announce_network_power(now, out);
 
         // O par precisa do nosso arranjo para saber onde o ponteiro entra.
-        if let Some(desktop) = self.local_screens.as_ref() {
-            let layout = desktop.to_layout();
-            self.send(now, Message::Control(Control::Screens(layout)), out);
-        }
+        self.announce_screens(now, out);
         // Se a tela daqui recusa o par agora, ele precisa saber antes de atravessar.
         if self.refusals.here {
             self.on_local_protected_desktop(now, true, out);
@@ -221,20 +234,15 @@ impl Session {
         if self.phase.is_established()
             && !matches!(reason, LinkDown::PeerClosed(_) | LinkDown::PeerRestarted)
         {
-            let farewell = Frame::new(
-                Message::Control(Control::Bye {
-                    reason: reason.as_disconnect_reason(),
-                }),
-                Sequence::ZERO,
-            )
-            .in_epoch(self.incarnations.local());
-            self.dispatch_on_route(farewell, out);
+            let farewell = Control::Bye {
+                reason: reason.as_disconnect_reason(),
+            };
+            self.dispatch_unsequenced(Message::Control(farewell), None, out);
         }
 
         // Primeiro soltar, depois qualquer outra coisa. A ordem é contrato.
         if self.phase.may_hold_input() {
-            self.release_everything(out);
-            out.push(Command::SuppressLocalInput(false));
+            self.release_local_hold(out);
         }
 
         let will_retry = reason.should_retry();
@@ -242,15 +250,7 @@ impl Session {
 
         self.phase = Phase::Offline;
         self.route = None;
-        self.last_pointer_rx = None;
-        self.peer = None;
-        self.refusals.peer = false;
-        self.peer_screens = None;
-        self.pending_pointer = ir_proto::input::PointerDelta::ZERO;
-        self.seqs.reset();
-        self.reliability.reset();
-        self.area.reset();
-        self.incarnations.forget_peer();
+        self.reset_incarnation_state();
     }
 
     /// Encerra por vontade própria.

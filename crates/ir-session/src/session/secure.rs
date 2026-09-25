@@ -1,6 +1,6 @@
 //! O desktop protegido e os atalhos de quem tem o teclado.
 //!
-//! Três coisas que só existem a partir da versão 4:
+//! Três coisas que entraram na versão 4 — anterior à mínima aceita, então valem com qualquer par:
 //!
 //! - **Ctrl+Alt+Del.** O de verdade nunca chega a quem tem o teclado — o Windows o intercepta
 //!   antes de qualquer gancho —, então quem controla pede com **Ctrl+Alt+End** (o mesmo atalho da
@@ -15,7 +15,6 @@
 
 use ir_proto::input::{HidUsage, Modifiers};
 use ir_proto::message::{Control, Message};
-use ir_proto::version::PROTECTED_DESKTOP;
 
 use crate::event::{Command, CommandBatch, Notice};
 use crate::phase::Phase;
@@ -56,15 +55,6 @@ pub(super) fn shortcut(held: Modifiers, usage: HidUsage) -> Option<Shortcut> {
 }
 
 impl Session {
-    /// Se o par entende as mensagens da versão 4.
-    fn peer_speaks_protected_desktop(&self) -> bool {
-        self.phase.is_established()
-            && self
-                .peer
-                .as_ref()
-                .is_some_and(|peer| peer.version >= PROTECTED_DESKTOP)
-    }
-
     /// Uma tecla local que pode ser atalho. Devolve `true` se ela foi consumida aqui.
     ///
     /// Só enquanto o controle está no par: com ele aqui, o teclado é desta máquina, e o Ctrl+Alt+End
@@ -101,7 +91,7 @@ impl Session {
 
     /// Pede ao par que gere Ctrl+Alt+Del.
     pub(super) fn request_secure_attention(&mut self, now: Timestamp, out: &mut CommandBatch) {
-        if self.peer_speaks_protected_desktop() {
+        if self.phase.is_established() {
             self.send(now, Message::Control(Control::SecureAttention), out);
         } else {
             out.push(Command::Notify(Notice::PeerCannotSecureAttention));
@@ -110,7 +100,7 @@ impl Session {
 
     /// A tela daqui bloqueou: pede ao par que bloqueie a dele.
     pub(super) fn request_peer_lock(&mut self, now: Timestamp, out: &mut CommandBatch) {
-        if self.peer_speaks_protected_desktop() {
+        if self.phase.is_established() {
             self.send(now, Message::Control(Control::LockScreen), out);
         }
     }
@@ -122,7 +112,7 @@ impl Session {
         refused: bool,
         out: &mut CommandBatch,
     ) {
-        if self.peer_speaks_protected_desktop() {
+        if self.phase.is_established() {
             self.send(
                 now,
                 Message::Control(Control::ProtectedDesktop { refused }),

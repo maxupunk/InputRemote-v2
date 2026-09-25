@@ -8,28 +8,12 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
-use ir_confiabilidade::time::{Millis, Timestamp};
+mod common;
+
+use common::{CEILING, FLOOR, at, frame};
+use ir_confiabilidade::time::Millis;
 use ir_confiabilidade::{ACK_REACH, Receiver, SendOutcome, Sender, TimeoutOutcome, WINDOW};
-use ir_proto::frame::{Ack, Frame, Sequence};
-use ir_proto::input::{HidUsage, Modifiers};
-use ir_proto::message::{InputMessage, Message};
-
-const FLOOR: Millis = Millis(20);
-const CEILING: Millis = Millis(1000);
-
-fn frame(seq: u32) -> Frame {
-    Frame::new(
-        Message::Input(InputMessage::KeyDown {
-            usage: HidUsage(0x04),
-            mods: Modifiers::NONE,
-        }),
-        Sequence(seq),
-    )
-}
-
-fn at(millis: u64) -> Timestamp {
-    Timestamp::from_millis(millis)
-}
+use ir_proto::frame::{Ack, Sequence};
 
 #[test]
 fn a_fresh_sender_has_nothing_pending() {
@@ -239,22 +223,6 @@ fn a_retransmitted_message_does_not_pollute_the_round_trip_estimate() {
         sender.retransmit_after(FLOOR, CEILING),
         FLOOR,
         "o tempo de uma retransmissão mede o prazo, não o enlace"
-    );
-}
-
-#[test]
-fn resetting_clears_the_window_and_the_estimate() {
-    let mut sender = Sender::new();
-    sender.on_sent(at(0), Sequence(1), frame(1));
-    sender.on_ack(at(300), Ack::new(Sequence(1)));
-    sender.on_sent(at(300), Sequence(2), frame(2));
-
-    sender.reset();
-    assert!(sender.is_idle());
-    assert_eq!(
-        sender.retransmit_after(FLOOR, CEILING),
-        FLOOR,
-        "a estimativa volta ao piso"
     );
 }
 
