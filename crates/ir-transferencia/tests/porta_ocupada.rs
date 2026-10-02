@@ -6,56 +6,19 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use std::net::SocketAddr;
-use std::path::PathBuf;
-use std::sync::Arc;
+mod comum;
+
 use std::time::Duration;
 
-use ir_crypto::Identity;
+use comum::{Maquina, parear, subir_com};
 use ir_ipc::Aviso;
 use ir_ipc::transferencia::{Fase, Sentido};
-use ir_transferencia::{Ajuste, Cota, Destino, Leitor, Pedidos, iniciar, sem_localizador};
-use ir_transporte::Endereco;
+use ir_transferencia::{Leitor, sem_localizador};
 use tokio::sync::broadcast;
 
-struct Maquina {
-    identidade: Arc<Identity>,
-    porta: u16,
-    pedidos: Pedidos,
-    avisos: broadcast::Receiver<Aviso>,
-    pasta: PathBuf,
-}
-
+/// Uma máquina nesta porta: o teste escolhe as portas, porque uma delas começa ocupada.
 fn subir(nome: &str, porta: u16) -> Maquina {
-    let pasta = std::env::temp_dir().join(format!("ir-porta-{nome}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&pasta);
-    std::fs::create_dir_all(pasta.join("recebidos")).unwrap();
-    let identidade = Arc::new(Identity::generate());
-    let (avisos, ouvinte) = broadcast::channel(256);
-    let pedidos = iniciar(Ajuste {
-        porta,
-        recebidos: pasta.join("recebidos"),
-        cota: Cota::default(),
-        identidade: Arc::clone(&identidade),
-        destino: Destino::default(),
-        localizar: sem_localizador(),
-        avisos,
-    });
-    Maquina {
-        identidade,
-        porta,
-        pedidos,
-        avisos: ouvinte,
-        pasta,
-    }
-}
-
-fn parear(de: &Maquina, para: &Maquina) {
-    let alvo = SocketAddr::from(([127, 0, 0, 1], para.porta));
-    de.pedidos.trocar_destino(Destino {
-        chave: Some(para.identidade.public()),
-        alvo: Some(Endereco::Rede(alvo)),
-    });
+    subir_com(&format!("porta-{nome}"), porta, sem_localizador())
 }
 
 /// O próximo fim de envio (concluído ou parado), dentro do prazo.

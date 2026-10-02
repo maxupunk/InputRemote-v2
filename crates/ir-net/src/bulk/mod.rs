@@ -71,6 +71,16 @@ const SONDAR_DEPOIS: std::time::Duration = std::time::Duration::from_secs(15);
 /// O intervalo entre as sondas.
 const SONDAR_A_CADA: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// Quanto um bloco enviado pode ficar sem confirmação do par antes de o enlace ser dado por caído.
+///
+/// As sondas só valem para a conexão **parada**. No meio de uma cópia ela nunca está parada: há
+/// bloco no ar, e o Linux retransmite por ~15 minutos (`tcp_retries2`) antes de desistir. Com a rede
+/// sumida no meio de um envio, a cópia ficava esse tempo "andando" sem andar, e a retomada só
+/// começava depois. Meio minuto é o mesmo teto das sondas — e um Wi-Fi que piscou volta antes disso,
+/// sem queda nenhuma. No Windows o TCP desiste sozinho em dezenas de segundos.
+#[cfg(target_os = "linux")]
+const SEM_CONFIRMACAO: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// Ajusta um socket recém-aceito ou recém-conectado.
 ///
 /// `TCP_NODELAY` ligado. Nos blocos de arquivo ele não muda nada — segmentos de 60 KiB já saem
@@ -85,6 +95,8 @@ pub fn prepare(stream: &TcpStream) {
         .with_time(SONDAR_DEPOIS)
         .with_interval(SONDAR_A_CADA);
     let _ = socket2::SockRef::from(stream).set_tcp_keepalive(&sondas);
+    #[cfg(target_os = "linux")]
+    let _ = socket2::SockRef::from(stream).set_tcp_user_timeout(Some(SEM_CONFIRMACAO));
 }
 
 /// Qual dos dois enlaces sobrevive quando as duas máquinas discam ao mesmo tempo.

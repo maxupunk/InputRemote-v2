@@ -17,7 +17,7 @@ use ir_clip::Conteudo;
 use tracing::debug;
 
 /// O começo do nome que denuncia uma imagem de clipboard.
-const PREFIXO: &str = "inputremote-imagem-";
+pub(super) const PREFIXO: &str = "inputremote-imagem-";
 
 /// A pasta, dentro da temporária do usuário, onde a imagem espera ser enviada.
 const PASTA: &str = "InputRemote-imagens";
@@ -69,13 +69,19 @@ pub(super) fn gravar_para_enviar(png: &[u8], pasta_temporaria: &Path) -> io::Res
 /// Pelo nome, com a folga do sufixo que a pasta de recebidos põe quando o nome já existe
 /// (`… (2).png`).
 pub(super) fn e_imagem_do_clipboard(caminho: &Path) -> bool {
-    caminho.file_name().is_some_and(|nome| {
-        let nome = nome.to_string_lossy();
-        nome.starts_with(PREFIXO)
-            && Path::new(nome.as_ref())
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("png"))
-    }) && caminho.is_file()
+    caminho
+        .file_name()
+        .is_some_and(|nome| e_nome_de_imagem(&nome.to_string_lossy()))
+        && caminho.is_file()
+}
+
+/// Se este é o nome de uma imagem de clipboard. Vale antes de o arquivo existir — enquanto ela
+/// ainda está chegando, e o clipboard decide se promete arquivos.
+pub(super) fn e_nome_de_imagem(nome: &str) -> bool {
+    nome.starts_with(PREFIXO)
+        && Path::new(nome)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("png"))
 }
 
 /// Lê a imagem que chegou, para publicar; o arquivo é apagado quando já está lida.

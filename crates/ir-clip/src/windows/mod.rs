@@ -1,7 +1,8 @@
 //! O backend do Windows.
 //!
-//! Duas peças: o acesso ao clipboard ([`area`], onde vive o `unsafe`) e o aviso de mudança
-//! ([`vigia`], que é uma janela sem tela).
+//! Três peças: o acesso ao clipboard ([`area`], onde vive o `unsafe`), o aviso de mudança
+//! ([`vigia`], que é uma janela sem tela) e a promessa de arquivos que ainda estão chegando
+//! ([`promessa`], arquivos virtuais que o Explorer cola antes de eles chegarem).
 //!
 //! # A repetição, e por que ela é curta
 //!
@@ -14,6 +15,7 @@
 //! de "o programa congelou".
 
 mod area;
+mod promessa;
 mod vigia;
 
 use std::thread::sleep;
@@ -31,15 +33,50 @@ const ESPERA: Duration = Duration::from_millis(50);
 
 /// O clipboard desta sessão do Windows.
 #[derive(Debug, Default)]
-pub struct ClipboardDoWindows;
+pub struct ClipboardDoWindows {
+    /// A promessa de arquivos que estão chegando, criada na primeira.
+    promessa: Option<promessa::Promessa>,
+}
 
 impl Clipboard for ClipboardDoWindows {
     fn ler(&mut self) -> Result<Option<Conteudo>> {
+        // A promessa é nossa: não é conteúdo novo do usuário, e não volta para o par.
+        if promessa::e_dona() {
+            return Ok(None);
+        }
         repetir(area::ler)
     }
 
     fn publicar(&mut self, conteudo: &Conteudo) -> Result<()> {
+        if let Some(promessa) = &mut self.promessa {
+            match conteudo {
+                Conteudo::Arquivos(_) => {
+                    if promessa.cumprir() == promessa::Cumprimento::CopiaMaisNova {
+                        // A pessoa copiou outra coisa enquanto os arquivos chegavam: a cópia dela
+                        // vale. Quem colou durante a espera continua lendo de onde eles ficaram.
+                        return Ok(());
+                    }
+                }
+                _ => promessa.desfazer(),
+            }
+        }
         repetir(|| area::publicar(conteudo))
+    }
+
+    fn prometer_arquivos(&mut self, chegada: &crate::Chegada) -> Result<()> {
+        if self.promessa.is_none() {
+            self.promessa = Some(promessa::Promessa::nova()?);
+        }
+        match &mut self.promessa {
+            Some(promessa) => promessa.prometer(chegada),
+            None => Ok(()),
+        }
+    }
+
+    fn desfazer_promessa(&mut self) {
+        if let Some(promessa) = &mut self.promessa {
+            promessa.desfazer();
+        }
     }
 }
 
@@ -69,7 +106,7 @@ fn repetir<T>(mut operacao: impl FnMut() -> Result<T>) -> Result<T> {
 /// Não falha hoje: o acesso é por chamada, e a indisponibilidade aparece na primeira leitura — que é
 /// onde ela é verdade. No desktop `Winlogon` não há clipboard de usuário, e é a leitura que descobre.
 pub fn abrir() -> Result<Box<dyn Clipboard>> {
-    Ok(Box::new(ClipboardDoWindows))
+    Ok(Box::new(ClipboardDoWindows::default()))
 }
 
 /// Começa a vigiar as mudanças.
@@ -164,5 +201,46 @@ mod tests {
         };
         assert!(png.starts_with(&[0x89, b'P', b'N', b'G']), "não saiu PNG");
         assert!(crate::imagem::dib_de_png(&png).is_ok());
+    }
+
+    /// Uma cópia chegando, prometida no clipboard, para colar à mão no Explorer: `--ignored`.
+    ///
+    /// Rode, abra uma pasta no Explorer e aperte Ctrl+V nos primeiros segundos: o diálogo de cópia
+    /// do Explorer aparece na hora, e `grande.bin` termina de colar logo depois do último megabyte
+    /// chegar — inteiro, lido da montagem enquanto chega e de onde a entrega foi publicada depois.
+    /// Assim foi provado na bancada (log 56); colar pelo `InvokeVerb` de outro processo não serve
+    /// de prova, porque a extração de arquivos virtuais precisa do processo do Explorer.
+    #[test]
+    #[ignore = "troca o clipboard do usuário; colar à mão no Explorer"]
+    fn uma_copia_chegando_para_colar_no_explorer() {
+        use std::io::Write as _;
+
+        let base = std::env::temp_dir().join("ir-promessa-para-colar");
+        let _ = std::fs::remove_dir_all(&base);
+        let (montagem, publicada) = (base.join("montagem"), base.join("publicada"));
+        std::fs::create_dir_all(&montagem).unwrap();
+        let pedaco = vec![b'x'; 1_000_000];
+        let chegada = crate::Chegada {
+            montagem: montagem.clone(),
+            publicada_em: publicada.clone(),
+            itens: vec![crate::ItemDaChegada {
+                caminho: "grande.bin".to_owned(),
+                tamanho: 3 * 1_000_000,
+                pasta: false,
+            }],
+        };
+        let mut clip = ClipboardDoWindows::default();
+        clip.prometer_arquivos(&chegada).unwrap();
+        let mut arquivo = std::fs::File::create(montagem.join("grande.bin")).unwrap();
+        for _ in 0..3 {
+            std::thread::sleep(Duration::from_secs(2));
+            arquivo.write_all(&pedaco).unwrap();
+            arquivo.flush().unwrap();
+        }
+        drop(arquivo);
+        std::fs::rename(&montagem, &publicada).unwrap();
+        clip.publicar(&Conteudo::Arquivos(vec![publicada.join("grande.bin")]))
+            .unwrap();
+        std::thread::sleep(Duration::from_secs(20));
     }
 }

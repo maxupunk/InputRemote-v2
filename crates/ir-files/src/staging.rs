@@ -214,11 +214,41 @@ impl Staging {
 /// [`FileError::Io`] se o `rename` falhar — e aí a anterior, afastada, fica no lugar dela.
 async fn trocar(origem: &Path, alvo: &Path) -> Result<()> {
     let anterior = afastar_anterior(alvo).await?;
-    tokio::fs::rename(origem, alvo)
+    renomear(origem, alvo)
         .await
         .map_err(|erro| FileError::io(alvo, erro))?;
     apagar(anterior).await;
     Ok(())
+}
+
+/// Quantas vezes tentar o `rename` que o sistema negou por um instante, e quanto esperar entre elas.
+const TENTATIVAS_DO_RENAME: u32 = 30;
+const ESPERA_DO_RENAME: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// O `rename`, repetido por até três segundos quando o sistema nega o acesso.
+///
+/// No Windows, uma pasta não é renomeada enquanto **qualquer** arquivo dentro dela estiver aberto —
+/// mesmo aberto com todo compartilhamento, medido. E há quem abra por instantes: o antivírus e o
+/// indexador, que olham todo arquivo novo, e o ajudante de clipboard lendo uma cópia que a pessoa
+/// colou antes de ela chegar. Desistir na primeira negativa perdia a cópia inteira no último passo.
+async fn renomear(origem: &Path, alvo: &Path) -> std::io::Result<()> {
+    let mut tentativa = 1;
+    loop {
+        match tokio::fs::rename(origem, alvo).await {
+            Err(erro)
+                if erro.kind() == std::io::ErrorKind::PermissionDenied
+                    && tentativa < TENTATIVAS_DO_RENAME =>
+            {
+                debug!(
+                    tentativa,
+                    "o rename da entrega foi negado por um instante; de novo"
+                );
+                tentativa += 1;
+                tokio::time::sleep(ESPERA_DO_RENAME).await;
+            }
+            resultado => return resultado,
+        }
+    }
 }
 
 /// Tira do caminho a entrega anterior de mesmo nome, e diz para onde ela foi.

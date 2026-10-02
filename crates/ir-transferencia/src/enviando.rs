@@ -21,13 +21,13 @@ use std::time::Duration;
 use ir_files::{Envio, manifesto};
 use ir_ipc::transferencia::{Fase, Motivo, Sentido};
 use ir_proto::message::{BulkMessage, RejectReason, TransferId};
-use ir_transporte::dados::Remetente;
+use ir_transporte::dados::{FalhaDeEnvio, Remetente};
 use tokio::sync::{Mutex, mpsc};
 use tracing::{debug, info, warn};
 
 use crate::Ajuste;
 use crate::fila::Trabalho;
-use crate::sessao::{anunciar, anunciar_queda, traduzir_recusa};
+use crate::sessao::{anunciar, falhou_ao_enviar, traduzir_recusa};
 
 /// Quanto esperar por uma resposta do destino antes de considerar o canal perdido.
 ///
@@ -53,15 +53,30 @@ pub(crate) async fn enviar(
         };
         let id = proxima;
         proxima = TransferId(proxima.0.wrapping_add(1));
-        let pedido = (trabalho.caminhos, trabalho.leitor);
-        let inteiro =
-            uma_transferencia((&remetente, entrada), &mut respostas, pedido, id, ajuste).await;
-        // A cópia saiu da vez, tenha terminado, sido cancelada ou caído com o enlace.
-        entrada.fila.terminou();
-        if !inteiro {
-            return; // o laço de fora consegue outro enlace
+        let pedido = (trabalho.caminhos.clone(), trabalho.leitor.clone());
+        let canal = (&remetente, &*entrada);
+        match uma_transferencia(canal, &mut respostas, pedido, id, ajuste).await {
+            // A cópia saiu da vez: chegou, foi recusada, cancelada, ou parou por motivo dela.
+            Desfecho::Seguiu => entrada.fila.terminou(),
+            Desfecho::Caiu { nome, progresso } => {
+                // Interrompida no meio: volta para a fila e vai de novo quando o enlace voltar — ou
+                // desiste e diz por quê, para o ajudante de clipboard poder oferecê-la de novo.
+                let interrompida = (nome.as_str(), progresso);
+                crate::retomada::envio_caiu(&entrada.fila, &ajuste.avisos, trabalho, interrompida);
+                return; // o laço de fora consegue outro enlace
+            }
         }
     }
+}
+
+/// Como uma cópia terminou, do ponto de vista do enlace.
+#[derive(Debug, PartialEq, Eq)]
+enum Desfecho {
+    /// O enlace segue de pé — a cópia tenha chegado, sido recusada, cancelada, ou parado por motivo
+    /// dela, já contado na tela.
+    Seguiu,
+    /// O enlace caiu no meio dela: o nome, e até onde ela foi.
+    Caiu { nome: String, progresso: (u64, u64) },
 }
 
 /// A próxima cópia a fazer. `None` quando o serviço está saindo ou o enlace caiu.
@@ -86,14 +101,14 @@ async fn proximo(entrada: &mut crate::Entrada, respostas: &mut Respostas) -> Opt
     }
 }
 
-/// Conduz um envio inteiro. Devolve `false` quando o enlace caiu.
+/// Conduz um envio inteiro.
 async fn uma_transferencia(
     canal: (&Arc<Mutex<Remetente>>, &crate::Entrada),
     respostas: &mut Respostas,
     (caminhos, leitor): crate::PedidoDeEnvio,
     id: TransferId,
     ajuste: &Ajuste,
-) -> bool {
+) -> Desfecho {
     let plano = match manifesto::montar(id, &caminhos, leitor).await {
         Ok(plano) => plano,
         Err(erro) => {
@@ -107,7 +122,7 @@ async fn uma_transferencia(
                 (0, 0),
                 parada(&erro),
             );
-            return true;
+            return Desfecho::Seguiu;
         }
     };
     let arquivos = plano.itens.iter().filter(|item| !item.is_dir).count();
@@ -126,14 +141,14 @@ async fn uma_transferencia(
         fase,
     );
 
-    let inteiro = conduzir(canal, respostas, &mut envio, arquivos, ajuste).await;
-    if !inteiro {
-        // Interrompido no meio: dizer, com o nome desta cópia, para quem ofereceu poder oferecer de
-        // novo. Sem isto o ajudante de clipboard daria a cópia por entregue e não a repetiria.
-        let em_curso = (envio.nome(), (envio.enviados(), envio.total()));
-        anunciar_queda(&ajuste.avisos, Sentido::Enviando, Some(em_curso));
+    if conduzir(canal, respostas, &mut envio, arquivos, ajuste).await {
+        Desfecho::Seguiu
+    } else {
+        Desfecho::Caiu {
+            nome: envio.nome().to_owned(),
+            progresso: (envio.enviados(), envio.total()),
+        }
     }
-    inteiro
 }
 
 /// Do manifesto à conferência: manda, espera o aceite, despeja e espera cada arquivo conferir.
@@ -146,15 +161,8 @@ async fn conduzir(
     ajuste: &Ajuste,
 ) -> bool {
     let (nome, total, id) = (envio.nome().to_owned(), envio.total(), envio.id());
-    let manifesto = envio.manifesto();
-    if remetente
-        .lock()
-        .await
-        .enviar_agora(manifesto)
-        .await
-        .is_err()
-    {
-        return false;
+    if let Err(falha) = mandar_manifesto(remetente, envio).await {
+        return falhou_ao_enviar(&falha, &ajuste.avisos, (&nome, (0, total)));
     }
     match esperar_aceite(respostas, id).await {
         Aceite::Aceito => {}
@@ -168,10 +176,29 @@ async fn conduzir(
     }
     match crate::despejo::despejar((remetente, entrada), envio, (&nome, total), ajuste).await {
         crate::despejo::Despejo::Pronto => {}
-        crate::despejo::Despejo::Cancelado => return true,
+        crate::despejo::Despejo::Cancelado | crate::despejo::Despejo::Falhou => return true,
         crate::despejo::Despejo::Caiu => return false,
     }
     concluir(respostas, envio, (&nome, total, arquivos), ajuste).await
+}
+
+/// Manda o manifesto, em quantas partes ele precisar.
+///
+/// As partes deixam o TCP juntar segmentos; o `Manifest`, que vem por último, força a saída,
+/// porque é a ele que o destino responde e quem copiou está esperando a cópia começar.
+async fn mandar_manifesto(
+    remetente: &Arc<Mutex<Remetente>>,
+    envio: &Envio,
+) -> Result<(), FalhaDeEnvio> {
+    let mut remetente = remetente.lock().await;
+    for mensagem in envio.manifesto() {
+        if matches!(mensagem, BulkMessage::Manifest { .. }) {
+            remetente.enviar_agora(mensagem).await?;
+        } else {
+            remetente.enviar(mensagem).await?;
+        }
+    }
+    Ok(())
 }
 
 /// Espera o destino conferir cada arquivo, e só então diz ao usuário que chegou.

@@ -13,7 +13,7 @@
 //! ([02, §2](../../../docs/02-arquitetura.md)). Ele não sabe que existe TCP.
 
 use ir_proto::limits;
-use ir_proto::message::{BulkMessage, ManifestItem};
+use ir_proto::message::{self, BulkMessage, ManifestItem};
 use tokio::io::AsyncReadExt;
 
 use crate::em_curso::ArquivoEmCurso;
@@ -41,14 +41,15 @@ impl Envio {
         }
     }
 
-    /// O manifesto, que é a primeira coisa a ir para o par.
+    /// O manifesto, que é a primeira coisa a ir para o par: em partes quando ele não cabe num
+    /// quadro, com o `Manifest` sempre por último ([`ir_proto::message::manifest_messages`]).
+    ///
+    /// Era uma mensagem só, e numa pasta com mil e poucos arquivos ela não cabia no quadro TCP —
+    /// a cópia parava antes de começar, dizendo que a conexão tinha caído
+    /// ([log 55](../../../docs/logs/55-o-manifesto-que-nao-cabia.md)).
     #[must_use]
-    pub fn manifesto(&self) -> BulkMessage {
-        BulkMessage::Manifest {
-            id: self.plano.id,
-            items: self.plano.itens.clone(),
-            total_bytes: self.plano.total,
-        }
+    pub fn manifesto(&self) -> Vec<BulkMessage> {
+        message::manifest_messages(self.plano.id, self.plano.itens.clone(), self.plano.total)
     }
 
     /// O identificador desta transferência, para as mensagens que não saem de [`Self::proxima`] —

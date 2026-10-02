@@ -178,6 +178,21 @@ pub enum BulkMessage {
         /// Por quê.
         reason: CancelReason,
     },
+    /// Uma parte de um manifesto que não cabe num quadro só.
+    ///
+    /// As partes vêm **antes** do [`Self::Manifest`], na ordem dos itens e com o mesmo `id`; o
+    /// `Manifest` traz a última parte e o total, fecha a lista e é o que pede a resposta. Um
+    /// manifesto que cabe num quadro vai sem parte nenhuma, exatamente como antes delas. Quem
+    /// monta as mensagens é [`manifest_messages`].
+    ///
+    /// No fim do enum, e não ao lado do `Manifest`: o `postcard` numera as variantes pela posição,
+    /// e inserir no meio mudaria o número de todas as seguintes.
+    ManifestPart {
+        /// A transferência.
+        id: TransferId,
+        /// Os itens desta parte.
+        items: Vec<ManifestItem>,
+    },
 }
 
 /// Por que uma transferência foi recusada antes de começar.
@@ -243,6 +258,9 @@ pub fn validate_manifest(items: &[ManifestItem], total_bytes: u64) -> Result<()>
         _ => Err(ProtoError::Malformed),
     }
 }
+
+mod partes;
+pub use partes::manifest_messages;
 
 #[cfg(test)]
 mod tests;

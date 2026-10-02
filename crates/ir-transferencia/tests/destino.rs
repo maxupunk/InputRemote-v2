@@ -7,68 +7,22 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+mod comum;
+
 use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use ir_crypto::{Identity, PublicKey};
+use comum::{Maquina, parear, porta_livre, subir_com};
+use ir_crypto::PublicKey;
 use ir_ipc::Aviso;
 use ir_ipc::transferencia::{Fase, Motivo, Sentido, Transferencia};
-use ir_transferencia::{
-    Ajuste, Cota, Destino, Leitor, Localizador, Pedidos, iniciar, sem_localizador,
-};
+use ir_transferencia::{Destino, Leitor, Localizador, sem_localizador};
 use ir_transporte::Endereco;
 use tokio::sync::broadcast;
 
-/// Uma porta livre agora. Há uma janela até o serviço a usar, pequena demais para importar aqui.
-fn porta_livre() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
-}
-
-struct Maquina {
-    identidade: Arc<Identity>,
-    porta: u16,
-    pedidos: Pedidos,
-    avisos: broadcast::Receiver<Aviso>,
-    pasta: PathBuf,
-}
-
 fn subir(nome: &str, localizar: Localizador) -> Maquina {
-    let pasta = std::env::temp_dir().join(format!("ir-destino-{nome}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&pasta);
-    std::fs::create_dir_all(pasta.join("recebidos")).unwrap();
-    let identidade = Arc::new(Identity::generate());
-    let porta = porta_livre();
-    let (avisos, ouvinte) = broadcast::channel(64);
-    let pedidos = iniciar(Ajuste {
-        porta,
-        recebidos: pasta.join("recebidos"),
-        cota: Cota::default(),
-        identidade: Arc::clone(&identidade),
-        destino: Destino::default(),
-        localizar,
-        avisos,
-    });
-    Maquina {
-        identidade,
-        porta,
-        pedidos,
-        avisos: ouvinte,
-        pasta,
-    }
-}
-
-fn apontar(de: &Maquina, para: &Maquina) {
-    let alvo = SocketAddr::from(([127, 0, 0, 1], para.porta));
-    de.pedidos.trocar_destino(Destino {
-        chave: Some(para.identidade.public()),
-        alvo: Some(Endereco::Rede(alvo)),
-    });
+    subir_com(&format!("destino-{nome}"), porta_livre(), localizar)
 }
 
 /// O próximo aviso de transferência que termina, neste sentido.
@@ -103,8 +57,8 @@ async fn sem_par_recusa_com_motivo_e_com_par_novo_envia_sem_reiniciar() {
     );
 
     // Pareiam agora. Nenhum dos dois reinicia.
-    apontar(&a, &b);
-    apontar(&b, &a);
+    parear(&a, &b);
+    parear(&b, &a);
     assert!(a.pedidos.enviar(vec![arquivo], Leitor::Proprio));
     let enviado = fim(&mut a.avisos, Sentido::Enviando).await;
     assert!(

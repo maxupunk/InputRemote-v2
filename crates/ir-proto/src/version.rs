@@ -31,7 +31,12 @@ use crate::error::{ProtoError, Result};
 /// Versão 6: controle simétrico ([ADR-0014](../../../docs/adr/0014-controle-simetrico.md)). Não há
 /// mais papel: `Control::Role` saiu, `Control::Reclaim` entrou, `EdgeConfig` leva quando a borda foi
 /// escolhida, e `Capabilities::declines_control` diz se a ponta recusa ser controlada.
-pub const CURRENT: ProtocolVersion = ProtocolVersion(6);
+///
+/// Versão 7: `BulkMessage::ManifestPart`, o manifesto em partes quando ele não cabe num quadro
+/// ([log 55](../../../docs/logs/55-o-manifesto-que-nao-cabia.md)). Só sai num manifesto que a
+/// versão 6 já não conseguia mandar — o codec o recusava antes de sair —, então a versão 6
+/// continua aceita: tudo o que funcionava com ela funciona igual.
+pub const CURRENT: ProtocolVersion = ProtocolVersion(7);
 
 /// Versão mais antiga que esta build ainda aceita conversar.
 ///

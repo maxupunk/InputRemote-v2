@@ -317,6 +317,23 @@ pub enum Aviso {
     /// A borda já muda no [`Estado`]; isto é para a tela **contar** — uma posição que muda sem
     /// ninguém tocar parece defeito.
     BordaAjustada(crate::Borda),
+    /// Uma cópia de arquivos começou a chegar: o ajudante de clipboard já pode prometê-la.
+    ///
+    /// No fim do enum, como toda variante nova: o canal local é `postcard`, que numera as variantes
+    /// pela posição, e um processo de antes de uma atualização ainda lê os números antigos.
+    ArquivosChegando(crate::chegada::Chegando),
+}
+
+impl Aviso {
+    /// Se este aviso é só para o ajudante de clipboard — o conteúdo do clipboard, que a janela não
+    /// usa. Os de arquivos levam caminhos desta máquina e podem ter centenas de quilobytes.
+    #[must_use]
+    pub const fn so_para_o_ajudante(&self) -> bool {
+        matches!(
+            self,
+            Self::LerClipboard | Self::TextoRecebido(_) | Self::ArquivosChegando(_)
+        )
+    }
 }
 
 #[cfg(test)]

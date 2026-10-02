@@ -93,3 +93,44 @@ fn o_estado_recem_instalado_diz_o_que_fazer_primeiro() {
         "a primeira tela precisa dizer o primeiro passo"
     );
 }
+
+fn chegando() -> Aviso {
+    Aviso::ArquivosChegando(crate::chegada::Chegando {
+        nome: "Jogo eletronica 2".to_owned(),
+        montagem: "/var/lib/inputremote/recebidos/.parcial-7".to_owned(),
+        publicada_em: "/var/lib/inputremote/recebidos".to_owned(),
+        itens: vec![crate::chegada::ItemChegando {
+            caminho: "Jogo eletronica 2/a.png".to_owned(),
+            tamanho: 3,
+            pasta: false,
+        }],
+    })
+}
+
+#[test]
+fn os_avisos_novos_vao_no_fim_e_nao_renumeram_os_antigos() {
+    // O canal local é posicional, e o ajudante de clipboard sobrevive às atualizações: um número
+    // que muda faz o processo de antes ler outra coisa (log 56).
+    let numero = |aviso: &Aviso| postcard::to_allocvec(aviso).unwrap()[0];
+    assert_eq!(numero(&Aviso::LerClipboard), 6);
+    assert_eq!(numero(&Aviso::BordaAjustada(Borda::Esquerda)), 10);
+    assert_eq!(numero(&chegando()), 11);
+}
+
+#[test]
+fn o_conteudo_do_clipboard_vai_so_ao_ajudante() {
+    assert!(chegando().so_para_o_ajudante());
+    assert!(Aviso::LerClipboard.so_para_o_ajudante());
+    assert!(!Aviso::BordaAjustada(Borda::Esquerda).so_para_o_ajudante());
+}
+
+#[test]
+fn a_chegada_atravessa_o_canal_local() {
+    let aviso = ParaInterface::Aviso(chegando());
+    let bytes = crate::codec::codificar(&aviso).unwrap();
+    let corpo = &bytes[crate::codec::PREFIXO..];
+    assert_eq!(
+        crate::codec::decodificar::<ParaInterface>(corpo).unwrap(),
+        aviso
+    );
+}

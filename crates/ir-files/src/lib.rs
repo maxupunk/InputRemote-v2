@@ -13,7 +13,8 @@
 //! ------                                        -------
 //! manifesto::montar(id, o que o usuário copiou)
 //! Envio::novo(plano)
-//! envio.manifesto()                    ──────►  Recepcao::abrir(...)   cota, permissão, disco
+//! envio.manifesto()  [partes] Manifest ──────►  PartesDoManifesto      junta as partes
+//!                                               Recepcao::abrir(...)   cota, permissão, disco
 //!                                      ◄──────  Accept | Reject
 //! envio.proxima()  FileStart           ──────►  recepcao.aplicar(...)
 //! envio.proxima()  FileBlock  ×N       ──────►  escreve e resume
@@ -61,6 +62,7 @@ mod em_curso;
 pub mod envio;
 pub mod error;
 pub mod manifesto;
+pub mod partes;
 pub mod permissao;
 pub mod publicacao;
 pub mod recepcao;
@@ -73,6 +75,7 @@ pub use cota::{Cota, EspacoLivre};
 pub use envio::Envio;
 pub use error::{FileError, Result};
 pub use manifesto::Plano;
+pub use partes::{Juntada, Manifesto, PartesDoManifesto};
 pub use permissao::{Autorizacao, Leitor};
 pub use publicacao::Publicacao;
 pub use recepcao::{Abertura, Reacao, Recepcao};

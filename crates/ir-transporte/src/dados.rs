@@ -34,6 +34,40 @@ use ir_proto::message::{BulkMessage, Message};
 use tokio::io::{ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 
+/// Por que uma mensagem não saiu — e se o enlace sobreviveu a isso.
+///
+/// As duas causas eram um erro só, e quem enviava tratava qualquer uma como queda. Foi assim que
+/// um manifesto grande demais para o quadro, defeito **daqui**, chegou à tela como "a conexão de
+/// arquivos caiu" ([log 55](../../../docs/logs/55-o-manifesto-que-nao-cabia.md)): o diagnóstico
+/// apontava para a rede, e o enlace saudável era derrubado à toa.
+#[derive(Debug)]
+pub enum FalhaDeEnvio {
+    /// A mensagem não vira quadro: passa do teto do portador. Nada foi escrito no socket, então o
+    /// enlace segue de pé — o defeito é de quem montou a mensagem.
+    NaoCabe(ir_proto::ProtoError),
+    /// O Noise ou o socket falharam: o enlace caiu.
+    Enlace(anyhow::Error),
+}
+
+impl std::fmt::Display for FalhaDeEnvio {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NaoCabe(erro) => write!(f, "a mensagem não cabe num quadro de dados: {erro}"),
+            Self::Enlace(erro) => write!(f, "o enlace de dados falhou: {erro:#}"),
+        }
+    }
+}
+
+impl std::error::Error for FalhaDeEnvio {}
+
+impl FalhaDeEnvio {
+    /// Se o enlace caiu com esta falha. Quando não caiu, ele continua servindo as próximas cópias.
+    #[must_use]
+    pub const fn derrubou_o_enlace(&self) -> bool {
+        matches!(self, Self::Enlace(_))
+    }
+}
+
 /// A metade que manda mensagens do canal 5.
 #[derive(Debug)]
 pub struct Remetente {
@@ -49,10 +83,15 @@ impl Remetente {
     ///
     /// # Errors
     ///
-    /// Se a mensagem não couber no quadro, se o Noise recusar, ou se o socket falhar.
-    pub async fn enviar(&mut self, mensagem: BulkMessage) -> Result<()> {
+    /// [`FalhaDeEnvio::NaoCabe`] se a mensagem não couber no quadro; [`FalhaDeEnvio::Enlace`] se o
+    /// Noise recusar ou o socket falhar.
+    pub async fn enviar(&mut self, mensagem: BulkMessage) -> Result<(), FalhaDeEnvio> {
         let bytes = self.codificar(mensagem)?;
-        self.saida.send(&bytes).await.context("enviando o quadro")
+        self.saida
+            .send(&bytes)
+            .await
+            .context("enviando o quadro")
+            .map_err(FalhaDeEnvio::Enlace)
     }
 
     /// Manda uma mensagem e força a saída, para quando o par está esperando por ela.
@@ -63,12 +102,13 @@ impl Remetente {
     /// # Errors
     ///
     /// Os mesmos de [`Self::enviar`].
-    pub async fn enviar_agora(&mut self, mensagem: BulkMessage) -> Result<()> {
+    pub async fn enviar_agora(&mut self, mensagem: BulkMessage) -> Result<(), FalhaDeEnvio> {
         let bytes = self.codificar(mensagem)?;
         self.saida
             .send_now(&bytes)
             .await
             .context("enviando o quadro")
+            .map_err(FalhaDeEnvio::Enlace)
     }
 
     /// Embrulha a mensagem num quadro do protocolo e o codifica para o portador TCP.
@@ -76,11 +116,11 @@ impl Remetente {
     /// O número de sequência é contado aqui e serve só para diagnóstico: sobre TCP a ordem é do
     /// meio, e `ChannelId::Bulk` não entra na confiabilidade de aplicação
     /// ([03, §4](../../../docs/03-protocolo.md)).
-    fn codificar(&mut self, mensagem: BulkMessage) -> Result<Vec<u8>> {
+    fn codificar(&mut self, mensagem: BulkMessage) -> Result<Vec<u8>, FalhaDeEnvio> {
         let sequencia = Sequence(self.proxima);
         self.proxima = self.proxima.wrapping_add(1);
         let quadro = Frame::new(Message::Bulk(mensagem), sequencia);
-        codec::encode(&quadro, Carrier::Tcp).context("codificando o quadro de dados")
+        codec::encode(&quadro, Carrier::Tcp).map_err(FalhaDeEnvio::NaoCabe)
     }
 }
 
@@ -221,153 +261,4 @@ fn partir(enlace: bulk::BulkLink<TcpStream>, par: PublicKey) -> EnlaceDeDados {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
-mod tests {
-    use ir_proto::message::{CancelReason, ManifestItem, TransferId};
-
-    use super::*;
-
-    /// Duas portas em loopback, já com as identidades fixadas uma na outra.
-    async fn ligadas() -> (EnlaceDeDados, EnlaceDeDados) {
-        let aqui = Arc::new(Identity::generate());
-        let la = Arc::new(Identity::generate());
-        let (chave_daqui, chave_de_la) = (aqui.public(), la.public());
-
-        // Porta efêmera: o teste não pode brigar com a 52525 de um serviço instalado.
-        let porta_de_la = Porta::abrir(0, Arc::clone(&la)).await.expect("escuta");
-        let alvo = porta_de_la.endereco().expect("endereço");
-        let alvo = SocketAddr::from(([127, 0, 0, 1], alvo.port()));
-
-        let atende = tokio::spawn(async move { porta_de_la.aceitar(chave_daqui).await });
-        let porta_daqui = Porta::abrir(0, aqui).await.expect("escuta");
-        let discado = porta_daqui.discar(alvo, chave_de_la).await.expect("disca");
-        let atendido = atende.await.expect("tarefa").expect("atende");
-        (discado, atendido)
-    }
-
-    #[tokio::test]
-    async fn uma_mensagem_atravessa_o_socket_de_verdade() {
-        let (mut daqui, mut de_la) = ligadas().await;
-        let manifesto = BulkMessage::Manifest {
-            id: TransferId(7),
-            items: vec![ManifestItem {
-                path: "relat\u{f3}rio/a.pdf".to_owned(),
-                size: 42,
-                is_dir: false,
-            }],
-            total_bytes: 42,
-        };
-        daqui
-            .remetente
-            .enviar_agora(manifesto.clone())
-            .await
-            .unwrap();
-        assert_eq!(de_la.destinatario.receber().await.unwrap(), manifesto);
-    }
-
-    #[tokio::test]
-    async fn as_duas_direcoes_funcionam_ao_mesmo_tempo() {
-        // O padrão real: um lado despeja blocos enquanto o outro confirma.
-        let (mut daqui, mut de_la) = ligadas().await;
-        let id = TransferId(1);
-
-        let despeja = tokio::spawn(async move {
-            for n in 0..16u32 {
-                daqui
-                    .remetente
-                    .enviar(BulkMessage::FileBlock {
-                        id,
-                        item: 0,
-                        offset: u64::from(n) * 1024,
-                        data: vec![u8::try_from(n).unwrap_or(0); 1024],
-                    })
-                    .await
-                    .unwrap();
-            }
-            // Lê as confirmações que voltaram.
-            let mut confirmadas = 0;
-            while confirmadas < 16 {
-                let voltou = daqui.destinatario.receber().await.unwrap();
-                confirmadas += usize::from(matches!(voltou, BulkMessage::Verified { .. }));
-            }
-            confirmadas
-        });
-
-        for n in 0..16u32 {
-            match de_la.destinatario.receber().await.unwrap() {
-                BulkMessage::FileBlock { offset, data, .. } => {
-                    assert_eq!(offset, u64::from(n) * 1024);
-                    assert_eq!(data.len(), 1024);
-                }
-                outra => panic!("esperava um bloco, veio {outra:?}"),
-            }
-            de_la
-                .remetente
-                .enviar_agora(BulkMessage::Verified {
-                    id,
-                    item: 0,
-                    ok: true,
-                })
-                .await
-                .unwrap();
-        }
-        assert_eq!(despeja.await.unwrap(), 16);
-    }
-
-    #[tokio::test]
-    async fn quem_atende_recusa_uma_identidade_que_nao_e_a_fixada() {
-        // A porta do canal de dados é alcançável por qualquer um na rede local. O que impede um
-        // estranho de abrir uma transferência é esta conferência, e nada mais.
-        let la = Arc::new(Identity::generate());
-        let estranho = Arc::new(Identity::generate());
-        let fixada = Identity::generate().public();
-        let chave_de_la = la.public();
-
-        let porta_de_la = Porta::abrir(0, Arc::clone(&la)).await.expect("escuta");
-        let alvo = porta_de_la.endereco().expect("endereço");
-        let alvo = SocketAddr::from(([127, 0, 0, 1], alvo.port()));
-
-        let atende = tokio::spawn(async move { porta_de_la.aceitar(fixada).await });
-        let porta_do_estranho = Porta::abrir(0, estranho).await.expect("escuta");
-        let _ = porta_do_estranho.discar(alvo, chave_de_la).await;
-        assert!(
-            atende.await.expect("tarefa").is_err(),
-            "um estranho não pode abrir o canal de dados"
-        );
-    }
-
-    #[tokio::test]
-    async fn um_quadro_fora_do_canal_de_dados_e_recusado() {
-        // O enlace carrega o canal 5 e nada mais. Aceitar controle por aqui seria um segundo
-        // caminho para a máquina de estados da sessão, que é exatamente o que o ADR-0010 separou.
-        let (mut daqui, mut de_la) = ligadas().await;
-        let quadro = Frame::new(
-            Message::Control(ir_proto::message::Control::AckOnly),
-            Sequence(0),
-        );
-        // Codificado como UDP, porque o codec recusaria controle... não: controle viaja em
-        // qualquer portador. É o `receber` que tem de barrar.
-        let bytes = codec::encode(&quadro, Carrier::Tcp).expect("controle cabe no TCP");
-        daqui.remetente.saida.send_now(&bytes).await.unwrap();
-        assert!(de_la.destinatario.receber().await.is_err());
-    }
-
-    #[tokio::test]
-    async fn o_cancelamento_atravessa_como_qualquer_outra_mensagem() {
-        let (mut daqui, mut de_la) = ligadas().await;
-        let cancel = BulkMessage::Cancel {
-            id: TransferId(3),
-            reason: CancelReason::UserRequested,
-        };
-        daqui.remetente.enviar_agora(cancel.clone()).await.unwrap();
-        assert_eq!(de_la.destinatario.receber().await.unwrap(), cancel);
-    }
-
-    #[test]
-    fn a_regra_da_colisao_chega_ao_servico_sem_ele_conhecer_o_ir_net() {
-        let maior = PublicKey([9; 32]);
-        let menor = PublicKey([1; 32]);
-        assert!(ficar_com_o_proprio(maior, menor));
-        assert!(!ficar_com_o_proprio(menor, maior));
-    }
-}
+mod testes;

@@ -245,5 +245,17 @@ pub fn bulk_closing_vectors() -> Vec<Vector> {
             ),
             "0508858c1c021f0000",
         ),
+        v(
+            "bulk_manifest_part",
+            // Versão 7: a parte de um manifesto que não cabe num quadro só.
+            bulk(
+                BulkMessage::ManifestPart {
+                    id: TRANSFER,
+                    items: items(),
+                },
+                32,
+            ),
+            "0509858c1c030a72656c6174c3b372696f00011672656c6174c3b372696f2f6a616e6569726f2e706466b424002072656c6174c3b372696f2f616e65786f20636f6d2065737061c3a76f2e62696e5600200000",
+        ),
     ]
 }

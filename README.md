@@ -21,8 +21,9 @@ Windows e Linux/Wayland. Escrito em Rust.
 >
 > O que foi provado em bancada, e o que falta, está em [USAR.md](USAR.md),
 > [PROGRESSO.md](PROGRESSO.md) e no [registro](LOG.md) — o mais recente é o
-> [log 54](docs/logs/54-uma-regra-em-um-lugar.md). Ainda não provado em hardware: o ponteiro com
-> dois monitores numa mesma máquina.
+> [log 56](docs/logs/56-o-ajudante-que-sobreviveu.md). Ainda não provado em hardware: o ponteiro com
+> dois monitores numa mesma máquina, a cópia que recomeça sozinha depois de uma queda da rede, e
+> colar antes de a cópia chegar de ponta a ponta (provado no Explorer com uma cópia simulada).
 
 > ⚠ **Risco aberto e conhecido.** Em janeiro de 2026 o Windows passou a recusar entrada
 > injetada nas telas de credencial, salvo de teclado físico, de aplicação com UIAccess ou

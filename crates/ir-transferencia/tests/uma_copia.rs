@@ -9,66 +9,16 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use std::net::SocketAddr;
+mod comum;
+
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Duration;
 
-use ir_crypto::Identity;
+use comum::{parear, subir};
 use ir_ipc::Aviso;
 use ir_ipc::transferencia::{Fase, Motivo, Sentido, Transferencia};
-use ir_transferencia::{Ajuste, Cota, Destino, Leitor, Pedidos, iniciar, sem_localizador};
-use ir_transporte::Endereco;
+use ir_transferencia::Leitor;
 use tokio::sync::broadcast;
-
-struct Maquina {
-    identidade: Arc<Identity>,
-    porta: u16,
-    pedidos: Pedidos,
-    avisos: broadcast::Receiver<Aviso>,
-    pasta: PathBuf,
-}
-
-fn porta_livre() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
-}
-
-fn subir(nome: &str) -> Maquina {
-    let pasta = std::env::temp_dir().join(format!("ir-uma-copia-{nome}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&pasta);
-    std::fs::create_dir_all(pasta.join("recebidos")).unwrap();
-    let identidade = Arc::new(Identity::generate());
-    let porta = porta_livre();
-    let (avisos, ouvinte) = broadcast::channel(256);
-    let pedidos = iniciar(Ajuste {
-        porta,
-        recebidos: pasta.join("recebidos"),
-        cota: Cota::default(),
-        identidade: Arc::clone(&identidade),
-        destino: Destino::default(),
-        localizar: sem_localizador(),
-        avisos,
-    });
-    Maquina {
-        identidade,
-        porta,
-        pedidos,
-        avisos: ouvinte,
-        pasta,
-    }
-}
-
-fn parear(de: &Maquina, para: &Maquina) {
-    let alvo = SocketAddr::from(([127, 0, 0, 1], para.porta));
-    de.pedidos.trocar_destino(Destino {
-        chave: Some(para.identidade.public()),
-        alvo: Some(Endereco::Rede(alvo)),
-    });
-}
 
 /// Um arquivo grande o bastante para a cópia ainda estar em curso no pedido seguinte.
 fn arquivo_grande(pasta: &std::path::Path, nome: &str, megabytes: usize) -> PathBuf {
@@ -106,12 +56,15 @@ async fn fins(
 /// atrás da outra.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn pedir_a_mesma_copia_de_novo_nao_copia_duas_vezes() {
-    let mut a = subir("repetida-a");
-    let b = subir("repetida-b");
+    let mut a = subir("uma-copia-repetida-a");
+    let b = subir("uma-copia-repetida-b");
     parear(&a, &b);
     parear(&b, &a);
 
-    let arquivo = arquivo_grande(&a.pasta, "grande.bin", 24);
+    // Grande o bastante para ainda estar indo quando os pedidos repetidos chegam — eles chegam no
+    // mesmo instante —, e pequeno para a primeira terminar com folga dentro do prazo, mesmo num
+    // build de depuração: 24 MB levavam os mesmos doze segundos do prazo.
+    let arquivo = arquivo_grande(&a.pasta, "grande.bin", 8);
     for _ in 0..3 {
         assert!(
             a.pedidos.enviar(vec![arquivo.clone()], Leitor::Proprio),

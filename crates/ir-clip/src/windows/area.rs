@@ -44,13 +44,18 @@ const TETO_DE_CAMINHO: usize = 32_768;
 ///
 /// Existe porque há mais de um caminho de erro entre abrir e fechar, e um `CloseClipboard` esquecido
 /// num deles **trava o clipboard da máquina inteira** até o processo morrer. `Drop` não esquece.
-struct Aberto;
+pub(super) struct Aberto;
 
 impl Aberto {
     fn agora() -> Result<Self> {
-        // `None` como dono: não temos janela para associar, e não precisamos — só lemos e
-        // escrevemos, sem renderização atrasada.
-        match unsafe { OpenClipboard(Some(HWND::default())) } {
+        // Sem dono: para ler e escrever não há janela a associar. Só a promessa
+        // ([`super::promessa`]) precisa de uma, porque é a ela que o sistema pede o que prometeu.
+        Self::com_dono(HWND::default())
+    }
+
+    /// Abre em nome desta janela, que vira a dona do que for posto no clipboard.
+    pub(super) fn com_dono(janela: HWND) -> Result<Self> {
+        match unsafe { OpenClipboard(Some(janela)) } {
             Ok(()) => Ok(Self),
             Err(_) => Err(ClipError::Ocupado),
         }
@@ -210,8 +215,9 @@ pub(super) fn publicar(conteudo: &Conteudo) -> Result<()> {
     Ok(())
 }
 
-/// Entrega um formato ao clipboard já aberto e esvaziado.
-fn entregar(formato: u32, bytes: &[u8]) -> Result<()> {
+/// Entrega um formato ao clipboard já aberto e esvaziado — ou, dentro de `WM_RENDERFORMAT`, ao
+/// pedido que o sistema fez à dona.
+pub(super) fn entregar(formato: u32, bytes: &[u8]) -> Result<()> {
     let bloco = copiar_para_o_sistema(bytes)?;
     // A partir daqui o bloco é do sistema: não se libera, não se toca. Se `SetClipboardData`
     // falhar, ele ainda é nosso — e aí sim há que soltar.
@@ -237,7 +243,7 @@ fn bytes_de_texto(canonico: &str) -> Vec<u8> {
 ///
 /// O segundo zero é o fim da lista. Sem ele, o Explorer lê memória além do bloco procurando o
 /// próximo nome.
-fn bytes_de_arquivos(caminhos: &[PathBuf]) -> Vec<u8> {
+pub(super) fn bytes_de_arquivos(caminhos: &[PathBuf]) -> Vec<u8> {
     let mut nomes: Vec<u16> = Vec::new();
     for caminho in caminhos {
         nomes.extend(caminho.to_string_lossy().encode_utf16());
@@ -266,7 +272,7 @@ fn bytes_de_arquivos(caminhos: &[PathBuf]) -> Vec<u8> {
 }
 
 /// Copia bytes para memória que o clipboard possa adotar.
-fn copiar_para_o_sistema(bytes: &[u8]) -> Result<HGLOBAL> {
+pub(super) fn copiar_para_o_sistema(bytes: &[u8]) -> Result<HGLOBAL> {
     let bloco = unsafe { GlobalAlloc(GMEM_MOVEABLE, bytes.len()) }
         .map_err(|erro| ClipError::Sistema(erro.to_string()))?;
     let destino = unsafe { GlobalLock(bloco) }.cast::<u8>();

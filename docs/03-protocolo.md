@@ -255,7 +255,17 @@ Nomes definitivos vivem em `ir-proto`. Este é o contrato.
 
 `Manifest{itens, bytes totais}`, `FileStart{id, caminho relativo, tamanho, modo}`,
 `FileBlock{id, deslocamento, dados}`, `FileEnd{id, blake3}`, `Verified{id, ok}`,
-`Progress{id, bytes}`, `Cancel{id, motivo}`.
+`Progress{id, bytes}`, `Cancel{id, motivo}`, `ManifestPart{id, itens}`.
+
+**O manifesto vai em partes quando não cabe num quadro** (versão 7). Um quadro TCP leva no máximo
+65 519 bytes, e um manifesto pode ter até 10 000 itens com caminho de até 1 024 bytes. Quem envia
+manda as `ManifestPart` que precisar, na ordem dos itens e com o mesmo `id`, e o `Manifest` por
+último, com a parte final e o total; só o `Manifest` pede resposta (`Accept`/`Reject`). Quem recebe
+junta as partes e confere a lista inteira como conferia a de um quadro só. Uma parte de outro `id`
+descarta as anteriores, e a lista para de crescer um item acima do limite — o bastante para a
+recusa dizer "itens demais" sem guardar o resto. Um manifesto que cabe num quadro vai sem parte
+nenhuma, idêntico ao da versão 6
+([log 55](logs/55-o-manifesto-que-nao-cabia.md)).
 
 ## 7. `StateSnapshot` — a rede de segurança
 
@@ -281,6 +291,10 @@ o horário da escolha e `Capabilities` diz se a ponta recusa ser controlada —,
 ponta de papel fixo exigiria manter os dois modelos vivos. Sem versão lançada, os dois computadores
 atualizam juntos; um par antigo é recusado na negociação com o motivo. Se a
 diferença for maior que uma versão maior, a sessão é recusada com mensagem explícita.
+
+A versão 7 acrescentou `ManifestPart` ao canal 5, e a 6 continua aceita: a parte só sai num
+manifesto que a versão 6 já não conseguia mandar, então tudo o que funcionava entre as duas
+funciona igual. Os vetores da versão 6 seguem gravados; os da 7 foram acrescentados ao lado.
 
 Regra deliberadamente estrita: **mensagem desconhecida em canal confiável derruba o
 enlace**; campo desconhecido não é ignorado. Um KVM que age sob ambiguidade digita a

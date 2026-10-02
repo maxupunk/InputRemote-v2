@@ -10,13 +10,13 @@ use std::sync::Arc;
 use ir_files::Envio;
 use ir_ipc::transferencia::{Fase, Motivo, Sentido};
 use ir_proto::message::{BulkMessage, CancelReason};
-use ir_transporte::dados::Remetente;
+use ir_transporte::dados::{FalhaDeEnvio, Remetente};
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
 use crate::Ajuste;
 use crate::enviando::parada;
-use crate::sessao::anunciar;
+use crate::sessao::{anunciar, falhou_ao_enviar};
 
 /// Como um despejo de blocos terminou.
 #[derive(Debug, PartialEq, Eq)]
@@ -25,6 +25,13 @@ pub(crate) enum Despejo {
     Pronto,
     /// O usuário copiou outra coisa, e esta cópia deu lugar a ela.
     Cancelado,
+    /// A cópia parou por motivo dela — um arquivo que não se lê mais, uma mensagem que não coube —,
+    /// já contado na tela. O enlace segue de pé.
+    ///
+    /// Antes isto saía como [`Self::Pronto`], e quem conduzia ia esperar a conferência de arquivos
+    /// que o destino, cancelado, nunca conferiria: trinta segundos depois o prazo vencia, a espera
+    /// era tomada por queda, e o motivo de verdade na tela era trocado por "a conexão caiu".
+    Falhou,
     /// O enlace caiu.
     Caiu,
 }
@@ -65,17 +72,12 @@ pub(crate) async fn despejar(
                     feitos,
                     parada(&erro),
                 );
-                return Despejo::Pronto;
+                return Despejo::Falhou;
             }
         };
         let fim_de_arquivo = matches!(proxima, BulkMessage::FileEnd { .. });
-        let mandou = if fim_de_arquivo {
-            remetente.lock().await.enviar_agora(proxima).await
-        } else {
-            remetente.lock().await.enviar(proxima).await
-        };
-        if mandou.is_err() {
-            return Despejo::Caiu;
+        if let Err(falha) = mandar(remetente, proxima, fim_de_arquivo).await {
+            return falhou(remetente, envio, &falha, (nome, total), ajuste).await;
         }
         // O fim de cada arquivo sempre conta; no meio de um arquivo grande, o relógio decide.
         if fim_de_arquivo || passo.passou() {
@@ -89,6 +91,37 @@ pub(crate) async fn despejar(
             );
         }
     }
+}
+
+/// Manda um bloco. O fim de um arquivo força a saída: é por ele que o destino confere.
+async fn mandar(
+    remetente: &Arc<Mutex<Remetente>>,
+    mensagem: BulkMessage,
+    fim_de_arquivo: bool,
+) -> Result<(), FalhaDeEnvio> {
+    let mut remetente = remetente.lock().await;
+    if fim_de_arquivo {
+        remetente.enviar_agora(mensagem).await
+    } else {
+        remetente.enviar(mensagem).await
+    }
+}
+
+/// Um bloco não saiu: ou o enlace caiu, ou a cópia para aqui e ele segue servindo.
+async fn falhou(
+    remetente: &Arc<Mutex<Remetente>>,
+    envio: &Envio,
+    falha: &FalhaDeEnvio,
+    (nome, total): (&str, u64),
+    ajuste: &Ajuste,
+) -> Despejo {
+    if falha.derrubou_o_enlace() {
+        return Despejo::Caiu;
+    }
+    // O outro lado já tem a recepção aberta: sem o cancelamento, ela ficaria esperando o bloco.
+    cancelar(remetente, envio, CancelReason::WriteFailed).await;
+    falhou_ao_enviar(falha, &ajuste.avisos, (nome, (envio.enviados(), total)));
+    Despejo::Falhou
 }
 
 /// Diz ao outro lado que esta cópia parou, para ele apagar o que já gravou.

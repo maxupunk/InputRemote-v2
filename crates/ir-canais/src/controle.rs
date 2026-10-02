@@ -109,6 +109,11 @@ async fn atender(
                 }
             },
             aviso = avisos.recv(), if acompanhando => {
+                // O conteúdo do clipboard é do ajudante; à janela ele só custaria banda.
+                let alheio = aviso.as_ref().is_ok_and(Aviso::so_para_o_ajudante);
+                if alheio && presenca.is_none() {
+                    continue;
+                }
                 if !repassar(&mut escrita, aviso).await {
                     motivo = "o aviso não pôde ser escrito";
                     break;

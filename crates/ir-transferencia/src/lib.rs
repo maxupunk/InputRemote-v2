@@ -27,12 +27,15 @@ pub mod faxina;
 mod fila;
 mod localizar;
 mod passo;
+mod pedidos;
 mod porta;
 mod recebendo;
+mod retomada;
 mod sessao;
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use ir_crypto::{Identity, PublicKey};
@@ -45,13 +48,14 @@ pub use ir_files::Cota;
 /// Com a autoridade de quem os arquivos são lidos, reexportada pelo mesmo motivo de [`Cota`].
 pub use ir_files::{Autorizacao, Leitor};
 pub use localizar::{Localizador, da_descoberta, sem_localizador};
+pub use pedidos::Pedidos;
 
 /// Um pedido de envio: o que mandar, e com a autoridade de quem.
 pub(crate) type PedidoDeEnvio = (Vec<PathBuf>, Leitor);
 use ir_ipc::Aviso;
 use ir_ipc::transferencia::{Fase, Motivo, Sentido};
 use tokio::sync::{broadcast, mpsc, watch};
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 /// Quanto esperar antes de tentar de novo quando o par não atende.
 ///
@@ -101,113 +105,6 @@ impl Destino {
     }
 }
 
-/// Por onde o ator pede um envio.
-#[derive(Debug, Clone)]
-pub struct Pedidos {
-    /// A fila de um: a mesma cópia não vai duas vezes, e outra cópia substitui a que está indo.
-    fila: Arc<fila::Fila>,
-    /// Quem cuida da pasta de recebidos.
-    faxineiro: Arc<faxina::Faxineiro>,
-    /// O toque que acorda a tarefa de envio. Fechá-lo é como o serviço diz que está saindo.
-    acorda: mpsc::UnboundedSender<()>,
-    destino: Arc<watch::Sender<Destino>>,
-}
-
-impl Pedidos {
-    /// Uma alça que não leva a lugar nenhum.
-    ///
-    /// Para bancada de teste do serviço, que exercita o ator sem canal de arquivos. Não finge
-    /// sucesso: [`Self::enviar`] devolve `false`, e o serviço responde ao pedido com falha — que é
-    /// a verdade naquele cenário.
-    #[must_use]
-    pub fn desligada() -> Self {
-        let (acorda, _) = mpsc::unbounded_channel();
-        let (destino, _) = watch::channel(Destino::default());
-        Self {
-            fila: Arc::new(fila::Fila::default()),
-            faxineiro: faxina::Faxineiro::novo(PathBuf::new(), faxina::Limites::default()),
-            acorda,
-            destino: Arc::new(destino),
-        }
-    }
-
-    /// Esvazia a pasta de recebidos e conta o estado novo quando terminar.
-    ///
-    /// Apagar gigabytes toca disco e pode demorar; quem pede é o ator do serviço, que gira a cada
-    /// 5 ms e não pode esperar. Então isto manda fazer e volta na hora: o tamanho de volta chega
-    /// pelo aviso, que é como toda mudança de estado chega à janela.
-    pub fn limpar_recebidos(&self, avisos: &broadcast::Sender<Aviso>, estado: ir_ipc::Estado) {
-        let faxineiro = Arc::clone(&self.faxineiro);
-        let avisos = avisos.clone();
-        tokio::spawn(async move {
-            faxineiro.esvaziar().await;
-            let _ = avisos.send(Aviso::EstadoMudou(ir_ipc::Estado {
-                recebidos_bytes: faxineiro.espaco(),
-                ..estado
-            }));
-        });
-    }
-
-    /// Quem cuida da pasta de recebidos: quanto ela ocupa, e o pedido de esvaziá-la.
-    ///
-    /// A janela mostra o tamanho e oferece o botão; o serviço não decide por conta própria apagar
-    /// o que o usuário ainda não colou — fora dos limites de [`faxina::Limites`], que são a parte
-    /// automática.
-    #[must_use]
-    pub fn recebidos(&self) -> &Arc<faxina::Faxineiro> {
-        &self.faxineiro
-    }
-
-    /// O par mudou: pareou-se um, esqueceu-se o que havia, ou ele foi achado em outro endereço.
-    ///
-    /// O canal em curso, se era com outro par, cai; o novo sobe sozinho.
-    pub fn trocar_destino(&self, destino: Destino) {
-        self.destino.send_if_modified(|atual| {
-            let mudou = *atual != destino;
-            *atual = destino;
-            mudou
-        });
-    }
-
-    /// Para a cópia em curso e esquece a que esperava. `false` se não havia cópia.
-    ///
-    /// O outro lado recebe o cancelamento e apaga o que já gravou: a montagem dele só vira arquivo
-    /// no fim.
-    #[must_use]
-    pub fn cancelar(&self) -> bool {
-        self.fila.cancelar_tudo()
-    }
-
-    /// Pede o envio destes caminhos, lidos com a autoridade de `leitor`. `false` quando a
-    /// transferência não está de pé.
-    ///
-    /// `leitor` não é detalhe: o serviço tem mais autoridade que quem pede, e sem ele o serviço leria
-    /// **por** quem pediu o que essa pessoa não leria sozinha (`ir_files::permissao`).
-    ///
-    /// Caminho vazio é descartado, e um pedido que fica sem nenhum é recusado aqui mesmo: é o único
-    /// erro que se vê sem tocar o disco.
-    /// Pedir de novo a **mesma** cópia que já está indo é aceito e não vira outra: é o Ctrl+C
-    /// repetido de quem não viu retorno na tela. Pedir outra cancela a que está indo
-    /// ([`fila::Fila`]).
-    #[must_use]
-    pub fn enviar(&self, caminhos: Vec<PathBuf>, leitor: Leitor) -> bool {
-        let caminhos: Vec<PathBuf> = caminhos
-            .into_iter()
-            .filter(|caminho| !caminho.as_os_str().is_empty())
-            .collect();
-        if caminhos.is_empty() {
-            return false;
-        }
-        let recebido = self.fila.pedir(caminhos, leitor);
-
-        if recebido == fila::Recebido::Repetido {
-            debug!("esta cópia já está indo; não vai de novo");
-            return true;
-        }
-        self.acorda.send(()).is_ok()
-    }
-}
-
 /// O que a transferência precisa para existir.
 pub struct Ajuste {
     /// A porta TCP. A mesma número do UDP ([03, §10](../../../docs/03-protocolo.md)).
@@ -247,16 +144,27 @@ pub fn iniciar(ajuste: Ajuste) -> Pedidos {
     let (destino, mudancas) = watch::channel(ajuste.destino);
     let fila = Arc::new(fila::Fila::default());
     let faxineiro = faxina::Faxineiro::novo(ajuste.recebidos.clone(), faxina::Limites::default());
+    let de_pe = Arc::new(AtomicBool::new(false));
+    let avisos = ajuste.avisos.clone();
     let entrada = Entrada {
         fila: Arc::clone(&fila),
         toques,
     };
-    tokio::spawn(servir(ajuste, entrada, mudancas, Arc::clone(&faxineiro)));
+    let deposito = recebendo::Deposito {
+        pasta: ajuste.recebidos.clone(),
+        cota: ajuste.cota,
+        faxineiro: Arc::clone(&faxineiro),
+        recepcoes: Arc::default(),
+    };
+    let canal = (entrada, deposito, Arc::clone(&de_pe));
+    tokio::spawn(servir(ajuste, canal, mudancas));
     Pedidos {
         fila,
         faxineiro,
         acorda,
         destino: Arc::new(destino),
+        de_pe,
+        avisos,
     }
 }
 
@@ -278,12 +186,15 @@ impl Entrada {
 }
 
 /// O laço de vida do canal de dados: tem enlace, usa; não tem, consegue um; o par mudou, recomeça.
+///
+/// `canal`: por onde os pedidos chegam, para onde o que chega vai, e a marca de enlace de pé que
+/// quem pede consulta.
 async fn servir(
     ajuste: Ajuste,
-    mut entrada: Entrada,
+    (mut entrada, deposito, de_pe): (Entrada, recebendo::Deposito, Arc<AtomicBool>),
     mut destino: watch::Receiver<Destino>,
-    faxineiro: Arc<faxina::Faxineiro>,
 ) {
+    let faxineiro = &deposito.faxineiro;
     // Ao subir, antes de qualquer coisa: a pasta começa vazia. O que ficou de uma sessão anterior
     // é de uma cópia que já foi colada ou já foi esquecida — o clipboard não sobrevive ao
     // desligamento, então ninguém vai colar aquilo. Guardar é só ocupar disco. Durante a sessão a
@@ -313,16 +224,27 @@ async fn servir(
             _ = destino.changed() => continue,
         };
         info!("canal de arquivos estabelecido");
-        tokio::select! {
-            () = sessao::conduzir(enlace, &ajuste, &mut entrada, &faxineiro) => {}
-            _ = destino.changed() => {
-                info!("o par mudou; o canal de arquivos recomeça com o novo");
-                continue;
+        de_pe.store(true, Ordering::Release);
+        let mudou = tokio::select! {
+            () = sessao::conduzir(enlace, &ajuste, &mut entrada, &deposito) => false,
+            _ = destino.changed() => true,
+        };
+        de_pe.store(false, Ordering::Release);
+        if mudou {
+            info!("o par mudou; o canal de arquivos recomeça com o novo");
+            // Quem conduzia foi largado no meio, sem dizer como a cópia em curso terminou.
+            if let Some(trabalho) = entrada.fila.abandonada() {
+                let nome = ir_files::publicacao::nome_do_pedido(&trabalho.caminhos);
+                let progresso = trabalho.progresso;
+                retomada::envio_caiu(&entrada.fila, &ajuste.avisos, trabalho, (&nome, progresso));
             }
+        } else {
+            warn!("o canal de arquivos caiu; teclado e mouse não foram afetados");
         }
-        // O aviso à tela, se havia cópia atravessando, já saiu de quem a conduzia
-        // (`sessao::anunciar_queda`): só ali se sabe o nome dela, e se havia uma.
-        warn!("o canal de arquivos caiu; teclado e mouse não foram afetados");
+        // A cópia que caiu no meio voltou para a fila (`retomada::envio_caiu`); a pedida no
+        // instante da queda também espera ali. As duas aparecem na tela esperando a conexão, com
+        // prazo — e não caladas até ela voltar.
+        retomada::mostrar_espera(&entrada.fila, &ajuste.avisos);
     }
 }
 

@@ -63,6 +63,29 @@
                            TerminateProcess="0"
                            RebootPrompt="no" />
 
+    <!-- O ajudante de clipboard roda na sessao do usuario, e instalar troca o executavel sem
+         encerra-lo: na bancada, um ajudante de 24/09 seguia de pe em 02/10, depois de varias
+         atualizacoes, e o que chegava do outro computador nunca ia para o clipboard (log 56). O
+         ajudante novo sai sozinho quando o executavel muda; este passo cuida dos de antes dele.
+
+         Depois de o servico parar, e nao antes: com o servico de pe, quem zela pelo ajudante o
+         relancaria na hora com o executavel antigo, e ele voltaria a sobreviver. Mata pelo nome,
+         o que leva junto o agente de entrada se ele ainda estiver vivo, e isso e inofensivo: sem o
+         servico ele sai sozinho. Falhar (nenhum processo com o nome) nao interrompe nada. -->
+    <SetProperty Id="EncerrarAjudantes"
+                 Value="&quot;[System64Folder]taskkill.exe&quot; /F /IM inputremote-agent.exe"
+                 Before="EncerrarAjudantes"
+                 Sequence="execute" />
+    <CustomAction Id="EncerrarAjudantes"
+                  BinaryKey="WixCA"
+                  DllEntry="WixQuietExec64"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+    <InstallExecuteSequence>
+      <Custom Action="EncerrarAjudantes" After="StopServices" />
+    </InstallExecuteSequence>
+
     <!-- O icone da entrada em Aplicativos. Vem do arquivo, e nao extraido do executavel:
          extrair pegaria o primeiro tamanho que aparecesse, e a lista de programas usa 32 px. -->
     <Icon Id="icone.ico" SourceFile="$(var.Recursos)\icone.ico" />

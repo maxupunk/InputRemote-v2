@@ -31,7 +31,7 @@
 //! Imagem vai como arquivo PNG de nome reconhecível, e do outro lado volta a ser imagem.
 //! Texto acima do limite do canal 4 não atravessa, e fica só no registro, sem o conteúdo.
 
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
@@ -39,15 +39,16 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use ir_clip::{Clipboard, Conteudo, Eco};
-use ir_ipc::codec;
 use ir_ipc::transferencia::{Fase, Sentido, Transferencia};
-use ir_ipc::{Aviso, Falha, ParaInterface, Pedido, Resposta, TextoDoClipboard};
+use ir_ipc::{Aviso, Pedido, TextoDoClipboard};
 use tracing::{debug, info, warn};
 
+mod atualizacao;
 mod imagem;
 mod instancia;
 mod notificacao;
 mod rede;
+mod servico;
 
 /// Quanto esperar para tentar o serviço de novo.
 ///
@@ -79,8 +80,8 @@ enum Evento {
     Recusado,
     /// A conexão com o serviço caiu.
     Caiu,
-    /// O serviço fala uma versão do canal que este binário não entende: ele foi atualizado, e este
-    /// processo é de antes.
+    /// Este processo é de antes de uma atualização: o serviço fala uma versão do canal que ele não
+    /// entende, ou o executável em disco já é outro ([`atualizacao`]).
     Incompativel,
 }
 
@@ -115,12 +116,16 @@ pub(crate) fn servir() -> Result<()> {
     let mut clip = ir_clip::abrir().context("abrindo o clipboard da sessão")?;
     let (eventos, recebe) = mpsc::channel();
     vigiar_em_thread(eventos.clone());
+    let executavel = atualizacao::Executavel::este();
+    if let Some(executavel) = executavel.clone() {
+        atualizacao::vigiar(executavel, eventos.clone());
+    }
 
     let mut eco = Eco::nova();
     let mut notificador = notificacao::Notificador::default();
     let endereco = ir_ipc::endereco::do_controle();
     loop {
-        match conectar(&endereco, &eventos) {
+        match servico::conectar(&endereco, &eventos) {
             Ok(mut escrita) => {
                 info!("ajudante de clipboard ligado ao serviço");
                 let fim = atender(Partes {
@@ -135,85 +140,25 @@ pub(crate) fn servir() -> Result<()> {
                     // instância única este processo impediria o novo de subir. Saindo, quem zela
                     // pelo ajudante lança o binário instalado. Antes disto, depois de uma
                     // atualização o texto não atravessava mais até sair da sessão.
-                    info!(
-                        "o serviço fala outra versão do canal: este ajudante é de antes da atualização e sai, para subir o instalado"
-                    );
+                    info!("este ajudante é de antes da atualização e sai, para subir o instalado");
                     return Ok(());
                 }
                 warn!("a conexão com o serviço caiu; tentando de novo");
             }
             Err(erro) => debug!(%erro, "o serviço ainda não atende"),
         }
+        // Desligado do serviço, ninguém lê o aviso da thread que vigia o executável.
+        if executavel
+            .as_ref()
+            .is_some_and(atualizacao::Executavel::mudou)
+        {
+            info!(
+                "o executável do ajudante foi atualizado; este processo sai, para subir o instalado"
+            );
+            return Ok(());
+        }
         thread::sleep(RECONECTAR);
     }
-}
-
-/// Liga ao serviço, pede para acompanhar, e põe uma thread lendo o que ele disser.
-fn conectar(endereco: &str, eventos: &Sender<Evento>) -> Result<Box<dyn Write + Send>> {
-    let (mut escrita, leitura) = ir_ipc::cliente::abrir(endereco)
-        .with_context(|| format!("abrindo o canal de controle em {endereco}"))?;
-    pedir(escrita.as_mut(), &Pedido::AcompanharClipboard)?;
-    let eventos = eventos.clone();
-    thread::spawn(move || ler_avisos(leitura, &eventos));
-    Ok(escrita)
-}
-
-/// Traz os avisos do serviço para o laço principal, até a conexão cair.
-///
-/// O motivo de parar é registrado. Sem ele, "a conexão caiu" cobria três coisas muito diferentes —
-/// o serviço fechou, o quadro veio inválido, o canal deu erro — e a cópia que não atravessava não
-/// tinha como ser explicada. Custou uma investigação inteira.
-fn ler_avisos(mut leitura: Box<dyn Read + Send>, eventos: &Sender<Evento>) {
-    loop {
-        let mensagem = match crate::ler_quadro::<ParaInterface>(&mut leitura) {
-            Ok(Some(mensagem)) => mensagem,
-            Ok(None) => {
-                debug!("o serviço fechou o canal de controle");
-                break;
-            }
-            Err(erro) if e_incompativel(&erro) => {
-                warn!(erro = ?erro, "o serviço mandou um quadro que este ajudante não entende");
-                let _ = eventos.send(Evento::Incompativel);
-                return;
-            }
-            Err(erro) => {
-                warn!(erro = ?erro, "falha ao ler do canal de controle");
-                break;
-            }
-        };
-        match mensagem {
-            ParaInterface::Aviso(aviso) => {
-                if eventos.send(Evento::Aviso(aviso)).is_err() {
-                    return;
-                }
-            }
-            ParaInterface::Resposta(Resposta::Falha(falha)) => {
-                if falha == Falha::SemPermissao {
-                    warn!(
-                        "o serviço recusou o ajudante: o usuário precisa estar no grupo `inputremote`"
-                    );
-                }
-                if eventos.send(Evento::Recusado).is_err() {
-                    return;
-                }
-            }
-            // `Feito` e o resto não pedem nada daqui.
-            _ => {}
-        }
-    }
-    let _ = eventos.send(Evento::Caiu);
-}
-
-/// Se o erro de leitura é de formato, e não de canal: um quadro inteiro que não decodifica.
-///
-/// Os dois lados são do mesmo pacote, então isto só acontece com um processo que sobreviveu a uma
-/// atualização do serviço.
-fn e_incompativel(erro: &anyhow::Error) -> bool {
-    erro.chain().any(|causa| {
-        causa
-            .downcast_ref::<std::io::Error>()
-            .is_some_and(|io| io.kind() == std::io::ErrorKind::InvalidData)
-    })
 }
 
 /// O que o laço de uma conexão precisa. Juntos porque são a mesma coisa: a sessão do usuário.
@@ -245,6 +190,7 @@ fn atender(partes: Partes<'_>) -> Fim {
             Evento::Aviso(Aviso::TextoRecebido(texto)) => {
                 publicar(&Conteudo::texto(texto.as_str()), clip, eco);
             }
+            Evento::Aviso(Aviso::ArquivosChegando(chegando)) => prometer(&chegando, clip),
             // Sem par, ou sem permissão: a próxima travessia tem de tentar a mesma cópia de novo.
             Evento::Recusado => eco.oferta_falhou(),
             Evento::Caiu => return Fim::Caiu,
@@ -286,7 +232,7 @@ fn oferecer(escrita: &mut dyn Write, clip: &mut dyn Clipboard, eco: &mut Eco) {
         bytes = conteudo.tamanho(),
         "oferecendo o clipboard ao par"
     );
-    if pedir(escrita, &pedido).is_err() {
+    if servico::pedir(escrita, &pedido).is_err() {
         eco.oferta_falhou();
     }
 }
@@ -348,9 +294,38 @@ fn reagir(transferencia: &Transferencia, clip: &mut dyn Clipboard, eco: &mut Eco
                 publicar(&Conteudo::Arquivos(vec![destino]), clip, eco);
             }
         }
+        (Sentido::Recebendo, Fase::Parada(_)) => clip.desfazer_promessa(),
         // Não chegou do outro lado: a próxima cópia igual tem de ir de novo.
         (Sentido::Enviando, Fase::Parada(_)) => eco.oferta_falhou(),
         _ => {}
+    }
+}
+
+/// Arquivos começaram a chegar: o clipboard já os promete, e colar já cola — cada arquivo é lido
+/// à medida que chega. A imagem fica de fora: ela vira imagem no clipboard, e não arquivo.
+fn prometer(chegando: &ir_ipc::Chegando, clip: &mut dyn Clipboard) {
+    if imagem::e_nome_de_imagem(&chegando.nome) {
+        return;
+    }
+    let chegada = ir_clip::Chegada {
+        montagem: PathBuf::from(&chegando.montagem),
+        publicada_em: PathBuf::from(&chegando.publicada_em),
+        itens: chegando
+            .itens
+            .iter()
+            .map(|item| ir_clip::ItemDaChegada {
+                caminho: item.caminho.clone(),
+                tamanho: item.tamanho,
+                pasta: item.pasta,
+            })
+            .collect(),
+    };
+    match clip.prometer_arquivos(&chegada) {
+        Ok(()) => debug!(
+            itens = chegada.itens.len(),
+            "a cópia que chega já está no clipboard"
+        ),
+        Err(erro) => debug!(%erro, "não consegui prometer a cópia; ela aparece quando chegar"),
     }
 }
 
@@ -388,11 +363,6 @@ fn vigiar_em_thread(eventos: Sender<Evento>) {
             }
         }
     });
-}
-
-/// Manda um pedido ao serviço.
-fn pedir(escrita: &mut dyn Write, pedido: &Pedido) -> Result<()> {
-    codec::escrever_em(escrita, pedido).context("escrevendo o pedido")
 }
 
 #[cfg(test)]

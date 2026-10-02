@@ -36,12 +36,15 @@ pub(crate) struct Notificador {
     id: Option<u32>,
     /// Quando o andamento foi contado pela última vez.
     contado: Option<Instant>,
+    /// O título do último aviso recebido, que muda quando a cópia muda de fase.
+    titulo: Option<&'static str>,
 }
 
 impl Notificador {
     /// Conta esta cópia ao usuário, se for hora.
     pub(crate) fn contar(&mut self, copia: &Transferencia) {
-        if !self.deve_contar(&chave(copia), copia.terminou(), Instant::now()) {
+        let marco = self.mudou_de_fase(copia) || copia.terminou();
+        if !self.deve_contar(&chave(copia), marco, Instant::now()) {
             return;
         }
         let substituir = self.id;
@@ -53,11 +56,22 @@ impl Notificador {
         }
     }
 
-    /// Se é hora de contar: cópia nova, fim de cópia, ou passou o intervalo.
+    /// Se a cópia mudou de fase desde o último aviso — começou a andar, ficou esperando a
+    /// conexão, voltou. Uma mudança dessas conta na hora: "esperando a conexão voltar" segurado
+    /// pelo intervalo deixaria na tela um andamento que já parou.
+    fn mudou_de_fase(&mut self, copia: &Transferencia) -> bool {
+        let titulo = copia.titulo();
+        let mudou = self.titulo != Some(titulo);
+        self.titulo = Some(titulo);
+        mudou
+    }
+
+    /// Se é hora de contar: cópia nova, um marco (fim de cópia ou mudança de fase), ou passou o
+    /// intervalo.
     ///
     /// Separado do sistema e do relógio para ser testado — é aqui que mora a regra de quantos
     /// recados o usuário vê.
-    fn deve_contar(&mut self, chave: &str, terminou: bool, agora: Instant) -> bool {
+    fn deve_contar(&mut self, chave: &str, marco: bool, agora: Instant) -> bool {
         let mudou = self.atual.as_deref() != Some(chave);
         if mudou {
             self.atual = Some(chave.to_owned());
@@ -65,7 +79,7 @@ impl Notificador {
             self.contado = Some(agora);
             return true;
         }
-        if terminou {
+        if marco {
             self.contado = Some(agora);
             return true;
         }
@@ -206,6 +220,18 @@ mod tests {
         // `contar` fala com o sistema; aqui interessa o estado depois, que a regra governa.
         notificador.deve_contar(&chave(&pronta), true, Instant::now());
         assert_eq!(notificador.atual.as_deref(), Some("pasta-B|recebendo"));
+    }
+
+    #[test]
+    fn a_mudanca_de_fase_e_um_marco_e_o_andamento_nao() {
+        let mut notificador = Notificador::default();
+        assert!(notificador.mudou_de_fase(&copia("pasta-B", Fase::Andando, 10)));
+        assert!(!notificador.mudou_de_fase(&copia("pasta-B", Fase::Andando, 20)));
+        assert!(
+            notificador.mudou_de_fase(&copia("pasta-B", Fase::AguardandoConexao, 20)),
+            "a espera pela conexão aparece na hora, e não dois segundos depois"
+        );
+        assert!(notificador.mudou_de_fase(&copia("pasta-B", Fase::Andando, 0)));
     }
 
     #[test]

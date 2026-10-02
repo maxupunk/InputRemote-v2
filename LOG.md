@@ -79,3 +79,5 @@ quê. Um registro que se reescreve não é registro.
 | 52 | 2026-09-24 | [A tela de bloqueio que recusava em silêncio, e agora é parede](docs/logs/52-a-tela-de-bloqueio-que-virava-parede.md) |
 | 53 | 2026-09-24 | [Os dois controlam um ao outro também na tela de bloqueio](docs/logs/53-os-dois-tambem-na-tela-de-bloqueio.md) |
 | 54 | 2026-09-24 | [Uma regra em um lugar: a revisão de duplicidade](docs/logs/54-uma-regra-em-um-lugar.md) |
+| 55 | 2026-10-02 | [O manifesto que não cabia, e a cópia que recomeça sozinha](docs/logs/55-o-manifesto-que-nao-cabia.md) |
+| 56 | 2026-10-02 | [O ajudante que sobreviveu à atualização, e colar antes de a cópia chegar](docs/logs/56-o-ajudante-que-sobreviveu.md) |

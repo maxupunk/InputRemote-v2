@@ -18,7 +18,7 @@ use ir_proto::message::{
 };
 use ir_proto::peer::{Capabilities, ClipboardCapabilities, MachineName, PrivilegedInputLevel};
 use ir_proto::screens::{Edge, ScreenLayout};
-use ir_proto::version;
+use ir_proto::version::ProtocolVersion;
 
 /// Um vetor: nome, o quadro, e os bytes que a versão 1 produz para ele.
 pub struct Vector {
@@ -50,9 +50,13 @@ fn state() -> InputState {
     state
 }
 
-fn greeting() -> Greeting {
+/// A saudação de referência, falando `version`.
+///
+/// A versão é parâmetro, e não `version::CURRENT`: o vetor de cada versão fica gravado com o
+/// número dela, e subir a versão acrescenta um vetor em vez de reescrever o antigo.
+fn greeting(version: ProtocolVersion) -> Greeting {
     Greeting {
-        version: version::CURRENT,
+        version,
         machine: MachineId([
             0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
             0x0f, 0x10,
@@ -115,7 +119,7 @@ fn control_vectors() -> Vec<Vector> {
     vec![
         v(
             "hello",
-            control(Control::Hello(greeting()), 1),
+            control(Control::Hello(greeting(ProtocolVersion(6))), 1),
             "0000060102030405060708090a0b0c0d0e0f100762616e6361646101010101020000010000",
         ),
         v(
@@ -162,8 +166,8 @@ fn control_vectors() -> Vec<Vector> {
     ]
 }
 
-/// Canal 0 — o que entrou nas versões 4 e 5: Ctrl+Alt+Del, desktop protegido, bloquear junto e o
-/// controle retomado.
+/// Canal 0 — o que entrou depois da versão 3: Ctrl+Alt+Del, desktop protegido, bloquear junto, o
+/// controle retomado, e a saudação da versão 7.
 fn control_vectors_v4() -> Vec<Vector> {
     vec![
         v(
@@ -187,6 +191,12 @@ fn control_vectors_v4() -> Vec<Vector> {
             // Versão 6: quem estava sendo controlado retoma o controle.
             control(Control::Reclaim, 24),
             "0012180000",
+        ),
+        v(
+            "hello_v7",
+            // Versão 7: o manifesto em partes. A saudação só muda no número.
+            control(Control::Hello(greeting(ProtocolVersion(7))), 25),
+            "0000070102030405060708090a0b0c0d0e0f100762616e6361646101010101020000190000",
         ),
     ]
 }

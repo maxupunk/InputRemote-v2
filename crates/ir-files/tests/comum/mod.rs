@@ -18,7 +18,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use ir_files::error::FileError;
-use ir_files::{Abertura, Cota, Envio, Leitor, Reacao, Recepcao, manifesto};
+use ir_files::{
+    Abertura, Cota, Envio, Juntada, Leitor, PartesDoManifesto, Reacao, Recepcao, manifesto,
+};
 use ir_proto::message::{BulkMessage, RejectReason, TransferId};
 
 static CONTADOR: AtomicU32 = AtomicU32::new(0);
@@ -152,13 +154,14 @@ where
         Err(erro) => return Fim::Falhou(erro),
     };
     let mut envio = Envio::novo(plano);
-    let (id, itens, total) = match envio.manifesto() {
-        BulkMessage::Manifest {
-            id,
-            items,
-            total_bytes,
-        } => (id, items, total_bytes),
-        outro => panic!("o manifesto não é um manifesto: {outro:?}"),
+    // Pelo mesmo caminho do serviço: as partes, se houver, juntadas de volta por quem recebe.
+    let mut partes = PartesDoManifesto::default();
+    let mut juntada = Juntada::Incompleto;
+    for mensagem in envio.manifesto() {
+        juntada = partes.juntar(mensagem);
+    }
+    let Juntada::Completo((id, itens, total)) = juntada else {
+        panic!("o manifesto não fechou: {juntada:?}");
     };
 
     let mut recepcao = match Recepcao::abrir(recebidos, (id, itens, total), cota, None).await {

@@ -198,3 +198,29 @@ async fn um_caminho_com_unidade_no_meio_nao_sai_da_montagem() {
     let bom = staging.caminho_de(&arquivo("a/b/c.txt")).unwrap();
     assert!(bom.starts_with(staging.raiz()));
 }
+
+#[tokio::test]
+async fn a_entrega_e_publicada_mesmo_com_um_arquivo_aberto_por_um_instante() {
+    // Medido no Windows: com um arquivo aberto dentro, a pasta não é renomeada, nem com todo
+    // compartilhamento. O antivírus, o indexador e quem cola antes de a cópia chegar abrem por
+    // instantes; desistir na primeira negativa perdia a cópia no último passo (log 56).
+    let temp = pasta_temporaria("staging-aberto");
+    let staging = Staging::criar(temp.caminho(), TransferId(9)).await.unwrap();
+    let caminho = staging.preparar_pai(&arquivo("pasta/a.txt")).await.unwrap();
+    tokio::fs::write(&caminho, b"chegou").await.unwrap();
+    let aberto = std::fs::File::open(&caminho).unwrap();
+    let solta = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        drop(aberto);
+    });
+
+    let publicado = staging
+        .publicar_dentro(temp.caminho(), "pasta")
+        .await
+        .unwrap();
+    solta.join().unwrap();
+    assert_eq!(
+        tokio::fs::read(publicado.join("a.txt")).await.unwrap(),
+        b"chegou"
+    );
+}

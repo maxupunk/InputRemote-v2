@@ -165,7 +165,7 @@ fn every_message_variant_of_the_data_channels_is_recorded() {
     // tecla, corrompe um arquivo. A conta é escrita aqui para que acrescentar variante ao
     // protocolo sem gravar o vetor correspondente falhe.
     const VARIANTES_DE_CLIPBOARD: usize = 5;
-    const VARIANTES_DE_DADOS: usize = 9;
+    const VARIANTES_DE_DADOS: usize = 10;
 
     let conta = |canal: ChannelId| {
         vectors()

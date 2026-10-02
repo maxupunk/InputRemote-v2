@@ -70,6 +70,18 @@ mod tests {
             CONCLUIDA
         );
         assert_eq!(estado(&copia(Fase::Parada(Motivo::CanalCaiu))), PARADA);
+        assert_eq!(
+            estado(&copia(Fase::AguardandoConexao)),
+            ANDANDO,
+            "esperar a conexão não é falhar"
+        );
+    }
+
+    #[test]
+    fn a_copia_que_espera_a_conexao_ainda_pode_ser_cancelada() {
+        let ui = copia_ui(&copia(Fase::AguardandoConexao), String::new());
+        assert_eq!(ui.titulo, "Esperando a conexão voltar");
+        assert!(ui.cancelavel);
     }
 
     #[test]

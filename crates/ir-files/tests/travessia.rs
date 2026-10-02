@@ -45,6 +45,24 @@ async fn a_arvore_chega_byte_a_byte_igual() {
 }
 
 #[tokio::test]
+async fn uma_pasta_com_milhares_de_arquivos_atravessa_inteira() {
+    // O defeito do log 55: uma pasta de jogo com milhares de arquivos tinha um manifesto maior
+    // que um quadro TCP, e a cópia parava antes de começar. Agora ele vai em partes.
+    let temp = temp("travessia-milhares");
+    let origem = temp.sub("origem").join("Jogo eletronica 2");
+    for n in 0..2_500 {
+        let alvo = origem.join(format!("Data/Textures/textura-{n:05}.png"));
+        escrever(&alvo, format!("conteúdo {n}").as_bytes()).await;
+    }
+    let recebidos = temp.sub("recebidos");
+
+    let publicado = atravessar(std::slice::from_ref(&origem), &recebidos, Cota::default())
+        .await
+        .publicado();
+    assert_eq!(ler_arvore(&origem), ler_arvore(&publicado));
+}
+
+#[tokio::test]
 async fn a_pasta_publicada_leva_o_nome_do_que_foi_copiado() {
     // O usuário copiou "relatório de janeiro"; é o que ele espera ver do outro lado, e não um
     // número de transferência.

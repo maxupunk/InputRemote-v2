@@ -40,7 +40,7 @@
 
 // Sem `forbid`: o backend do Windows precisa de `unsafe`, e `forbid` não pode ser afrouxado nem
 // dentro de um módulo. O workspace já **nega** `unsafe_code`, e a liberação fica confinada a
-// `windows::area` e `windows::vigia`, com a justificativa em cada um ([09, §4]).
+// `windows::area`, `windows::vigia` e `windows::promessa`, com a justificativa em cada um ([09, §4]).
 #![cfg_attr(
     test,
     allow(
@@ -51,6 +51,7 @@
     )
 )]
 
+pub mod chegada;
 pub mod conteudo;
 pub mod eco;
 pub mod error;
@@ -63,6 +64,7 @@ pub mod windows;
 #[cfg(not(windows))]
 pub mod linux;
 
+pub use chegada::{Chegada, ItemDaChegada};
 pub use conteudo::{Conteudo, normalizar_quebras, quebras_nativas};
 pub use eco::Eco;
 pub use error::{ClipError, Result};
@@ -82,10 +84,32 @@ pub trait Clipboard: Send {
 
     /// Põe isto no clipboard, na forma nativa da plataforma.
     ///
+    /// Arquivos que cumprem uma promessa ([`Self::prometer_arquivos`]) vão para quem colou durante
+    /// a espera; se a pessoa copiou outra coisa nesse meio, a cópia dela vale e eles não a apagam.
+    ///
     /// # Errors
     ///
     /// Como [`Self::ler`].
     fn publicar(&mut self, conteudo: &Conteudo) -> Result<()>;
+
+    /// Promete ao clipboard arquivos que ainda estão chegando: colar já cola, e cada arquivo é lido
+    /// à medida que chega. A promessa é cumprida por [`Self::publicar`] ou desfeita por
+    /// [`Self::desfazer_promessa`]; uma promessa nova toma o lugar da anterior.
+    ///
+    /// Onde a plataforma não sabe prometer, não faz nada, e os arquivos aparecem quando chegam —
+    /// o comportamento de sempre.
+    ///
+    /// # Errors
+    ///
+    /// Como [`Self::ler`]; [`ClipError::FormatoNaoSuportado`] para o que não cabe numa promessa.
+    /// Uma promessa que não pôde ser feita não impede a publicação no fim.
+    fn prometer_arquivos(&mut self, chegada: &Chegada) -> Result<()> {
+        let _ = chegada;
+        Ok(())
+    }
+
+    /// Os arquivos prometidos não vêm mais: quem esperava recebe nada.
+    fn desfazer_promessa(&mut self) {}
 }
 
 /// Esperar que o clipboard mude, sem *polling*.

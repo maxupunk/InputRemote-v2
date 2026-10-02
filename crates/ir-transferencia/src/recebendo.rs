@@ -7,15 +7,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use ir_files::error::FileError;
-use ir_files::{Abertura, Reacao, Recepcao};
+use ir_files::{Abertura, Juntada, Manifesto, PartesDoManifesto, Reacao, Recepcao};
 use ir_ipc::Aviso;
 use ir_ipc::transferencia::{Fase, Motivo, Sentido};
-use ir_proto::message::{BulkMessage, TransferId};
+use ir_proto::message::BulkMessage;
 use ir_transporte::dados::{Destinatario, Remetente};
 use tokio::sync::{Mutex, mpsc};
 use tracing::{debug, info, warn};
 
-use crate::sessao::{anunciar, anunciar_queda, responder, traduzir_recusa};
+use crate::sessao::{anunciar, responder, traduzir_recusa};
 
 /// Para onde o que chega vai, e sob que teto.
 ///
@@ -29,6 +29,8 @@ pub(crate) struct Deposito {
     pub(crate) cota: ir_files::Cota,
     /// Quem cuida para a pasta não encher o disco.
     pub(crate) faxineiro: Arc<crate::faxina::Faxineiro>,
+    /// As recepções começadas, que dizem à espera de uma interrompida se o par já recomeçou.
+    pub(crate) recepcoes: Arc<crate::retomada::Recepcoes>,
 }
 
 /// O sentido de entrada: aplica o que chega e responde.
@@ -39,19 +41,20 @@ pub(crate) async fn receber(
     deposito: Deposito,
     avisos: tokio::sync::broadcast::Sender<Aviso>,
 ) {
-    let mut recepcao: Option<Box<Recepcao>> = None;
+    let mut em_curso = EmCurso {
+        aberta: None,
+        recepcoes: Arc::clone(&deposito.recepcoes),
+        avisos: avisos.clone(),
+    };
+    let mut partes = PartesDoManifesto::default();
     // Quem recebe só contava no começo e no fim: a tela mostrava "0% de 2,1 GB" até acabar.
     let mut passo = crate::passo::Passo::novo();
     loop {
         let mensagem = match destinatario.receber().await {
             Ok(mensagem) => mensagem,
             Err(erro) => {
+                // A cópia que chegava, se havia uma, conta a espera ao sair daqui (`EmCurso`).
                 debug!(%erro, "o canal de arquivos encerrou a leitura");
-                // Só se havia cópia chegando; a montagem dela vai embora com o `Drop`.
-                let em_curso = recepcao
-                    .as_deref()
-                    .map(|aberta| (aberta.nome(), (aberta.escritos(), aberta.total())));
-                anunciar_queda(&avisos, Sentido::Recebendo, em_curso);
                 return;
             }
         };
@@ -62,23 +65,23 @@ pub(crate) async fn receber(
             }
             continue;
         }
-        if let BulkMessage::Manifest {
-            id,
-            items,
-            total_bytes,
-        } = mensagem
-        {
-            recepcao = abrir(&remetente, &avisos, &deposito, (id, items, total_bytes)).await;
-            passo = crate::passo::Passo::novo();
-            continue;
-        }
-        let Some(aberta) = recepcao.as_mut() else {
+        let mensagem = match partes.juntar(mensagem) {
+            Juntada::Incompleto => continue,
+            Juntada::Completo(manifesto) => {
+                deposito.recepcoes.comecou();
+                em_curso.aberta = abrir(&remetente, &avisos, &deposito, manifesto).await;
+                passo = crate::passo::Passo::novo();
+                continue;
+            }
+            Juntada::Outra(mensagem) => mensagem,
+        };
+        let Some(aberta) = em_curso.aberta.as_mut() else {
             debug!("mensagem de conteúdo sem transferência aberta");
             continue;
         };
         if aplicar(aberta, mensagem, &remetente, &avisos).await {
             // Terminou, bem ou mal: o estado vai embora e a montagem com ele, se não publicou.
-            if let Some(concluida) = recepcao.take() {
+            if let Some(concluida) = em_curso.aberta.take() {
                 publicar(*concluida, &avisos).await;
                 // A entrega nova entrou: é a hora certa de tirar as velhas, e de remedir.
                 deposito.faxineiro.arrumar().await;
@@ -96,6 +99,28 @@ pub(crate) async fn receber(
     }
 }
 
+/// A recepção aberta, que mostra a espera se for largada no meio.
+///
+/// Largada pela queda do enlace — a leitura falha — ou porque quem conduz o canal desistiu dele e
+/// abortou esta tarefa. Nos dois casos a cópia parou no meio, e quem a tem, o outro lado, a manda
+/// de novo quando o enlace voltar ([`crate::retomada`]). Um `Drop`, e não uma linha no caminho de
+/// erro, porque o aborto não passa por caminho nenhum: a cópia ficava "recebendo" para sempre.
+struct EmCurso {
+    aberta: Option<Box<Recepcao>>,
+    recepcoes: Arc<crate::retomada::Recepcoes>,
+    avisos: tokio::sync::broadcast::Sender<Aviso>,
+}
+
+impl Drop for EmCurso {
+    fn drop(&mut self) {
+        // A montagem vai embora com o `Drop` da recepção, logo depois de contada a espera.
+        if let Some(aberta) = self.aberta.take() {
+            let progresso = (aberta.escritos(), aberta.total());
+            self.recepcoes.caiu(&self.avisos, aberta.nome(), progresso);
+        }
+    }
+}
+
 /// Se esta mensagem é resposta a uma transferência que estamos enviando.
 const fn eh_resposta(mensagem: &BulkMessage) -> bool {
     matches!(
@@ -109,7 +134,7 @@ async fn abrir(
     remetente: &Arc<Mutex<Remetente>>,
     avisos: &tokio::sync::broadcast::Sender<Aviso>,
     deposito: &Deposito,
-    manifesto: (TransferId, Vec<ir_proto::message::ManifestItem>, u64),
+    manifesto: Manifesto,
 ) -> Option<Box<Recepcao>> {
     let total = manifesto.2;
     // Calculado aqui só para a recusa, que não abre recepção; a aceita traz o dela.
@@ -120,6 +145,7 @@ async fn abrir(
             responder(remetente, resposta).await;
             let nome = recepcao.nome();
             anunciar(avisos, Sentido::Recebendo, nome, (0, total), Fase::Andando);
+            anunciar_chegada(avisos, &recepcao);
             Some(recepcao)
         }
         Ok(Abertura::Recusada { resposta, motivo }) => {
@@ -139,6 +165,41 @@ async fn abrir(
             None
         }
     }
+}
+
+/// Quanto do canal local a lista de itens pode ocupar: uma folga abaixo do teto de um quadro, para
+/// o envelope e os caminhos da montagem.
+const TETO_DA_CHEGADA: usize = ir_ipc::MAX_MENSAGEM / 4 * 3;
+
+/// Conta ao ajudante de clipboard que estes arquivos começaram a chegar, e onde: é o que deixa colar
+/// antes de a cópia terminar ([`ir_ipc::Chegando`]).
+///
+/// Uma lista grande demais para o canal local não vai: a cópia aparece no clipboard quando chegar,
+/// como sempre. Os caminhos são desta máquina e não entram no registro ([04, §7](../../../docs/04-seguranca.md)).
+fn anunciar_chegada(avisos: &tokio::sync::broadcast::Sender<Aviso>, recepcao: &Recepcao) {
+    let itens = recepcao.itens();
+    let tamanho: usize = itens.iter().map(|item| item.path.len() + 16).sum();
+    if tamanho > TETO_DA_CHEGADA {
+        debug!(
+            itens = itens.len(),
+            "lista grande demais para prometer; vai quando chegar"
+        );
+        return;
+    }
+    let chegando = ir_ipc::Chegando {
+        nome: recepcao.nome().to_owned(),
+        montagem: recepcao.montagem().to_string_lossy().into_owned(),
+        publicada_em: recepcao.publicada_em().to_string_lossy().into_owned(),
+        itens: itens
+            .iter()
+            .map(|item| ir_ipc::ItemChegando {
+                caminho: item.path.clone(),
+                tamanho: item.size,
+                pasta: item.is_dir,
+            })
+            .collect(),
+    };
+    let _ = avisos.send(Aviso::ArquivosChegando(chegando));
 }
 
 /// Aplica uma mensagem de conteúdo. Devolve `true` quando a transferência terminou.

@@ -53,6 +53,7 @@
 )]
 
 pub mod agent;
+pub mod chegada;
 pub mod cliente;
 pub mod codec;
 pub mod endereco;
@@ -64,6 +65,7 @@ pub mod ui;
 pub mod vocabulario;
 
 pub use agent::{ComandoDoAgente, FatoDoAgente};
+pub use chegada::{Chegando, ItemChegando};
 pub use codec::{ErroDeCodec, MAX_MENSAGEM, PREFIXO};
 pub use falha::Falha;
 pub use status::{

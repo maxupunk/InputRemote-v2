@@ -507,6 +507,24 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       pela descoberta, pelo id de máquina da chave fixada ([log 40](docs/logs/40-o-ajudante-que-ninguem-subia.md))
 - [ ] `[H]` Com troca rápida de usuário no Windows, o texto que chega vai aos ajudantes das duas
       sessões ([log 35](docs/logs/35-o-texto-pelo-canal-4.md))
+- [x] Pastas com milhares de arquivos atravessam: o manifesto vai em partes quando não cabe num
+      quadro TCP (protocolo 7). Antes a cópia parava dizendo "a conexão de arquivos caiu"
+      ([log 55](docs/logs/55-o-manifesto-que-nao-cabia.md))
+- [x] Uma queda do canal no meio da cópia não é mais o fim dela: os dois lados mostram "esperando
+      a conexão voltar", e ela recomeça sozinha — com um minuto de prazo e no máximo três quedas
+      ([log 55](docs/logs/55-o-manifesto-que-nao-cabia.md))
+- [x] A pasta de jogo do Linux para o Windows: 1 805 itens conferidos pelo destino na bancada
+      ([log 56](docs/logs/56-o-ajudante-que-sobreviveu.md))
+- [ ] `[H]` O Wi-Fi desligado e religado no meio de uma cópia grande
+      ([log 55](docs/logs/55-o-manifesto-que-nao-cabia.md))
+- [x] O ajudante de clipboard sai sozinho quando o executável dele muda em disco: um de 24/09
+      sobreviveu a todas as atualizações e impedia o que chegava do Linux de ir para o clipboard
+      ([log 56](docs/logs/56-o-ajudante-que-sobreviveu.md))
+- [x] Colar antes de a cópia chegar, no Windows: arquivos virtuais que o Explorer cola na hora e lê
+      à medida que chegam; provado no Explorer com um arquivo chegando em pedaços
+      ([log 56](docs/logs/56-o-ajudante-que-sobreviveu.md))
+- [ ] `[H]` Colar antes de chegar, de ponta a ponta: pasta copiada no Linux, colada no Explorer antes
+      do fim, com os dois pacotes novos instalados ([log 56](docs/logs/56-o-ajudante-que-sobreviveu.md))
 
 ## Etapa 9 — Interface
 

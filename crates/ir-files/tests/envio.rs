@@ -206,17 +206,19 @@ async fn o_manifesto_do_envio_e_o_do_plano() {
         .await
         .unwrap();
     let envio = Envio::novo(plano.clone());
-    match envio.manifesto() {
-        BulkMessage::Manifest {
-            id,
-            items,
-            total_bytes,
-        } => {
-            assert_eq!(id, plano.id);
-            assert_eq!(items, plano.itens);
-            assert_eq!(total_bytes, 3);
+    match envio.manifesto().as_slice() {
+        [
+            BulkMessage::Manifest {
+                id,
+                items,
+                total_bytes,
+            },
+        ] => {
+            assert_eq!(*id, plano.id);
+            assert_eq!(*items, plano.itens);
+            assert_eq!(*total_bytes, 3);
         }
-        outro => panic!("{outro:?}"),
+        outro => panic!("um manifesto pequeno é uma mensagem só: {outro:?}"),
     }
 }
 

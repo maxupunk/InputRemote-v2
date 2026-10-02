@@ -139,6 +139,31 @@ impl Recepcao {
         self.nome.nome()
     }
 
+    /// Onde os itens estão sendo gravados enquanto chegam: cada um em `montagem/<caminho do item>`.
+    #[must_use]
+    pub fn montagem(&self) -> &Path {
+        self.staging.raiz()
+    }
+
+    /// Onde os mesmos caminhos relativos ficam depois da publicação.
+    ///
+    /// Uma raiz só é publicada como ela mesma, direto na pasta de recebidos; várias vão dentro da
+    /// pasta que as agrupa ([`Publicacao`]). A regra é a de [`Self::concluir`], dita num lugar só
+    /// para quem precisa achar um item depois que a montagem sumiu.
+    #[must_use]
+    pub fn publicada_em(&self) -> PathBuf {
+        match &self.nome {
+            Publicacao::Entrada(_) => self.recebidos.clone(),
+            Publicacao::Agrupadas(nome) => self.recebidos.join(nome),
+        }
+    }
+
+    /// Os itens do manifesto, na ordem dele.
+    #[must_use]
+    pub fn itens(&self) -> &[ManifestItem] {
+        &self.itens
+    }
+
     /// Quantos bytes já foram escritos.
     #[must_use]
     pub const fn escritos(&self) -> u64 {

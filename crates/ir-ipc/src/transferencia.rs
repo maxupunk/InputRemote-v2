@@ -90,6 +90,18 @@ pub enum Fase {
     },
     /// Não aconteceu, ou parou.
     Parada(Motivo),
+    /// Parada à espera do canal de arquivos, que caiu ou ainda não voltou. Segue sozinha quando
+    /// ele voltar; se ele demorar demais, vira [`Fase::Parada`] com [`Motivo::CanalCaiu`].
+    ///
+    /// Antes uma queda no meio era o fim da cópia, e quem copiou tinha de copiar de novo — mesmo
+    /// quando a rede voltava em dois segundos.
+    ///
+    /// **No fim, e não ao lado de `Andando`.** O canal local é `postcard`, que numera as variantes
+    /// pela posição. Inserida no meio, ela renumerou `Concluida`: o ajudante de clipboard que
+    /// sobreviveu a uma atualização lia "concluída" como mensagem malformada e nunca punha no
+    /// clipboard o que chegava — copiar do Linux para o Windows parou
+    /// ([log 55](../../../docs/logs/55-o-manifesto-que-nao-cabia.md)).
+    AguardandoConexao,
 }
 
 /// Uma transferência, como a interface a vê.
@@ -114,11 +126,16 @@ impl Transferencia {
     /// O progresso de 0 a 1, para a barra.
     ///
     /// Uma transferência de zero byte — uma árvore só de pastas — está pronta, e não em zero por
-    /// cento. Dividir por zero seria o outro resultado.
+    /// cento. Dividir por zero seria o outro resultado. A exceção é a cópia que espera a conexão
+    /// sem nunca ter começado: o zero ali é "ainda não se sabe", e a barra cheia diria que chegou.
     #[must_use]
     pub fn progresso(&self) -> f32 {
         if self.bytes_total == 0 {
-            return 1.0;
+            return if self.fase == Fase::AguardandoConexao {
+                0.0
+            } else {
+                1.0
+            };
         }
         let feito = self.bytes_feitos.min(self.bytes_total);
         // A precisão de `f32` basta para uma barra: o erro máximo em 5 GB é de alguns bytes.
@@ -131,7 +148,10 @@ impl Transferencia {
     /// Se ela ainda está acontecendo.
     #[must_use]
     pub const fn em_curso(&self) -> bool {
-        matches!(self.fase, Fase::Anunciada | Fase::Andando)
+        matches!(
+            self.fase,
+            Fase::Anunciada | Fase::Andando | Fase::AguardandoConexao
+        )
     }
 }
 
@@ -145,6 +165,7 @@ impl Transferencia {
     pub fn titulo(&self) -> &'static str {
         match (&self.fase, self.sentido) {
             (Fase::Parada(_), _) => "A cópia não atravessou",
+            (Fase::AguardandoConexao, _) => "Esperando a conexão voltar",
             (Fase::Concluida { .. }, Sentido::Enviando) => "Cópia entregue",
             (Fase::Concluida { .. }, Sentido::Recebendo) => "Chegou: é só colar",
             (Fase::Anunciada, Sentido::Enviando) => "Preparando a cópia",
@@ -161,6 +182,9 @@ impl Transferencia {
         let tamanho = tamanho_legivel(self.bytes_total);
         match (&self.fase, self.sentido) {
             (Fase::Parada(motivo), _) => format!("{nome} · {}", motivo.descricao()),
+            (Fase::AguardandoConexao, _) => format!(
+                "{nome} · segue sozinha quando a conexão de arquivos voltar; teclado e mouse não foram afetados"
+            ),
             (Fase::Concluida { .. }, Sentido::Enviando) => {
                 format!("{nome} · {tamanho} — é só colar no outro computador")
             }
@@ -232,153 +256,4 @@ fn pasta_de(destino: &str) -> String {
 }
 
 #[cfg(test)]
-#[allow(clippy::float_cmp)]
-mod tests {
-    use super::*;
-
-    fn copia(fase: Fase, sentido: Sentido, feitos: u64, total: u64) -> Transferencia {
-        Transferencia {
-            sentido,
-            nome: "pasta-B".to_owned(),
-            bytes_feitos: feitos,
-            bytes_total: total,
-            fase,
-        }
-    }
-
-    #[test]
-    fn o_andamento_diz_o_que_e_quanto() {
-        let copia = copia(Fase::Andando, Sentido::Enviando, 512, 1024);
-        assert_eq!(copia.titulo(), "Copiando para o outro computador");
-        assert_eq!(copia.detalhe(), "pasta-B · 512 B de 1,0 KB · 50%");
-        assert!(!copia.terminou() && !copia.falhou());
-    }
-
-    #[test]
-    fn quem_recebe_sabe_onde_o_que_chegou_ficou() {
-        let destino = if cfg!(windows) {
-            r"C:\ProgramData\InputRemote\recebidos\pasta-B"
-        } else {
-            "/var/lib/inputremote/recebidos/pasta-B"
-        };
-        let copia = copia(
-            Fase::Concluida {
-                destino: destino.to_owned(),
-            },
-            Sentido::Recebendo,
-            24,
-            24,
-        );
-        assert_eq!(copia.titulo(), "Chegou: é só colar");
-        assert!(
-            copia.detalhe().starts_with("pasta-B · em "),
-            "{}",
-            copia.detalhe()
-        );
-        assert!(!copia.detalhe().ends_with("pasta-B"), "a pasta, não o item");
-        assert!(copia.terminou() && !copia.falhou());
-    }
-
-    /// O defeito que motivou isto: a cópia parava, nada aparecia na tela, e colar do outro lado
-    /// trazia a cópia **anterior** — que continuava no clipboard de lá.
-    #[test]
-    fn uma_copia_que_nao_atravessa_diz_por_que() {
-        let copia = copia(Fase::Parada(Motivo::CanalCaiu), Sentido::Enviando, 0, 1024);
-        assert_eq!(copia.titulo(), "A cópia não atravessou");
-        assert!(
-            copia.detalhe().contains("conexão de arquivos caiu"),
-            "{}",
-            copia.detalhe()
-        );
-        assert!(copia.terminou() && copia.falhou());
-    }
-
-    #[test]
-    fn o_tamanho_e_legivel_em_cada_faixa() {
-        assert_eq!(tamanho_legivel(0), "0 B");
-        assert_eq!(tamanho_legivel(512), "512 B");
-        assert_eq!(tamanho_legivel(1024), "1,0 KB");
-        assert_eq!(tamanho_legivel(1_572_864), "1,5 MB");
-        assert_eq!(tamanho_legivel(1_288_490_189), "1,2 GB");
-        assert!(tamanho_legivel(u64::MAX).ends_with("GB"));
-    }
-
-    #[test]
-    fn uma_arvore_so_de_pastas_esta_pronta_e_nao_em_zero_por_cento() {
-        let copia = copia(Fase::Andando, Sentido::Enviando, 0, 0);
-        assert!(copia.detalhe().ends_with("100%"), "{}", copia.detalhe());
-    }
-
-    fn andando(feitos: u64, total: u64) -> Transferencia {
-        Transferencia {
-            sentido: Sentido::Recebendo,
-            nome: "relatório".to_owned(),
-            bytes_feitos: feitos,
-            bytes_total: total,
-            fase: Fase::Andando,
-        }
-    }
-
-    #[test]
-    fn o_progresso_vai_de_zero_a_um() {
-        assert_eq!(andando(0, 100).progresso(), 0.0);
-        assert_eq!(andando(50, 100).progresso(), 0.5);
-        assert_eq!(andando(100, 100).progresso(), 1.0);
-    }
-
-    #[test]
-    fn uma_arvore_sem_bytes_esta_pronta_e_nao_em_zero_por_cento() {
-        // Copiar uma estrutura de pastas vazia é legítimo, e a barra não pode dividir por zero
-        // nem ficar parada no começo para sempre.
-        assert_eq!(andando(0, 0).progresso(), 1.0);
-    }
-
-    #[test]
-    fn um_progresso_maior_que_o_total_nao_passa_de_um() {
-        // Defesa contra contagem errada: a barra pode estar errada, mas não pode estourar a tela.
-        assert_eq!(andando(500, 100).progresso(), 1.0);
-    }
-
-    #[test]
-    fn todo_motivo_tem_frase_em_portugues_e_nao_vazia() {
-        let motivos = [
-            Motivo::SemPermissao,
-            Motivo::AcimaDaCota,
-            Motivo::SemEspaco,
-            Motivo::CaminhoInseguro,
-            Motivo::ItensDemais,
-            Motivo::ResumoDivergente,
-            Motivo::Cancelada,
-            Motivo::CanalCaiu,
-            Motivo::Outro("o disco falhou".to_owned()),
-        ];
-        for motivo in motivos {
-            let frase = motivo.descricao();
-            assert!(!frase.is_empty(), "{motivo:?}");
-            assert!(
-                !frase.contains("Reason") && !frase.contains('_'),
-                "`{frase}` parece nome de variante, não frase: a tela não traduz, ela mostra"
-            );
-        }
-    }
-
-    #[test]
-    fn so_o_que_ainda_acontece_conta_como_em_curso() {
-        let mut t = andando(1, 2);
-        assert!(t.em_curso());
-        t.fase = Fase::Anunciada;
-        assert!(t.em_curso());
-        t.fase = Fase::Concluida {
-            destino: "C:/x".to_owned(),
-        };
-        assert!(!t.em_curso());
-        t.fase = Fase::Parada(Motivo::Cancelada);
-        assert!(!t.em_curso());
-    }
-
-    #[test]
-    fn o_sentido_tem_rotulo() {
-        assert_eq!(Sentido::Enviando.rotulo(), "enviando");
-        assert_eq!(Sentido::Recebendo.rotulo(), "recebendo");
-    }
-}
+mod testes;

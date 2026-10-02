@@ -21,9 +21,9 @@ use std::sync::Arc;
 use ir_ipc::Aviso;
 use ir_ipc::transferencia::{Fase, Motivo, Sentido, Transferencia};
 use ir_proto::message::{BulkMessage, RejectReason};
-use ir_transporte::dados::{EnlaceDeDados, Remetente};
+use ir_transporte::dados::{EnlaceDeDados, FalhaDeEnvio, Remetente};
 use tokio::sync::{Mutex, mpsc};
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::Ajuste;
 use crate::enviando::enviar;
@@ -34,7 +34,7 @@ pub(crate) async fn conduzir(
     enlace: EnlaceDeDados,
     ajuste: &Ajuste,
     entrada: &mut crate::Entrada,
-    faxineiro: &Arc<crate::faxina::Faxineiro>,
+    deposito: &crate::recebendo::Deposito,
 ) {
     let remetente = Arc::new(Mutex::new(enlace.remetente));
     // Sem limite, e de propósito. Era uma fila de 32, e com mais de 32 arquivos ela enchia: a leitura
@@ -43,22 +43,30 @@ pub(crate) async fn conduzir(
     // arquivo, e o manifesto já as limita a 10 000 — o teto existe, só não é aqui.
     let (respostas, recebe_respostas) = mpsc::unbounded_channel();
 
-    let lendo = tokio::spawn(receber(
+    let _lendo = AbortarAoSair(tokio::spawn(receber(
         enlace.destinatario,
         Arc::clone(&remetente),
         respostas,
-        crate::recebendo::Deposito {
-            pasta: ajuste.recebidos.clone(),
-            cota: ajuste.cota,
-            faxineiro: Arc::clone(faxineiro),
-        },
+        deposito.clone(),
         ajuste.avisos.clone(),
-    ));
+    )));
 
     // O envio roda aqui, no próprio laço, para poder consumir `pedidos` por referência: a fila de
     // pedidos sobrevive à queda do enlace, e passá-la para uma tarefa a mataria junto.
     enviar(remetente, recebe_respostas, entrada, ajuste).await;
-    lendo.abort();
+}
+
+/// Aborta a tarefa ao sair de escopo — de qualquer jeito, inclusive quando quem conduz o enlace é
+/// largado no meio porque o par mudou.
+///
+/// Era um `abort()` no fim de [`conduzir`], que não roda quando o futuro é largado: a leitura do
+/// enlace velho seguia viva, segurando o socket, ao lado do enlace novo.
+struct AbortarAoSair(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortarAoSair {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
 }
 
 /// Manda uma resposta, engolindo a falha: quem detecta queda é quem lê.
@@ -85,6 +93,36 @@ pub(crate) fn anunciar(
         bytes_total: progresso.1,
         fase,
     }));
+}
+
+/// Uma mensagem da cópia não saiu. Devolve se o enlace segue de pé.
+///
+/// Se foi o enlace, quem conduz recomeça e a cópia segue a regra da retomada. Se foi a mensagem —
+/// não coube num quadro —, o defeito é daqui: a cópia para com o motivo na tela, e o enlace, que
+/// nada tem com isso, continua servindo. Um lugar só para essa decisão, porque espalhada ela era
+/// "qualquer erro é queda", e foi assim que um manifesto grande demais virou "a conexão de arquivos
+/// caiu" ([log 55](../../../docs/logs/55-o-manifesto-que-nao-cabia.md)).
+pub(crate) fn falhou_ao_enviar(
+    falha: &FalhaDeEnvio,
+    avisos: &tokio::sync::broadcast::Sender<Aviso>,
+    (nome, progresso): (&str, (u64, u64)),
+) -> bool {
+    if falha.derrubou_o_enlace() {
+        debug!(%falha, "o canal de arquivos caiu no meio de uma cópia");
+        return false;
+    }
+    warn!(%falha, "uma mensagem da cópia não coube num quadro; a cópia para e o enlace segue");
+    let motivo = Motivo::Outro(
+        "a cópia não pôde ser montada para envio; o registro do serviço tem o detalhe".to_owned(),
+    );
+    anunciar(
+        avisos,
+        Sentido::Enviando,
+        nome,
+        progresso,
+        Fase::Parada(motivo),
+    );
+    true
 }
 
 /// Conta à interface que o canal caiu no meio de uma cópia — e só se havia uma.

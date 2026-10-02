@@ -16,7 +16,9 @@ pub mod input_msg;
 
 pub use clipboard::{ClipId, ClipKind, ClipboardMessage, DeclineReason};
 pub use control::{Control, DisconnectReason, ErrorCode, Greeting, NetworkPowerSaving};
-pub use data::{BulkMessage, CancelReason, ManifestItem, RejectReason, TransferId};
+pub use data::{
+    BulkMessage, CancelReason, ManifestItem, RejectReason, TransferId, manifest_messages,
+};
 pub use input_msg::{Feedback, InputMessage, PointerMessage};
 
 use serde::{Deserialize, Serialize};

@@ -40,7 +40,7 @@ mod rede;
 mod subida;
 
 pub use self::alcance::Alcance;
-pub use self::dados::{Destinatario, EnlaceDeDados, Porta, Remetente};
+pub use self::dados::{Destinatario, EnlaceDeDados, FalhaDeEnvio, Porta, Remetente};
 pub use self::descoberta::{Descoberta, Encontrado};
 pub use self::radio::{Pareados, Radio};
 pub use self::rede::Rede;
