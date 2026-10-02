@@ -66,10 +66,11 @@ Os dois computadores controlam um ao outro: não há "dono" do teclado.
 
 Na janela:
 
-- **Pausar** para de mandar entrada até **Retomar** — a conexão continua de pé.
+- **Pausar** para de mandar entrada até **Retomar** — a conexão continua de pé. Segure o botão:
+  o fundo enche e, cheio, ele age; um clique rápido não faz nada.
 - **Travar na borda** impede a travessia por acidente (num jogo em tela cheia, por exemplo); o
   atalho continua levando o controle.
-- **Ctrl+Alt+Del no outro** faz o mesmo que o atalho.
+- **Ctrl+Alt+Del no outro** faz o mesmo que o atalho. Também se segura, como o Pausar.
 - **Bloquear juntos** (Preferências): bloquear uma máquina bloqueia a outra.
 - O **atraso** medido aparece no diagnóstico, com o gráfico do último minuto.
 

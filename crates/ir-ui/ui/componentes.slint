@@ -79,8 +79,11 @@ export component Botao inherits Rectangle {
         }
     }
 
+    // Por cima da área de toque, o FocusScope engolia o primeiro clique só para pegar o foco, e
+    // o botão parecia precisar de dois. Quem dá o foco no clique é a área de toque.
     foco := FocusScope {
         enabled: root.habilitado;
+        focus-on-click: false;
         key-pressed(evento) => {
             if evento.text == Key.Return || evento.text == " " {
                 root.acionado();
@@ -121,6 +124,130 @@ export component BotaoConfirmado inherits Botao {
         running: root.confirmando;
         triggered => {
             root.confirmando = false;
+        }
+    }
+}
+
+/// Um botão que se segura: o fundo enche enquanto ele está apertado, e cheio, ele age.
+///
+/// Para o que mexe no outro computador sem pedir licença — pausar, Ctrl+Alt+Del. Um clique de
+/// passagem não basta, e a barra mostra quanto falta. Soltar antes esvazia a barra e lembra que é
+/// para segurar. Pelo teclado, Enter ou Espaço seguros fazem o mesmo; o leitor de tela aciona
+/// direto, porque segurar não é coisa que ele faça.
+export component BotaoDeSegurar inherits Rectangle {
+    in property <string> texto;
+    in property <bool> habilitado: true;
+    in property <duration> tempo: 700ms;
+    callback acionado();
+
+    property <bool> segurando: false;
+    property <bool> tecla-presa: false;
+    property <bool> soltou-cedo: false;
+
+    height: 34px;
+    border-radius: Tema.raio-pequeno;
+    border-width: foco.has-focus ? 2px : Tema.traco;
+    border-color: foco.has-focus ? Tema.foco : Tema.borda;
+    background: toque.has-hover ? Tema.superficie-suave : transparent;
+    opacity: root.habilitado ? 1.0 : 0.4;
+    clip: true;
+    animate background, opacity { duration: 120ms; }
+
+    accessible-role: button;
+    accessible-label: root.texto;
+    accessible-description: "Mantenha pressionado para confirmar";
+    accessible-enabled: root.habilitado;
+    accessible-action-default => {
+        if root.habilitado {
+            root.acionado();
+        }
+    }
+
+    // Enche no tempo exato de segurar, e esvazia depressa ao soltar ou ao agir.
+    Rectangle {
+        x: 0;
+        width: root.segurando ? parent.width : 0;
+        height: parent.height;
+        background: Tema.acao.with-alpha(0.28);
+        animate width {
+            duration: root.segurando ? root.tempo : 180ms;
+            easing: root.segurando ? linear : ease-out;
+        }
+    }
+
+    HorizontalLayout {
+        alignment: center;
+        padding-left: Tema.e4;
+        padding-right: Tema.e4;
+
+        Text {
+            text: root.soltou-cedo ? "Segure para confirmar" : root.texto;
+            vertical-alignment: center;
+            font-size: Tema.fonte-corpo;
+            color: root.soltou-cedo ? Tema.texto-fraco : Tema.texto;
+        }
+    }
+
+    // Cheio: age, e só volta a encher num aperto novo.
+    Timer {
+        interval: root.tempo;
+        running: root.segurando;
+        triggered => {
+            root.segurando = false;
+            root.acionado();
+        }
+    }
+
+    Timer {
+        interval: 2s;
+        running: root.soltou-cedo;
+        triggered => {
+            root.soltou-cedo = false;
+        }
+    }
+
+    toque := TouchArea {
+        enabled: root.habilitado;
+        mouse-cursor: root.habilitado ? MouseCursor.pointer : MouseCursor.not-allowed;
+        pointer-event(evento) => {
+            if evento.kind == PointerEventKind.down && evento.button == PointerEventButton.left {
+                foco.focus();
+                root.soltou-cedo = false;
+                root.segurando = true;
+            } else if evento.kind == PointerEventKind.up || evento.kind == PointerEventKind.cancel {
+                if root.segurando {
+                    root.segurando = false;
+                    root.soltou-cedo = true;
+                }
+            }
+        }
+    }
+
+    foco := FocusScope {
+        enabled: root.habilitado;
+        focus-on-click: false;
+        key-pressed(evento) => {
+            if evento.text == Key.Return || evento.text == " " {
+                // A repetição automática da tecla não pode recomeçar a barra depois de agir.
+                if !root.tecla-presa {
+                    root.tecla-presa = true;
+                    root.soltou-cedo = false;
+                    root.segurando = true;
+                }
+                return accept;
+            }
+            return reject;
+        }
+        key-released(evento) => {
+            if evento.text == Key.Return || evento.text == " " {
+                root.tecla-presa = false;
+                if root.segurando {
+                    root.segurando = false;
+                    root.soltou-cedo = true;
+                }
+                return accept;
+            }
+            return reject;
         }
     }
 }

@@ -6,7 +6,7 @@
 
 import { Tema } from "tema.slint";
 import { Dados, Acoes, Saude } from "dados.slint";
-import { Cartao, Botao, Selo, Dado, Faixa, Ponto, Secao, Alternativas } from "componentes.slint";
+import { Cartao, Botao, BotaoDeSegurar, Selo, Dado, Faixa, Ponto, Secao, Alternativas } from "componentes.slint";
 import { EscolhaDeBorda } from "bordas.slint";
 import { CartaoDeCopia, ListaDeCopias } from "copia.slint";
 
@@ -194,7 +194,9 @@ export component Inicio inherits VerticalLayout {
     if Dados.estado.conectado && !Dados.estado.pausado: HorizontalLayout {
         spacing: Tema.e2;
 
-        Botao {
+        // Os dois mexem no outro computador, então se seguram: um clique de passagem não pausa
+        // nem tranca a tela de ninguém.
+        BotaoDeSegurar {
             texto: "Pausar";
             horizontal-stretch: 1;
             acionado => {
@@ -204,7 +206,7 @@ export component Inicio inherits VerticalLayout {
 
         // O Ctrl+Alt+Del de verdade nunca sai deste teclado; o atalho é Ctrl+Alt+End, e o botão
         // é para quem não se lembra dele.
-        if Dados.estado.manda: Botao {
+        if Dados.estado.manda: BotaoDeSegurar {
             texto: "Ctrl+Alt+Del no outro";
             horizontal-stretch: 1;
             acionado => {
