@@ -13,13 +13,19 @@ pub mod clipboard;
 pub mod control;
 pub mod data;
 pub mod input_msg;
+pub mod pasta;
 
 pub use clipboard::{ClipId, ClipKind, ClipboardMessage, DeclineReason};
 pub use control::{Control, DisconnectReason, ErrorCode, Greeting, NetworkPowerSaving};
 pub use data::{
-    BulkMessage, CancelReason, ManifestItem, RejectReason, TransferId, manifest_messages,
+    BulkMessage, CancelReason, ManifestItem, RejectReason, TransferId, is_safe_relative_path,
+    manifest_messages,
 };
 pub use input_msg::{Feedback, InputMessage, PointerMessage};
+pub use pasta::{
+    DeclineFolder, Entry, EntryId, EntryKind, FolderId, FolderMessage, KnownFolder, OpId, OpResult,
+    RangeFailure, RangeId, Refusal, Role, changes_messages, validate_folder_message,
+};
 
 use serde::{Deserialize, Serialize};
 

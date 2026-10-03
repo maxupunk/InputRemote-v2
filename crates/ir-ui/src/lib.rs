@@ -48,6 +48,7 @@ pub mod bandeja;
 pub mod conector;
 pub mod conexao;
 pub mod copia;
+pub(crate) mod escolher_pasta;
 #[cfg(windows)]
 pub mod flutuante;
 pub mod historico;

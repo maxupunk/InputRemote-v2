@@ -9,11 +9,13 @@ import { Dados, Acoes, Saude } from "dados.slint";
 import { Cartao, Botao, BotaoDeSegurar, Selo, Dado, Faixa, Ponto, Secao, Alternativas } from "componentes.slint";
 import { EscolhaDeBorda } from "bordas.slint";
 import { CartaoDeCopia, ListaDeCopias } from "copia.slint";
+import { CartaoDePastas } from "pastas.slint";
 
 /// A tela inicial.
 export component Inicio inherits VerticalLayout {
     callback ir-para-pareamento();
     callback ir-para-preferencias();
+    callback ir-para-pastas();
 
     /// Se a lista das últimas cópias está aberta. Fechada por padrão.
     in-out property <bool> mostrar-recentes: false;
@@ -212,6 +214,14 @@ export component Inicio inherits VerticalLayout {
             acionado => {
                 Acoes.ctrl-alt-del();
             }
+        }
+    }
+
+    // As pastas compartilhadas: uma linha, e o caminho para a tela delas. Com par só — sem par não
+    // há com quem compartilhar.
+    if Dados.estado.tem-par: CartaoDePastas {
+        abrir => {
+            root.ir-para-pastas();
         }
     }
 

@@ -12,6 +12,10 @@ members = [
     "crates/ir-bt",
     "crates/ir-transporte",
     "crates/ir-files",
+    "crates/ir-pasta",
+    "crates/ir-acervo",
+    "crates/ir-sincronia",
+    "crates/ir-nuvem",
     "crates/ir-transferencia",
     "crates/ir-acesso",
     "crates/ir-clip",
@@ -50,6 +54,10 @@ ir-net = { path = "crates/ir-net", version = "0.1.0-dev" }
 ir-bt = { path = "crates/ir-bt", version = "0.1.0-dev" }
 ir-transporte = { path = "crates/ir-transporte", version = "0.1.0-dev" }
 ir-files = { path = "crates/ir-files", version = "0.1.0-dev" }
+ir-pasta = { path = "crates/ir-pasta", version = "0.1.0-dev" }
+ir-acervo = { path = "crates/ir-acervo", version = "0.1.0-dev" }
+ir-sincronia = { path = "crates/ir-sincronia", version = "0.1.0-dev" }
+ir-nuvem = { path = "crates/ir-nuvem", version = "0.1.0-dev" }
 ir-acesso = { path = "crates/ir-acesso", version = "0.1.0-dev" }
 ir-transferencia = { path = "crates/ir-transferencia", version = "0.1.0-dev" }
 ir-clip = { path = "crates/ir-clip", version = "0.1.0-dev" }

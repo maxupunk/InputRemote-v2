@@ -37,6 +37,7 @@
 #![allow(clippy::expect_used)]
 
 mod dados;
+mod pasta;
 mod table;
 
 use ir_proto::carrier::Carrier;
@@ -170,9 +171,39 @@ fn every_message_variant_of_the_data_channels_is_recorded() {
     let conta = |canal: ChannelId| {
         vectors()
             .iter()
-            .filter(|v| v.frame.channel() == canal)
+            .filter(|v| v.frame.channel() == canal && !eh_da_pasta(&v.frame))
             .count()
     };
     assert_eq!(conta(ChannelId::ClipboardText), VARIANTES_DE_CLIPBOARD);
     assert_eq!(conta(ChannelId::Bulk), VARIANTES_DE_DADOS);
+}
+
+/// Se o quadro é da pasta compartilhada, a variante que tem enum próprio.
+fn eh_da_pasta(frame: &ir_proto::frame::Frame) -> bool {
+    matches!(
+        frame.message,
+        ir_proto::message::Message::Bulk(ir_proto::message::BulkMessage::Folder(_))
+    )
+}
+
+#[test]
+fn every_folder_message_variant_is_recorded_once() {
+    // A pasta tem enum próprio dentro do canal 5, e o número da variante dele é o terceiro byte
+    // do quadro: canal, `BulkMessage::Folder`, `FolderMessage`. Conferido contra os bytes
+    // gravados, para que acrescentar variante sem gravar o vetor — ou gravar duas vezes a mesma —
+    // falhe aqui.
+    const VARIANTES_DA_PASTA: u8 = 22;
+    const BULK_FOLDER: u8 = 10;
+
+    let mut terceiros: Vec<u8> = vectors()
+        .iter()
+        .filter(|v| eh_da_pasta(&v.frame))
+        .map(|v| {
+            let bytes = from_hex(v.hex);
+            assert_eq!(bytes.get(1), Some(&BULK_FOLDER), "`{}`", v.name);
+            bytes.get(2).copied().expect("terceiro byte")
+        })
+        .collect();
+    terceiros.sort_unstable();
+    assert_eq!(terceiros, (0..VARIANTES_DA_PASTA).collect::<Vec<u8>>());
 }

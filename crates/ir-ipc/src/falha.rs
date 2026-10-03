@@ -88,6 +88,10 @@ pub enum Falha {
     /// o ponteiro ia até a borda e nada acontecia (log 47).
     #[error("este computador não consegue ler o teclado e o mouse ligados a ele")]
     SemCaptura,
+    /// O ajudante das pastas não está rodando nesta sessão, e um pedido sobre pastas não tem quem o
+    /// faça.
+    #[error("o ajudante das pastas compartilhadas não está rodando")]
+    SemAjudanteDasPastas,
 }
 
 impl Falha {
@@ -181,6 +185,10 @@ impl Falha {
             Self::SemCaptura => {
                 "Instale a versão mais nova do InputRemote neste computador e tente de novo. \
                  Enquanto isso, deixe o teclado com o outro computador."
+            }
+            Self::SemAjudanteDasPastas => {
+                "Espere alguns segundos: o serviço sobe o ajudante sozinho. Se não voltar, saia da \
+                 sessão e entre de novo."
             }
             // As de cima já responderam em `o_que_fazer`.
             _ => "",

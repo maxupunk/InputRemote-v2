@@ -63,6 +63,20 @@ pub fn lancar_ajudante_de_clipboard() -> Result<u32> {
     janela::lancar_como_usuario(&exe, "--clipboard")
 }
 
+/// Lança o ajudante das pastas compartilhadas na sessão de console, como o usuário que entrou nela.
+///
+/// Pelo mesmo motivo do de clipboard, e mais um: é ele que grava na pasta do usuário, e gravar como
+/// SYSTEM seria dar a qualquer caminho errado a autoridade do serviço
+/// ([ADR-0015](../../../docs/adr/0015-pastas-compartilhadas.md), §4).
+///
+/// # Errors
+///
+/// Sem sessão de console, sem ninguém dentro dela, ou se o sistema recusar.
+pub fn lancar_ajudante_das_pastas() -> Result<u32> {
+    let exe = caminho_do_agente()?;
+    janela::lancar_como_usuario(&exe, "--pastas")
+}
+
 /// Lança o agente, pelo caminho que o nosso contexto exigir.
 ///
 /// # Errors

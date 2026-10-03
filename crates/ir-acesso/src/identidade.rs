@@ -78,6 +78,55 @@ impl TokenDoCliente {
     }
 }
 
+impl TokenDoCliente {
+    /// O SID de quem conectou, em texto (`S-1-5-21-…`).
+    ///
+    /// É a identidade que o serviço guarda como dona de cada pasta compartilhada: duas sessões
+    /// abertas na mesma máquina não leem a pasta uma da outra ([ADR-0015], §5).
+    ///
+    /// [ADR-0015]: ../../../docs/adr/0015-pastas-compartilhadas.md
+    ///
+    /// # Errors
+    ///
+    /// Erro do sistema ao consultar o token ou converter o SID.
+    pub fn sid(&self) -> std::io::Result<String> {
+        use windows::Win32::Security::Authorization::ConvertSidToStringSidW;
+        use windows::Win32::Security::{GetTokenInformation, TOKEN_USER, TokenUser};
+        use windows::core::PWSTR;
+
+        let mut tamanho = 0u32;
+        // SAFETY: a primeira chamada só mede: sem buffer, devolve o tamanho em `tamanho` e um erro
+        // de buffer insuficiente, que é o esperado e por isso é ignorado.
+        let _ = unsafe { GetTokenInformation(self.0, TokenUser, None, 0, &raw mut tamanho) };
+        // Em `u64`, e não em bytes: o `TOKEN_USER` tem ponteiro dentro e pede alinhamento de 8.
+        let palavras = usize::try_from(tamanho).unwrap_or(0).div_ceil(8);
+        let mut memoria = vec![0u64; palavras.max(1)];
+        // SAFETY: o buffer tem pelo menos `tamanho` bytes e vive até o fim desta função.
+        unsafe {
+            GetTokenInformation(
+                self.0,
+                TokenUser,
+                Some(memoria.as_mut_ptr().cast()),
+                tamanho,
+                &raw mut tamanho,
+            )
+        }
+        .map_err(std::io::Error::from)?;
+        // SAFETY: o Windows escreveu um `TOKEN_USER` no começo do buffer, alinhado a 8.
+        let usuario = unsafe { &*memoria.as_ptr().cast::<TOKEN_USER>() };
+        let mut texto = PWSTR::null();
+        // SAFETY: o SID aponta para dentro do buffer, vivo aqui; o texto devolvido é liberado logo
+        // abaixo com `LocalFree`.
+        unsafe { ConvertSidToStringSidW(usuario.User.Sid, &raw mut texto) }
+            .map_err(std::io::Error::from)?;
+        // SAFETY: `texto` é uma cadeia UTF-16 terminada em zero, alocada pelo Windows.
+        let sid = unsafe { texto.to_string() };
+        // SAFETY: memória do `ConvertSidToStringSidW`, liberada uma vez.
+        let _ = unsafe { LocalFree(Some(HLOCAL(texto.0.cast()))) };
+        sid.map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))
+    }
+}
+
 impl ir_files::Autorizacao for TokenDoCliente {
     fn pode_ler(&self, aberto: &std::fs::File, pasta: bool) -> std::io::Result<bool> {
         let descritor = Descritor::do_arquivo(aberto)?;
@@ -176,6 +225,12 @@ mod tests {
             let _ = CloseHandle(primario);
         }
         TokenDoCliente(identificacao)
+    }
+
+    #[test]
+    fn o_sid_de_quem_conectou_sai_em_texto() {
+        let sid = este_processo().sid().unwrap();
+        assert!(sid.starts_with("S-1-"), "{sid}");
     }
 
     #[test]

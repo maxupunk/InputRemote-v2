@@ -9,6 +9,7 @@
 
 import { Tema } from "tema.slint";
 import { CopiaUi, ItemDeCopia } from "copia.slint";
+import { PastaUi } from "pastas-tipos.slint";
 
 /// O estado observável, na forma em que a tela o desenha.
 export struct EstadoUi {
@@ -183,6 +184,13 @@ export global Dados {
 
     /// Se há o que limpar — o botão fica apagado quando a pasta já está vazia.
     in property <bool> recebidos-tem-o-que-limpar: false;
+
+    /// As pastas compartilhadas e as ofertas, na ordem da tela.
+    in property <[PastaUi]> pastas;
+    /// Uma linha sobre todas, para a tela inicial, ou vazio.
+    in property <string> pastas-resumo;
+    /// Quantas ofertas esperam resposta: o cartão da tela inicial chama para elas.
+    in property <int> pastas-ofertas;
 }
 
 export global Acoes {
@@ -237,6 +245,24 @@ export global Acoes {
     callback descartar-recado();
     /// Ligar o serviço e dar acesso a este usuário, com a senha de administrador.
     callback ativar();
+
+    /// Escolher uma pasta deste computador e compartilhá-la.
+    callback compartilhar-pasta();
+    /// Criar uma pasta nova, já compartilhada, com este nome.
+    callback criar-pasta(string);
+    /// Aceitar a oferta desta posição da lista.
+    callback aceitar-pasta(int);
+    /// Recusar a oferta desta posição.
+    callback recusar-pasta(int);
+    /// Parar de compartilhar a pasta desta posição. Nada é apagado.
+    callback parar-pasta(int);
+    /// Abrir a pasta desta posição no gerenciador de arquivos.
+    callback abrir-pasta(int);
+    /// Abrir a lixeira da pasta desta posição: o que a sincronia tirou nos últimos 30 dias.
+    callback abrir-lixeira(int);
+    /// Resolver o conflito `indice` da pasta `posicao`: 0 manter as duas, 1 só a mais recente,
+    /// 2 só a cópia.
+    callback resolver-conflito(int, int, int);
 }
 
 /// As cores de cada nível de saúde, num lugar só, para as três telas concordarem.

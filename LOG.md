@@ -81,3 +81,6 @@ quê. Um registro que se reescreve não é registro.
 | 54 | 2026-09-24 | [Uma regra em um lugar: a revisão de duplicidade](docs/logs/54-uma-regra-em-um-lugar.md) |
 | 55 | 2026-10-02 | [O manifesto que não cabia, e a cópia que recomeça sozinha](docs/logs/55-o-manifesto-que-nao-cabia.md) |
 | 56 | 2026-10-02 | [O ajudante que sobreviveu à atualização, e colar antes de a cópia chegar](docs/logs/56-o-ajudante-que-sobreviveu.md) |
+| 57 | 2026-10-02 | [A pasta compartilhada: o contrato antes do motor](docs/logs/57-a-pasta-compartilhada-o-contrato.md) |
+| 58 | 2026-10-02 | [A pasta que sincroniza: o motor, o ajudante e a primeira prova de ponta a ponta](docs/logs/58-a-pasta-que-sincroniza.md) |
+| 59 | 2026-10-02 | [A pasta sob demanda nos dois sistemas, e as telas que resolvem o conflito](docs/logs/59-a-pasta-sob-demanda.md) |

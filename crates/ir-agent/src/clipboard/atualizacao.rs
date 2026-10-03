@@ -26,7 +26,7 @@ const INTERVALO: Duration = Duration::from_secs(5);
 
 /// O executável deste processo, como estava quando ele começou.
 #[derive(Debug, Clone)]
-pub(super) struct Executavel {
+pub(crate) struct Executavel {
     /// O caminho lido na subida. Guardado, e não lido de novo: no Linux, depois de o pacote trocar
     /// o arquivo, o caminho do processo passa a terminar em "(deleted)".
     caminho: PathBuf,
@@ -38,7 +38,7 @@ type Carimbo = (u64, Option<SystemTime>);
 
 impl Executavel {
     /// O executável deste processo. `None` se o sistema não disser qual é — aí não há o que vigiar.
-    pub(super) fn este() -> Option<Self> {
+    pub(crate) fn este() -> Option<Self> {
         Self::de(std::env::current_exe().ok()?)
     }
 
@@ -51,7 +51,7 @@ impl Executavel {
     ///
     /// Sem arquivo nenhum não é mudança: no meio da instalação ele some por um instante, e sair
     /// nessa hora deixaria o zelador sem o que subir.
-    pub(super) fn mudou(&self) -> bool {
+    pub(crate) fn mudou(&self) -> bool {
         carimbo(&self.caminho).is_some_and(|agora| agora != self.carimbo)
     }
 }

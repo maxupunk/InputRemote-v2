@@ -36,7 +36,25 @@ use crate::error::{ProtoError, Result};
 /// ([log 55](../../../docs/logs/55-o-manifesto-que-nao-cabia.md)). Só sai num manifesto que a
 /// versão 6 já não conseguia mandar — o codec o recusava antes de sair —, então a versão 6
 /// continua aceita: tudo o que funcionava com ela funciona igual.
-pub const CURRENT: ProtocolVersion = ProtocolVersion(7);
+///
+/// Versão 8: `BulkMessage::Folder`, a pasta compartilhada
+/// ([ADR-0015](../../../docs/adr/0015-pastas-compartilhadas.md)). Diferente da 7, esta acrescenta
+/// mensagem que um par antigo **receberia**: por isso ela só sai para quem negociou a versão 8 —
+/// [`supports_folders`] é o portão —, e as versões 6 e 7 continuam aceitas para todo o resto.
+pub const CURRENT: ProtocolVersion = ProtocolVersion(8);
+
+/// A primeira versão que conhece a pasta compartilhada.
+pub const FOLDERS_SINCE: ProtocolVersion = ProtocolVersion(8);
+
+/// Se a versão acordada com o par permite mandar mensagens da pasta compartilhada.
+///
+/// É o portão de quem envia. Mensagem desconhecida derruba o enlace (`docs/03-protocolo.md` §8): uma
+/// mensagem da pasta mandada a um par da versão 7 não seria ignorada, derrubaria o canal 5 inteiro —
+/// e com ele a cópia do clipboard que estivesse passando.
+#[must_use]
+pub fn supports_folders(agreed: ProtocolVersion) -> bool {
+    agreed >= FOLDERS_SINCE
+}
 
 /// Versão mais antiga que esta build ainda aceita conversar.
 ///
@@ -155,6 +173,20 @@ mod tests {
                 }
             );
         }
+    }
+
+    #[test]
+    fn folders_go_only_to_a_peer_that_agreed_on_them() {
+        assert!(supports_folders(CURRENT));
+        assert!(supports_folders(FOLDERS_SINCE));
+        assert!(
+            !supports_folders(ProtocolVersion(7)),
+            "a versão 7 derrubaria o enlace"
+        );
+        assert!(!supports_folders(MIN_SUPPORTED));
+        // Um par da versão 7 conversa com esta build na 7, e o portão fica fechado para ele.
+        let com_o_antigo = negotiate(ProtocolVersion(7)).unwrap();
+        assert!(!supports_folders(com_o_antigo.version));
     }
 
     #[test]

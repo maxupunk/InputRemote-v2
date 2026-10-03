@@ -42,6 +42,7 @@ use tracing::{info, warn};
 
 mod clipboard;
 mod entrada;
+mod pastas;
 mod registro;
 mod vigia;
 
@@ -65,6 +66,26 @@ fn main() {
         if let Err(erro) = clipboard::servir() {
             warn!(%erro, "o ajudante de clipboard terminou");
         }
+        return;
+    }
+
+    // O ajudante das pastas compartilhadas é um terceiro papel do mesmo executável, também como o
+    // usuário, e num processo próprio: um defeito na sincronia não leva o clipboard junto (ADR-0015).
+    if std::env::args().any(|argumento| argumento == "--pastas") {
+        // Na desinstalação, como o usuário: as pastas sob demanda saem do Windows antes de quem as
+        // serve sumir — senão os arquivos que não vieram ficariam apontando para ninguém.
+        if std::env::args().any(|argumento| argumento == "--desregistrar") {
+            match ir_sincronia::desregistrar() {
+                Ok(quantas) => info!(quantas, "pastas sob demanda desligadas do Windows"),
+                Err(erro) => warn!(
+                    erro = format!("{erro:#}"),
+                    "não deu para desligar as pastas"
+                ),
+            }
+            return;
+        }
+        info!("ajudante das pastas do InputRemote iniciando");
+        pastas::servir();
         return;
     }
 

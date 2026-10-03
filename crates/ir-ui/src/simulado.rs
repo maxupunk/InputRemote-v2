@@ -257,6 +257,7 @@ impl Servico for ServicoSimulado {
         match pedido {
             Pedido::Estado | Pedido::Acompanhar => Resposta::Estado(interno.estado.clone()),
             Pedido::Diagnostico => Resposta::Diagnostico(diagnostico(&interno.estado)),
+            Pedido::Pastas => Resposta::Pastas(pastas_de_demonstracao()),
             Pedido::Encerrar => {
                 interno.encerrar();
                 // Pausar é pausar: o simulado não reconecta sozinho, como o serviço de verdade.
@@ -291,6 +292,37 @@ impl Servico for ServicoSimulado {
     fn situacao(&self) -> Situacao {
         Situacao::Simulado
     }
+}
+
+/// Uma pasta em dia, uma com conflito e uma oferta: as três formas que a tela tem de mostrar.
+fn pastas_de_demonstracao() -> Vec<ir_ipc::pastas::ResumoDePasta> {
+    use ir_ipc::pastas::{IdDePasta, PapelDaPasta, ResumoDePasta, SituacaoDaPasta};
+    let pasta = |n: u8, nome: &str, caminho: &str| ResumoDePasta {
+        id: IdDePasta([n; 16]),
+        nome: nome.to_owned(),
+        caminho_local: caminho.to_owned(),
+        papel: PapelDaPasta::Compartilhada,
+        situacao: SituacaoDaPasta::EmDia,
+        pendentes: 0,
+        conflitos: 0,
+        baixando: 0,
+        lista_de_conflitos: Vec::new(),
+    };
+    let mut fotos = pasta(2, "Fotos", "/home/ana/InputRemote/Fotos");
+    fotos.papel = PapelDaPasta::Recebida;
+    fotos.conflitos = 1;
+    fotos.lista_de_conflitos = vec![ir_ipc::pastas::ConflitoDePasta {
+        original: "praia/pôr do sol.jpg".to_owned(),
+        copia: "praia/pôr do sol (conflito NOTEBOOK 2026-10-02 14h30).jpg".to_owned(),
+    }];
+    let mut oferta = pasta(3, "Contratos 2026", "");
+    oferta.papel = PapelDaPasta::Recebida;
+    oferta.situacao = SituacaoDaPasta::Oferecida;
+    vec![
+        pasta(1, "Projetos", "/home/ana/Documentos/Projetos"),
+        fotos,
+        oferta,
+    ]
 }
 
 fn candidatos_de_demonstracao() -> Vec<Candidato> {

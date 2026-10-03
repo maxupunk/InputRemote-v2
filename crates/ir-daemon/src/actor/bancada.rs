@@ -162,6 +162,7 @@ impl Bancada {
             agente,
             identidade_local: identidade(),
             ajudantes: crate::ipc::Ajudantes::default(),
+            pastas: None,
             radio_proprio: None,
             de_fundo,
         });

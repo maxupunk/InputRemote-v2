@@ -54,6 +54,13 @@ Requires:       coreutils
 # comeco, o fim, e o motivo quando ela nao atravessa. Sem isso copiar e colar era mudo, e colar do
 # outro lado trazia a copia anterior sem nenhum sinal de que aquilo era um resto.
 Requires:       libnotify
+
+# O seletor de pasta de "Compartilhar uma pasta": o `zenity`, que fala com o portal do ambiente
+# grafico. A janela o chama numa thread; sem ele, compartilhar so por "Criar pasta" (ADR-0015).
+Requires:       zenity
+# A pasta recebida sob demanda: o `fusermount3` monta, como o usuario, o sistema de arquivos que traz
+# um arquivo so quando ele e aberto. Sem ele a pasta recebida vira copia inteira (ADR-0015).
+Requires:       fuse3
 # A economia de energia do Wi-Fi: `iw` le se a placa cochila entre pacotes e a desliga quando o
 # usuario clica em Resolver. Sem ele o aviso nao aparece, e o mouse pela rede trava sem motivo
 # visivel (docs/logs/44).
@@ -160,6 +167,13 @@ install -Dpm 0644 empacotar/linux/inputremote-clipboard.service \
 install -d %{buildroot}%{_prefix}/lib/systemd/user/graphical-session.target.wants
 ln -s ../%{name}-clipboard.service \
         %{buildroot}%{_prefix}/lib/systemd/user/graphical-session.target.wants/%{name}-clipboard.service
+# O ajudante das pastas compartilhadas: unidade do usuario, ligada a default.target pelo mesmo
+# jeito -- um link que vem no pacote.
+install -Dpm 0644 empacotar/linux/inputremote-pastas.service \
+        %{buildroot}%{_prefix}/lib/systemd/user/%{name}-pastas.service
+install -d %{buildroot}%{_prefix}/lib/systemd/user/default.target.wants
+ln -s ../%{name}-pastas.service \
+        %{buildroot}%{_prefix}/lib/systemd/user/default.target.wants/%{name}-pastas.service
 install -Dpm 0755 empacotar/linux/ajudante-nas-sessoes %{buildroot}%{_libexecdir}/%{name}/ajudante-nas-sessoes
 install -Dpm 0644 empacotar/linux/inputremote.desktop \
         %{buildroot}%{_datadir}/applications/%{name}.desktop
@@ -209,6 +223,9 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %{_prefix}/lib/systemd/user/%{name}-clipboard.service
 %dir %{_prefix}/lib/systemd/user/graphical-session.target.wants
 %{_prefix}/lib/systemd/user/graphical-session.target.wants/%{name}-clipboard.service
+%{_prefix}/lib/systemd/user/%{name}-pastas.service
+%dir %{_prefix}/lib/systemd/user/default.target.wants
+%{_prefix}/lib/systemd/user/default.target.wants/%{name}-pastas.service
 %{_datadir}/polkit-1/actions/io.github.inputremote.ativar.policy
 %dir %{_prefix}/lib/firewalld
 %dir %{_prefix}/lib/firewalld/services

@@ -1,4 +1,4 @@
-//! Onde os canais locais moram: o de controle e o do agente.
+//! Onde os canais locais moram: o de controle, o do agente e o do ajudante das pastas.
 //!
 //! Um lugar só para o serviço, que escuta, e para a interface, o agente e a ferramenta de bancada,
 //! que conectam. Cada lado interpretava as variáveis de sobrescrita por conta própria, e bastava um
@@ -14,6 +14,9 @@ pub const VARIAVEL_DO_CONTROLE: &str = "IR_CONTROL_ENDPOINT";
 /// A variável que sobrescreve o endereço do canal do agente, para o teste.
 pub const VARIAVEL_DO_AGENTE: &str = "IR_AGENT_ENDPOINT";
 
+/// A variável que sobrescreve o endereço do canal do ajudante das pastas, para o teste.
+pub const VARIAVEL_DAS_PASTAS: &str = "IR_PASTAS_ENDPOINT";
+
 /// O endereço padrão do canal de controle.
 #[cfg(windows)]
 const PADRAO_DO_CONTROLE: &str = r"\\.\pipe\inputremote-control";
@@ -26,6 +29,12 @@ const PADRAO_DO_AGENTE: &str = r"\\.\pipe\inputremote-agent";
 #[cfg(not(windows))]
 const PADRAO_DO_AGENTE: &str = "/run/inputremote/agent.sock";
 
+/// O endereço padrão do canal do ajudante das pastas.
+#[cfg(windows)]
+const PADRAO_DAS_PASTAS: &str = r"\\.\pipe\inputremote-pastas";
+#[cfg(not(windows))]
+const PADRAO_DAS_PASTAS: &str = "/run/inputremote/pastas.sock";
+
 /// O endereço do canal de controle, o da interface.
 #[must_use]
 pub fn do_controle() -> String {
@@ -36,6 +45,12 @@ pub fn do_controle() -> String {
 #[must_use]
 pub fn do_agente() -> String {
     resolver(VARIAVEL_DO_AGENTE, PADRAO_DO_AGENTE)
+}
+
+/// O endereço do canal do ajudante das pastas ([`crate::pastas`]).
+#[must_use]
+pub fn das_pastas() -> String {
+    resolver(VARIAVEL_DAS_PASTAS, PADRAO_DAS_PASTAS)
 }
 
 /// A sobrescrita de `variavel`, quando há, ou o `padrao` da plataforma.
@@ -100,9 +115,11 @@ mod tests {
         if cfg!(windows) {
             assert_eq!(PADRAO_DO_CONTROLE, r"\\.\pipe\inputremote-control");
             assert_eq!(PADRAO_DO_AGENTE, r"\\.\pipe\inputremote-agent");
+            assert_eq!(PADRAO_DAS_PASTAS, r"\\.\pipe\inputremote-pastas");
         } else {
             assert_eq!(PADRAO_DO_CONTROLE, "/run/inputremote/control.sock");
             assert_eq!(PADRAO_DO_AGENTE, "/run/inputremote/agent.sock");
+            assert_eq!(PADRAO_DAS_PASTAS, "/run/inputremote/pastas.sock");
         }
     }
 }

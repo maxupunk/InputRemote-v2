@@ -573,3 +573,30 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [~] Documentação de usuário — [USAR.md](USAR.md) reescrito para a janela, a rota dupla e o
       clipboard ([log 45](docs/logs/45-a-varredura-implementada.md))
 - [ ] `[H]` Roteiro de validação física completo, quatro combinações
+
+## Etapa 11 — Pasta compartilhada ([ADR-0015](docs/adr/0015-pastas-compartilhadas.md))
+- [x] F0 — contrato: protocolo 8 (`BulkMessage::Folder`) com vetores gravados e portão de versão,
+      vocabulário do canal do ajudante das pastas, crate puro `ir-pasta` com a cópia de conflito e
+      o que não sincroniza ([log 57](docs/logs/57-a-pasta-compartilhada-o-contrato.md))
+- [x] F1 — motor e espelho completo: `ir-pasta` inteiro (simulação de dois nós, 20 mil histórias
+      sorteadas), `ir-sincronia`, o repasse no serviço, o ajudante `--pastas`, a tela das pastas e a
+      prova de ponta a ponta com duas instâncias nesta máquina ([log 58](docs/logs/58-a-pasta-que-sincroniza.md))
+- [x] F2 — sob demanda no Windows pela Cloud Files API, com a entrada no painel do Explorer sem
+      pacote MSIX, a limpeza das raízes órfãs e o desligamento na desinstalação
+      ([log 59](docs/logs/59-a-pasta-sob-demanda.md))
+- [x] F3 — telas: progresso, os três desfechos do conflito, a lixeira da pasta, o aviso de oferta
+      com a janela fechada ([log 59](docs/logs/59-a-pasta-sob-demanda.md))
+- [x] F4 — sob demanda no Linux por FUSE, provado em contêiner com `/dev/fuse` e dois ajudantes de
+      verdade ([log 59](docs/logs/59-a-pasta-sob-demanda.md))
+- [x] `[H]` Bancada Windows + Fedora: o notebook de verdade numa sessão GNOME — Nautilus sem
+      baixar as fotos, offline, conflito entre as duas máquinas, parar de compartilhar; e, aqui, 10
+      mil arquivos, o Defender e o "salvar" do Office ([log 59](docs/logs/59-a-pasta-sob-demanda.md))
+- [x] `[H]` Instalar por cima e desinstalar pelo MSI com uma pasta sob demanda registrada: a
+      atualização mantém a pasta, a remoção a desliga ([log 59](docs/logs/59-a-pasta-sob-demanda.md))
+- [x] Um editor de verdade dentro da raiz sob demanda: o LibreOffice abre um `.docx` que não veio,
+      edita e salva; a trava não viaja; o Word, que não está instalado aqui, foi provado pela sequência
+      de arquivos dele ([log 59](docs/logs/59-a-pasta-sob-demanda.md))
+- [~] A entrada durante uma sincronia grande: medida pelo atraso da sessão no Wi-Fi, a mediana vai
+      de 2 para 3 a 4 ms — dentro da meta de 01 §6, fora dos 10% da Etapa 8, e igual ao custo da
+      cópia de arquivo que já existia; a medida da captura à injeção, e a sincronia cedendo durante
+      o uso, ficam com o item da Etapa 8 ([log 59](docs/logs/59-a-pasta-sob-demanda.md))

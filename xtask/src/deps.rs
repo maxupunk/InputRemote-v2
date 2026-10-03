@@ -37,6 +37,18 @@ const ALLOWED: &[(&str, &[&str])] = &[
         &["ir-proto", "ir-crypto", "ir-net", "ir-bt"],
     ),
     ("ir-files", &["ir-proto"]),
+    // O motor da pasta compartilhada: puro, e só sobre o protocolo, como o da sessão.
+    ("ir-pasta", &["ir-proto"]),
+    // O ajudante das pastas: o disco e a conversa em volta do motor. Fala com o serviço pelo
+    // vocabulário do canal local, e com o par só pelas mensagens do protocolo.
+    (
+        "ir-sincronia",
+        &["ir-proto", "ir-ipc", "ir-pasta", "ir-nuvem", "ir-acervo"],
+    ),
+    // O disco de uma pasta compartilhada: o que o ajudante faz com ele, sem a conversa.
+    ("ir-acervo", &["ir-proto", "ir-pasta", "ir-nuvem"]),
+    // A pasta sob demanda do Windows: a Cloud Files API embrulhada. Não conhece o produto.
+    ("ir-nuvem", &[]),
     // A fronteira da transferência: o único lugar que conhece o motor e a porta ao mesmo tempo.
     (
         "ir-transferencia",
@@ -103,6 +115,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "ir-input",
             "ir-clip",
             "ir-processo",
+            "ir-sincronia",
         ],
     ),
     // A interface não conhece o produto. É a fronteira que impede o v1 de acontecer de novo,
@@ -122,6 +135,7 @@ const PURE: &[&str] = &[
     "ir-confiabilidade",
     "ir-area",
     "ir-session",
+    "ir-pasta",
 ];
 
 /// Dependências que denunciam E/S ou relógio.

@@ -1,0 +1,19 @@
+[package]
+name = "ir-pasta"
+description = "O motor da pasta compartilhada: índice, versões, conflito e o que não sincroniza. Puro."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ir-proto.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+postcard.workspace = true
+
+[lints]
+workspace = true

@@ -31,6 +31,8 @@ pub(crate) struct Deposito {
     pub(crate) faxineiro: Arc<crate::faxina::Faxineiro>,
     /// As recepções começadas, que dizem à espera de uma interrompida se o par já recomeçou.
     pub(crate) recepcoes: Arc<crate::retomada::Recepcoes>,
+    /// Por onde as mensagens da pasta compartilhada saem desta leitura, sem passar pela cópia.
+    pub(crate) desvio: crate::desvio::Desvio,
 }
 
 /// O sentido de entrada: aplica o que chega e responde.
@@ -58,6 +60,13 @@ pub(crate) async fn receber(
                 return;
             }
         };
+        // A pasta compartilhada tem a faixa dela; a cópia do clipboard nem a vê.
+        if let BulkMessage::Folder(pasta) = mensagem {
+            if !deposito.desvio.chegou(pasta).await {
+                return;
+            }
+            continue;
+        }
         // Resposta a algo que **nós** mandamos: é da outra metade.
         if eh_resposta(&mensagem) {
             if respostas.send(mensagem).is_err() {

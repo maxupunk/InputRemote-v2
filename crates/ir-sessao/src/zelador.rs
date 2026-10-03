@@ -97,16 +97,36 @@ impl Zelador {
 /// nada — quem testa sobe o ajudante que quiser.
 #[cfg(windows)]
 pub fn zelar_pelo_clipboard(ajudantes: Ajudantes) {
+    zelar(
+        "ajudante de clipboard",
+        ajudantes,
+        crate::lancador::lancar_ajudante_de_clipboard,
+    );
+}
+
+/// Sobe a tarefa que zela pelo ajudante das pastas compartilhadas, com a mesma regra do de
+/// clipboard: `ajudantes` conta os que estão ligados ao canal das pastas.
+#[cfg(windows)]
+pub fn zelar_pelas_pastas(ajudantes: Ajudantes) {
+    zelar(
+        "ajudante das pastas",
+        ajudantes,
+        crate::lancador::lancar_ajudante_das_pastas,
+    );
+}
+
+#[cfg(windows)]
+fn zelar(quem: &'static str, ajudantes: Ajudantes, lancar: fn() -> anyhow::Result<u32>) {
     if !crate::lancador::como_servico() {
         return;
     }
     tokio::spawn(async move {
-        let mut zelador = Zelador::novo("ajudante de clipboard", TOLERANCIA);
+        let mut zelador = Zelador::novo(quem, TOLERANCIA);
         loop {
             tokio::time::sleep(CONFERIR).await;
             let agora = Instant::now();
             if zelador.conferir(ajudantes.ligados() > 0, agora) {
-                zelador.lancar(crate::lancador::lancar_ajudante_de_clipboard, agora);
+                zelador.lancar(lancar, agora);
             }
         }
     });
@@ -116,6 +136,11 @@ pub fn zelar_pelo_clipboard(ajudantes: Ajudantes) {
 /// unidade que o pacote instala: ele sabe quando existe sessão gráfica, e este crate não.
 #[cfg(not(windows))]
 pub fn zelar_pelo_clipboard(_ajudantes: Ajudantes) {}
+
+/// Fora do Windows quem zela pelo ajudante das pastas é o `systemd` do usuário
+/// (`inputremote-pastas.service`).
+#[cfg(not(windows))]
+pub fn zelar_pelas_pastas(_ajudantes: Ajudantes) {}
 
 #[cfg(test)]
 mod tests {

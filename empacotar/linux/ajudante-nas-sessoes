@@ -1,5 +1,6 @@
 #!/bin/sh
-# Inicia (ou reinicia) o ajudante de clipboard em toda sessao grafica aberta agora -- ou o para.
+# Inicia (ou reinicia) os ajudantes -- o de clipboard e o das pastas -- em toda sessao grafica
+# aberta agora, ou os para.
 #
 #   ajudante-nas-sessoes           depois de instalar ou atualizar: sobe o binario novo ja
 #   ajudante-nas-sessoes parar     antes de remover
@@ -12,7 +13,7 @@
 # nunca falha o pacote.
 set -u
 
-UNIDADE=inputremote-clipboard.service
+UNIDADES="inputremote-clipboard.service inputremote-pastas.service"
 acao="${1:-iniciar}"
 
 # Versoes antigas subiam o ajudante pelo autostart do XDG, fora desta unidade. Ele seguiria vivo,
@@ -26,13 +27,13 @@ for usuario in $(loginctl list-users --no-legend 2>/dev/null | awk '{print $2}')
     case "$acao" in
         parar)
             # shellcheck disable=SC2086
-            systemctl $alvo stop "$UNIDADE" 2>/dev/null || :
+            systemctl $alvo stop $UNIDADES 2>/dev/null || :
             ;;
         *)
             # shellcheck disable=SC2086
             systemctl $alvo daemon-reload 2>/dev/null || :
             # shellcheck disable=SC2086
-            systemctl $alvo restart "$UNIDADE" 2>/dev/null || :
+            systemctl $alvo restart $UNIDADES 2>/dev/null || :
             ;;
     esac
 done

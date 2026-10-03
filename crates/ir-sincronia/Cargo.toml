@@ -1,0 +1,33 @@
+[package]
+name = "ir-sincronia"
+description = "O ajudante das pastas compartilhadas: o disco, a vigia e a conversa com o serviço, em volta do motor puro."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ir-proto.workspace = true
+ir-ipc.workspace = true
+# As decisões: o que mudou, o que é conflito, o que baixar.
+ir-pasta.workspace = true
+# O disco da pasta: varredura, montagem, lixeira, índice guardado e trechos.
+ir-acervo.workspace = true
+# A réplica sob demanda do Windows (Cloud Files API). Fora do Windows, só diz "não suportado".
+ir-nuvem.workspace = true
+# O identificador de uma pasta nova, sorteado.
+rand.workspace = true
+# O aviso do sistema de que algo mudou no disco: ReadDirectoryChangesW no Windows, inotify no
+# Linux. ADR-0016.
+notify = { version = "8.2", default-features = false }
+anyhow.workspace = true
+tracing.workspace = true
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.62"
+features = ["Win32_System_Time"]
+
+[lints]
+workspace = true

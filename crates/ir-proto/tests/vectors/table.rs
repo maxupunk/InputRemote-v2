@@ -111,6 +111,12 @@ pub fn vectors() -> Vec<Vector> {
     all.extend(crate::dados::bulk_opening_vectors());
     all.extend(crate::dados::bulk_body_vectors());
     all.extend(crate::dados::bulk_closing_vectors());
+    all.extend(crate::pasta::pasta_abertura_vectors());
+    all.extend(crate::pasta::pasta_indice_vectors());
+    all.extend(crate::pasta::pasta_conteudo_vectors());
+    all.extend(crate::pasta::pasta_envio_vectors());
+    all.extend(crate::pasta::pasta_operacao_vectors());
+    all.extend(crate::pasta::pasta_desfecho_vectors());
     all
 }
 
@@ -197,6 +203,12 @@ fn control_vectors_v4() -> Vec<Vector> {
             // Versão 7: o manifesto em partes. A saudação só muda no número.
             control(Control::Hello(greeting(ProtocolVersion(7))), 25),
             "0000070102030405060708090a0b0c0d0e0f100762616e6361646101010101020000190000",
+        ),
+        v(
+            "hello_v8",
+            // Versão 8: a pasta compartilhada. A saudação só muda no número.
+            control(Control::Hello(greeting(ProtocolVersion(8))), 26),
+            "0000080102030405060708090a0b0c0d0e0f100762616e63616461010101010200001a0000",
         ),
     ]
 }

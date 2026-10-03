@@ -39,6 +39,8 @@ Uma decisão só muda por um ADR novo que substitua o anterior — não por edi�
 | [0012](adr/0012-rota-dupla.md) | Rota dupla: Bluetooth e rede ao mesmo tempo, vale o que chegar primeiro |
 | [0013](adr/0013-economia-de-energia-do-wifi.md) | Avisar da economia de energia do Wi-Fi, e desligá-la com um botão — também no par |
 | [0014](adr/0014-controle-simetrico.md) | Controle simétrico: quem mexe, manda |
+| [0015](adr/0015-pastas-compartilhadas.md) | Pastas compartilhadas: origem, réplica e o ajudante que grava |
+| [0016](adr/0016-dependencias-da-pasta-compartilhada.md) | As dependências da pasta compartilhada |
 
 ## Registro do que foi feito
 

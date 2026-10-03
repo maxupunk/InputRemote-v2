@@ -1,0 +1,258 @@
+// As pastas compartilhadas: o cartão da tela inicial e a tela delas.
+//
+// O que a pessoa precisa saber de cada pasta cabe em duas linhas: se está em dia, e onde ela está.
+// O resto — versões, números, quem é a origem — fica com o programa. As frases vêm prontas do Rust
+// (`ir_ipc::pastas::frases`), como todas as outras da janela.
+
+import { LineEdit } from "std-widgets.slint";
+import { Tema } from "tema.slint";
+import { Dados, Acoes, Saude } from "dados.slint";
+import { PastaUi } from "pastas-tipos.slint";
+import { Cartao, Botao, BotaoDeSegurar, Faixa, Ponto, Secao } from "componentes.slint";
+
+/// O cartão da tela inicial: uma linha sobre todas, e o caminho para a tela delas.
+export component CartaoDePastas inherits Cartao {
+    callback abrir();
+
+    HorizontalLayout {
+        spacing: Tema.e2;
+
+        VerticalLayout {
+            spacing: Tema.e1;
+            horizontal-stretch: 1;
+
+            Secao { text: "Pastas compartilhadas"; }
+
+            Text {
+                text: Dados.pastas-resumo != "" ? Dados.pastas-resumo
+                    : "Uma pasta que existe nos dois computadores, sempre igual.";
+                font-size: Tema.fonte-nota;
+                color: Dados.pastas-ofertas > 0 ? Tema.acao : Tema.texto-fraco;
+                wrap: word-wrap;
+            }
+        }
+
+        Botao {
+            texto: Dados.pastas-ofertas > 0 ? "Ver oferta" : "Abrir";
+            primario: Dados.pastas-ofertas > 0;
+            y: (parent.height - self.height) / 2;
+            acionado => {
+                root.abrir();
+            }
+        }
+    }
+}
+
+component LinhaDePasta inherits Cartao {
+    in property <PastaUi> pasta;
+    in property <int> posicao;
+
+    HorizontalLayout {
+        spacing: Tema.e2;
+
+        Ponto {
+            cor: Saude.cor(pasta.saude);
+            pulsando: pasta.saude == 1;
+            y: (parent.height - self.height) / 2;
+        }
+
+        Text {
+            text: pasta.nome;
+            font-size: Tema.fonte-destaque;
+            font-weight: 600;
+            color: Tema.texto;
+            vertical-alignment: center;
+        }
+    }
+
+    Text {
+        text: pasta.linha;
+        color: Tema.texto;
+        wrap: word-wrap;
+    }
+
+    if pasta.detalhe != "": Text {
+        text: pasta.detalhe;
+        font-size: Tema.fonte-nota;
+        color: Tema.texto-fraco;
+        wrap: word-wrap;
+    }
+
+    // Conflito não é erro: as duas versões estão guardadas. A faixa diz isso, e leva até elas.
+    // Conflito não é erro: as duas versões estão guardadas. A faixa diz isso, e cada arquivo
+    // oferece a escolha — sem obrigar ninguém a escolher: manter as duas é uma resposta.
+    if pasta.conflitos != "": Faixa {
+        texto: pasta.conflitos;
+        cor: Tema.atencao;
+        cor-de-fundo: Tema.atencao-suave;
+        botao: "Ver as duas";
+        nota: "Abre a pasta: a cópia tem \"conflito\" e o nome do computador no nome.";
+        acionado => {
+            Acoes.abrir-pasta(posicao);
+        }
+    }
+
+    for conflito[indice] in pasta.lista: VerticalLayout {
+        spacing: Tema.e1;
+
+        Text {
+            text: conflito.texto;
+            font-size: Tema.fonte-nota;
+            color: Tema.texto;
+            wrap: word-wrap;
+        }
+
+        HorizontalLayout {
+            spacing: Tema.e2;
+
+            Botao {
+                texto: "Manter as duas";
+                horizontal-stretch: 1;
+                acionado => {
+                    Acoes.resolver-conflito(posicao, indice, 0);
+                }
+            }
+
+            Botao {
+                texto: "Só a mais recente";
+                horizontal-stretch: 1;
+                acionado => {
+                    Acoes.resolver-conflito(posicao, indice, 1);
+                }
+            }
+
+            Botao {
+                texto: "Só a de " + conflito.de-quem;
+                horizontal-stretch: 1;
+                acionado => {
+                    Acoes.resolver-conflito(posicao, indice, 2);
+                }
+            }
+        }
+
+        Text {
+            text: "A versão que não ficar vai para a lixeira da pasta, e pode ser recuperada por 30 dias.";
+            font-size: Tema.fonte-nota;
+            color: Tema.texto-fraco;
+            wrap: word-wrap;
+        }
+    }
+
+    if pasta.oferta: HorizontalLayout {
+        spacing: Tema.e2;
+
+        Botao {
+            texto: "Aceitar";
+            primario: true;
+            horizontal-stretch: 1;
+            acionado => {
+                Acoes.aceitar-pasta(posicao);
+            }
+        }
+
+        Botao {
+            texto: "Agora não";
+            horizontal-stretch: 1;
+            acionado => {
+                Acoes.recusar-pasta(posicao);
+            }
+        }
+    }
+
+    if !pasta.oferta: HorizontalLayout {
+        spacing: Tema.e2;
+
+        Botao {
+            texto: "Abrir a pasta";
+            horizontal-stretch: 1;
+            acionado => {
+                Acoes.abrir-pasta(posicao);
+            }
+        }
+
+        Botao {
+            texto: "Lixeira";
+            acionado => {
+                Acoes.abrir-lixeira(posicao);
+            }
+        }
+
+        // Parar não apaga nada — mas é uma decisão que vale para os dois computadores, então se
+        // segura, como Pausar.
+        BotaoDeSegurar {
+            texto: "Parar de compartilhar";
+            horizontal-stretch: 1;
+            acionado => {
+                Acoes.parar-pasta(posicao);
+            }
+        }
+    }
+}
+
+/// A tela das pastas: cada uma, as ofertas, e os dois jeitos de começar uma nova.
+export component Pastas inherits VerticalLayout {
+    spacing: Tema.e4;
+
+    if Dados.pastas.length == 0: Cartao {
+        Text {
+            text: "Nenhuma pasta compartilhada ainda. Compartilhe uma pasta que já existe, ou crie "
+                + "uma nova: ela aparece no outro computador e fica igual nos dois — mesmo "
+                + "quando um deles estiver desligado, as mudanças vão quando ele voltar.";
+            color: Tema.texto-fraco;
+            wrap: word-wrap;
+        }
+    }
+
+    for pasta[indice] in Dados.pastas: LinhaDePasta {
+        pasta: pasta;
+        posicao: indice;
+    }
+
+    Cartao {
+        Secao { text: "Nova pasta compartilhada"; }
+
+        Botao {
+            texto: "Compartilhar uma pasta deste computador…";
+            primario: true;
+            acionado => {
+                Acoes.compartilhar-pasta();
+            }
+        }
+
+        Text {
+            text: "Ou crie uma pasta nova, já compartilhada:";
+            font-size: Tema.fonte-nota;
+            color: Tema.texto-fraco;
+        }
+
+        HorizontalLayout {
+            spacing: Tema.e2;
+
+            nome := LineEdit {
+                placeholder-text: "Nome da pasta";
+                accepted(texto) => {
+                    Acoes.criar-pasta(texto);
+                    self.text = "";
+                }
+            }
+
+            Botao {
+                texto: "Criar";
+                habilitado: nome.text != "";
+                acionado => {
+                    Acoes.criar-pasta(nome.text);
+                    nome.text = "";
+                }
+            }
+        }
+
+        Text {
+            text: "As pastas recebidas e as criadas ficam na pasta InputRemote, dentro da sua "
+                + "pasta pessoal. Nada é apagado de vez: o que sai vai para uma lixeira da pasta "
+                + "por 30 dias.";
+            font-size: Tema.fonte-nota;
+            color: Tema.texto-fraco;
+            wrap: word-wrap;
+        }
+    }
+}

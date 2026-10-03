@@ -43,9 +43,9 @@ use ir_ipc::transferencia::{Fase, Sentido, Transferencia};
 use ir_ipc::{Aviso, Pedido, TextoDoClipboard};
 use tracing::{debug, info, warn};
 
-mod atualizacao;
+pub(crate) mod atualizacao;
 mod imagem;
-mod instancia;
+pub(crate) mod instancia;
 mod notificacao;
 mod rede;
 mod servico;

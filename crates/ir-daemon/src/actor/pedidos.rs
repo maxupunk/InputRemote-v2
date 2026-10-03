@@ -124,8 +124,7 @@ impl Daemon {
                     Resposta::Falha(Falha::ForaDeContexto)
                 }
             }
-            // O curinga cobre variantes futuras do contrato ainda não tratadas aqui.
-            _ => Resposta::Falha(Falha::ForaDeContexto),
+            outro => self.tratar_pasta(outro, &leitor),
         }
     }
 

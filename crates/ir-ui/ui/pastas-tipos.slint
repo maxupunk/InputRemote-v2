@@ -1,0 +1,28 @@
+// O tipo de uma pasta na tela, num arquivo próprio: `dados.slint` o usa, e `pastas.slint` usa
+// `dados.slint` — com ele em qualquer um dos dois, um importaria o outro.
+
+/// Um arquivo que foi mudado nos dois computadores ao mesmo tempo.
+export struct ConflitoUi {
+    /// O que aconteceu, em uma frase: o nome e onde está a outra versão.
+    texto: string,
+    /// O nome do outro computador, ou "o outro computador", para o botão da cópia.
+    de-quem: string,
+}
+
+/// Uma pasta, como a tela a mostra.
+export struct PastaUi {
+    /// O nome.
+    nome: string,
+    /// A situação, em uma frase.
+    linha: string,
+    /// De onde veio e onde está.
+    detalhe: string,
+    /// O que aconteceu com os conflitos, ou vazio.
+    conflitos: string,
+    /// Os conflitos, um por arquivo, para escolher o que fica.
+    lista: [ConflitoUi],
+    /// 0 em dia, 1 andando, 2 pede atenção.
+    saude: int,
+    /// Se é uma oferta do outro computador, esperando sim ou não.
+    oferta: bool,
+}

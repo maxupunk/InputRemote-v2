@@ -25,6 +25,9 @@ tray-icon = { version = "0.25", default-features = false }
 # `Win32_UI_WindowsAndMessaging` traz `GetSystemMetrics`: é dele que sai o tamanho da tela, para o
 # aviso de cópia nascer no canto de baixo à direita.
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_Security", "Win32_UI_WindowsAndMessaging"] }
+# O seletor de pasta nativo do Windows (`IFileOpenDialog`), para "Compartilhar uma pasta". Sem as
+# features padrão: elas são o portal do Linux, onde quem abre o seletor é o `zenity`. ADR-0016.
+rfd = { version = "0.16", default-features = false }
 
 [build-dependencies]
 slint-build = "1.14"

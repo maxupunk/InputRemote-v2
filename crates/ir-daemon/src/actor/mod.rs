@@ -35,6 +35,7 @@ mod estado;
 mod parada;
 mod pareamento;
 mod partes;
+mod pastas;
 mod pausa;
 mod pedidos;
 mod politica;
@@ -163,6 +164,8 @@ pub(crate) struct Daemon {
     pub(crate) descoberta: ir_transporte::Descoberta,
     /// Quantos ajudantes de clipboard estão ligados.
     pub(crate) ajudantes: crate::ipc::Ajudantes,
+    /// Os ajudantes das pastas compartilhadas, quando o canal deles subiu.
+    pub(crate) pastas: Option<crate::ipc::Pastas>,
 }
 
 /// A cada quantas batidas de 5 ms se tenta reconectar. 600 × 5 ms = 3 s.
@@ -222,6 +225,7 @@ impl Daemon {
         self.drive(Input::Tick);
         self.notar_estado();
         if self.ticks.is_multiple_of(SUPRESSAO_TICKS) {
+            self.informar_par_as_pastas();
             self.renovar_supressao();
             self.renovar_conducao();
         }

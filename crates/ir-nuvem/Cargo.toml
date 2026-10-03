@@ -1,0 +1,44 @@
+[package]
+name = "ir-nuvem"
+description = "A pasta recebida sob demanda: a Cloud Files API no Windows (a mesma do OneDrive), FUSE no Linux."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.62"
+features = [
+    "Win32_Foundation",
+    # A raiz de sincronia, os marcadores, a entrega de bytes ao abrir.
+    "Win32_Storage_CloudFilters",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_CorrelationVector",
+    # As raízes registradas, lidas do registro para limpar as órfãs.
+    "Win32_System_Registry",
+    # A entrada no painel do Explorer: StorageProviderSyncRootManager.
+    "Foundation",
+    # A lista das raízes registradas, para limpar as que ficaram sem pasta.
+    "Foundation_Collections",
+    "Storage",
+    "Storage_Provider",
+    # `StorageFolder`, o caminho da raiz no registro do Explorer, mora atrás desta.
+    "Storage_Search",
+]
+
+[target.'cfg(windows)'.dependencies]
+windows-future = "0.3"
+
+# A pasta sob demanda no Linux: um sistema de arquivos em espaço de usuário (FUSE), montado pelo
+# `fusermount3` do pacote `fuse3`, sem ligar à libfuse. ADR-0016.
+[target.'cfg(target_os = "linux")'.dependencies]
+fuser = { version = "0.18", default-features = false }
+libc = "0.2"
+# Quem abriu um arquivo que não veio, no log do ajudante.
+tracing.workspace = true
+
+[lints]
+workspace = true

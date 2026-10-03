@@ -267,6 +267,29 @@ recusa dizer "itens demais" sem guardar o resto. Um manifesto que cabe num quadr
 nenhuma, idêntico ao da versão 6
 ([log 55](logs/55-o-manifesto-que-nao-cabia.md)).
 
+**A pasta compartilhada** (versão 8, [ADR-0015](adr/0015-pastas-compartilhadas.md)) vive numa variante
+só, `Folder(FolderMessage)`, com vocabulário e ordem de variantes próprios. Todas, menos as de sessão,
+levam a pasta (`FolderId`, 16 bytes sorteados por quem compartilha):
+
+| Grupo | Mensagens |
+|---|---|
+| Sessão | `Hello{pastas, relógio}`, `HelperAbsent` (dita pelo serviço quando não há ajudante) |
+| Ciclo de vida | `Offer{nome, entradas, bytes}`, `Accept`, `Decline{motivo}`, `Stop` |
+| Índice | `RequestChanges{desde}`, `Changes{entradas, up_to, last}`, `Acknowledge{seq}` |
+| Baixar | `RequestRange{pedido, entrada, versão, offset, len ≤ 4 MiB}`, `Range{pedido, offset, dados}`, `RangeFailed{motivo}`, `CancelRange` |
+| Enviar | `Upload{op, caminho, base, tamanho, blake3, modificação}`, `Credit{op, bytes}`, `AlreadyHave{op}`, `UploadBlock{op, offset, dados}`, `UploadEnd{op}` |
+| Operações | `Delete{op, caminho, base}`, `CreateDirectory{op, caminho}`, `Rename{op, de, para, base}` |
+| Desfecho | `Outcome{op, Accepted{versão} \| Conflict{versão, caminho da cópia} \| Resurrected{versão} \| Refused(motivo)}` |
+
+A origem numera cada mudança aceita; a versão de uma entrada é o número da pasta quando ela mudou.
+A réplica manda a versão em que se baseou (`base`), e uma base que não é mais a atual é conflito: as
+duas versões ficam. `Changes` vem em ordem de versão e em quantas mensagens precisar
+(`changes_messages`); o `up_to` de uma mensagem do meio é o número anterior à primeira versão da
+seguinte, para uma versão partida entre duas mensagens ser pedida de novo inteira depois de uma
+queda. Todo caminho passa pela mesma conferência do manifesto (`is_safe_relative_path`), e cada
+mensagem é conferida por `validate_folder_message` antes de qualquer uso. Estas mensagens **não**
+passam pela fila das cópias do clipboard.
+
 ## 7. `StateSnapshot` — a rede de segurança
 
 O servidor envia a cada 250 ms enquanto o controle estiver no par, e sempre depois de:
@@ -295,6 +318,11 @@ diferença for maior que uma versão maior, a sessão é recusada com mensagem e
 A versão 7 acrescentou `ManifestPart` ao canal 5, e a 6 continua aceita: a parte só sai num
 manifesto que a versão 6 já não conseguia mandar, então tudo o que funcionava entre as duas
 funciona igual. Os vetores da versão 6 seguem gravados; os da 7 foram acrescentados ao lado.
+
+A versão 8 acrescentou `Folder`, a pasta compartilhada, e é diferente da 7 num ponto: ela acrescenta
+mensagem que um par antigo **receberia** e não entenderia. Por isso existe portão: quem envia só manda
+mensagem da pasta a um par que negociou a 8 (`version::supports_folders`). As versões 6 e 7 continuam
+aceitas para todo o resto, e o par antigo só não vê a pasta.
 
 Regra deliberadamente estrita: **mensagem desconhecida em canal confiável derruba o
 enlace**; campo desconhecido não é ignorado. Um KVM que age sob ambiguidade digita a

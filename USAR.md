@@ -89,6 +89,37 @@ No Linux sem aviso de mudança de clipboard (o GNOME), o que foi copiado atraves
 atravessa ([ADR-0011](docs/adr/0011-clipboard-na-travessia.md)). Os arquivos recebidos ficam na pasta
 de recebidos (Preferências mostra qual), que se limpa sozinha.
 
+### Pastas compartilhadas
+
+Uma pasta que existe nos dois computadores, sempre igual, como no OneDrive ou no Google Drive — sem
+configurar rede. Na janela, abra **Pastas compartilhadas** e:
+
+- **Compartilhar uma pasta deste computador…** escolhe uma pasta que já existe; ou
+- **Criar** faz uma pasta nova, já compartilhada, dentro de `InputRemote` na sua pasta pessoal.
+
+O outro computador recebe o aviso e mostra **Aceitar** e **Agora não**. Aceita, a pasta aparece em
+`InputRemote\<nome>` na pasta pessoal — no Windows, também no painel lateral do Explorer; no Linux,
+na barra lateral do Nautilus.
+
+- **Sob demanda.** No computador que recebeu, a pasta aparece inteira na hora, mas um arquivo só é
+  baixado quando é aberto. No Windows, o Explorer mostra a nuvem (não baixado) e o ✓ (baixado), e o
+  menu do botão direito tem **Sempre manter neste dispositivo** e **Liberar espaço**.
+- **Editar** funciona dos dois lados. A mudança vai para o outro computador em segundos.
+- **Sem o outro computador**, tudo o que já foi baixado continua abrindo, e o que você mudar fica
+  guardado e vai sozinho quando ele voltar — mesmo com outro IP. Abrir um arquivo que nunca foi
+  baixado diz "rede indisponível".
+- **Mudou nos dois ao mesmo tempo?** As duas versões ficam: a mais recente com o nome, a outra como
+  `nome (conflito NOTEBOOK 2026-10-02 14h30).ext`, ao lado. A tela mostra o conflito com **Manter as
+  duas**, **Só a mais recente** e **Só a de** o outro computador; a que sai vai para a lixeira.
+- **Apagou sem querer?** O que é apagado — ou descartado num conflito — fica 30 dias na **Lixeira**
+  da pasta. Para recuperar, arraste de volta para a pasta.
+- **Parar de compartilhar** (segure o botão) não apaga nada: a pasta vira uma pasta comum dos dois
+  lados. No computador que recebeu, o que não tinha sido baixado sai — está inteiro no outro.
+
+Arquivos de pastas compartilhadas, como os copiados, só atravessam pela rede; o Bluetooth sozinho não
+leva arquivo. Os dois computadores precisam desta versão do InputRemote; com um mais antigo do outro
+lado, a tela diz para atualizar.
+
 ### Tela de bloqueio
 
 Os dois controlam um ao outro também na tela de bloqueio, sem configurar nada: dá para digitar a
@@ -124,6 +155,9 @@ A lista honesta, do [log 45](docs/logs/45-a-varredura-implementada.md):
 - o Linux **controlando** o Windows (captura por `evdev`) numa sessão GNOME;
 - imagens no clipboard entre as duas máquinas (a conversão e o clipboard do Windows foram provados
   aqui; o Wayland e a travessia, não);
-- a suspensão e a volta das duas máquinas com a conexão de pé.
+- a suspensão e a volta das duas máquinas com a conexão de pé;
+- nas pastas compartilhadas, o Word de verdade salvando dentro de uma pasta sob demanda (o
+  LibreOffice foi provado; [log 59](docs/logs/59-a-pasta-sob-demanda.md)). O resto foi provado entre
+  este Windows e o notebook Fedora, numa sessão GNOME, e com o instalador.
 
 O que foi provado na bancada está nos [logs](docs/logs/).

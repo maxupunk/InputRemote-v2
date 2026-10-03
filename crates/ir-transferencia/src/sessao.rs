@@ -37,6 +37,10 @@ pub(crate) async fn conduzir(
     deposito: &crate::recebendo::Deposito,
 ) {
     let remetente = Arc::new(Mutex::new(enlace.remetente));
+    // A pasta compartilhada usa o mesmo remetente enquanto este enlace viver; o guarda a solta de
+    // qualquer jeito que este futuro termine — inclusive largado no meio, quando o par muda.
+    deposito.desvio.enlace(Some(Arc::clone(&remetente)));
+    let _faixa = SoltarAoSair(deposito.desvio.clone());
     // Sem limite, e de propósito. Era uma fila de 32, e com mais de 32 arquivos ela enchia: a leitura
     // parava esperando vaga, o destino parava esperando a leitura para mandar o `Verified` seguinte,
     // e este lado parava esperando o destino para mandar o bloco seguinte. As respostas são uma por
@@ -66,6 +70,15 @@ struct AbortarAoSair(tokio::task::JoinHandle<()>);
 impl Drop for AbortarAoSair {
     fn drop(&mut self) {
         self.0.abort();
+    }
+}
+
+/// Solta o remetente da faixa da pasta ao sair de escopo.
+struct SoltarAoSair(crate::desvio::Desvio);
+
+impl Drop for SoltarAoSair {
+    fn drop(&mut self) {
+        self.0.enlace(None);
     }
 }
 

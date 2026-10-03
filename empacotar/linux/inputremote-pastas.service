@@ -1,0 +1,20 @@
+# O ajudante das pastas compartilhadas, como unidade do systemd do usuario (ADR-0015).
+#
+# E ele que grava nas pastas do usuario -- o servico do sistema nem pode (ProtectHome=read-only) --
+# e por isso roda como o usuario, na sessao dele. Processo proprio, e nao um modo do ajudante de
+# clipboard: um defeito na sincronia nao leva o copiar e colar junto.
+#
+# Ligado a default.target, e nao a sessao grafica: a sincronia nao precisa de tela, e uma pasta
+# editada por SSH tambem deve ir para o outro computador. O pacote o (re)inicia nas sessoes abertas
+# (ajudante-nas-sessoes), como o de clipboard.
+[Unit]
+Description=InputRemote - pastas compartilhadas entre os dois computadores
+StartLimitIntervalSec=0
+
+[Service]
+ExecStart=/usr/bin/inputremote-agent --pastas
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

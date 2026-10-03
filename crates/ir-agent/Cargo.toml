@@ -23,6 +23,8 @@ ir-clip.workspace = true
 serde.workspace = true
 tracing.workspace = true
 ir-processo.workspace = true
+# O ajudante das pastas compartilhadas, o terceiro papel deste executável (`--pastas`).
+ir-sincronia.workspace = true
 anyhow.workspace = true
 # O nome da imagem de clipboard em trânsito leva parte do resumo dela.
 blake3.workspace = true

@@ -29,6 +29,10 @@ pub struct Pedidos {
     pub(crate) de_pe: Arc<AtomicBool>,
     /// Para contar à interface o que houve com uma cópia que esperava e saiu da fila.
     pub(crate) avisos: broadcast::Sender<Aviso>,
+    /// A faixa da pasta compartilhada no canal.
+    pub(crate) desvio: crate::desvio::Desvio,
+    /// O lado do ajudante da faixa, até alguém tomá-lo ([`Self::tomar_faixa`]).
+    pub(crate) faixa: Arc<std::sync::Mutex<Option<crate::Faixa>>>,
 }
 
 impl Pedidos {
@@ -49,7 +53,24 @@ impl Pedidos {
             destino: Arc::new(destino),
             de_pe: Arc::new(AtomicBool::new(false)),
             avisos,
+            desvio: crate::desvio::Desvio::solto(),
+            faixa: Arc::default(),
         }
+    }
+
+    /// O lado do ajudante da pasta compartilhada: por onde mandar ao par e receber dele. Uma vez só —
+    /// é de quem serve o canal local das pastas.
+    #[must_use]
+    pub fn tomar_faixa(&self) -> Option<crate::Faixa> {
+        self.faixa.lock().ok().and_then(|mut faixa| faixa.take())
+    }
+
+    /// O que a sessão de entrada sabe do par: se a versão acordada conhece pastas, e o nome dele.
+    ///
+    /// Chamado a cada batida do ator; só muda alguma coisa quando muda de verdade.
+    pub fn informar_par(&self, versao: Option<ir_proto::version::ProtocolVersion>, nome: &str) {
+        let suporta = versao.is_some_and(ir_proto::version::supports_folders);
+        self.desvio.par(suporta, nome);
     }
 
     /// Esvazia a pasta de recebidos e conta o estado novo quando terminar.

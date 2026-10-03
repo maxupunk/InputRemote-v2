@@ -39,15 +39,24 @@ impl ManifestItem {
     /// crate puro, onde pode ser testada exaustivamente.
     #[must_use]
     pub fn is_safe_path(&self) -> bool {
-        let path = self.path.as_str();
-        if path.is_empty() || path.len() > limits::MAX_RELATIVE_PATH {
-            return false;
-        }
-        if path.starts_with('/') {
-            return false;
-        }
-        path.split('/').all(is_safe_component)
+        is_safe_relative_path(&self.path)
     }
+}
+
+/// Se um caminho relativo vindo da rede é seguro para materializar.
+///
+/// A regra de [`ManifestItem::is_safe_path`], fora do item para valer também nos caminhos da pasta
+/// compartilhada ([`super::pasta`]): uma regra de segurança escrita duas vezes é uma regra que
+/// diverge.
+#[must_use]
+pub fn is_safe_relative_path(path: &str) -> bool {
+    if path.is_empty() || path.len() > limits::MAX_RELATIVE_PATH {
+        return false;
+    }
+    if path.starts_with('/') {
+        return false;
+    }
+    path.split('/').all(is_safe_component)
 }
 
 /// Se um componente de caminho vira exatamente um nome de arquivo, nos dois sistemas.
@@ -193,6 +202,13 @@ pub enum BulkMessage {
         /// Os itens desta parte.
         items: Vec<ManifestItem>,
     },
+    /// A pasta compartilhada (versão 8).
+    ///
+    /// Tudo o que é da pasta mora numa variante só, e não espalhado aqui: a pasta tem o próprio
+    /// vocabulário e a própria ordem de variantes, e a cópia do clipboard não precisa conhecer
+    /// nenhum dos dois. Só sai para um par que negociou a versão 8
+    /// ([`crate::version::supports_folders`]).
+    Folder(super::pasta::FolderMessage),
 }
 
 /// Por que uma transferência foi recusada antes de começar.

@@ -165,6 +165,10 @@ pub enum Pedido {
     TravarBorda(bool),
     /// Bloquear, ou não, o outro computador quando este bloquear.
     BloquearJuntos(bool),
+    /// As pastas compartilhadas, como estão agora ([`Resposta::Pastas`]).
+    Pastas,
+    /// Um pedido sobre as pastas compartilhadas, que o serviço repassa ao ajudante das pastas.
+    Pasta(crate::pastas::ComandoDePasta),
 }
 
 impl Pedido {
@@ -172,9 +176,11 @@ impl Pedido {
     #[must_use]
     pub const fn autoridade(&self) -> Autoridade {
         match self {
-            Self::Estado | Self::Acompanhar | Self::AcompanharClipboard | Self::Diagnostico => {
-                Autoridade::Ler
-            }
+            Self::Estado
+            | Self::Acompanhar
+            | Self::AcompanharClipboard
+            | Self::Diagnostico
+            | Self::Pastas => Autoridade::Ler,
             // Procurar não muda configuração, mas emite anúncio na rede e no rádio: é ação,
             // não leitura, e não é coisa que um processo qualquer deva conseguir disparar.
             Self::DefinirPolitica(_)
@@ -187,6 +193,9 @@ impl Pedido {
             | Self::CtrlAltDel
             | Self::TravarBorda(_)
             | Self::BloquearJuntos(_)
+            // Compartilhar uma pasta põe o conteúdo dela no outro computador: o mesmo portão de
+            // mandar arquivo — o pareamento —, e pelo mesmo motivo.
+            | Self::Pasta(_)
             // Mandar arquivo é ação com consequência: o conteúdo sai desta máquina. Mas exigir
             // elevação aqui seria exigir elevação **a cada colagem**, já que é este o caminho que
             // o Ctrl+C vai usar — e uma permissão que atrapalha o uso normal acaba desligada. O
@@ -221,6 +230,8 @@ pub enum Resposta {
     Diagnostico(String),
     /// Não deu, e aqui está o porquê.
     Falha(Falha),
+    /// As pastas compartilhadas.
+    Pastas(Vec<crate::pastas::ResumoDePasta>),
 }
 
 /// Uma mensagem do serviço para a interface, no fluxo de bytes do canal de controle.
@@ -322,6 +333,11 @@ pub enum Aviso {
     /// No fim do enum, como toda variante nova: o canal local é `postcard`, que numera as variantes
     /// pela posição, e um processo de antes de uma atualização ainda lê os números antigos.
     ArquivosChegando(crate::chegada::Chegando),
+    /// As pastas compartilhadas mudaram — uma nova, uma oferta, uma que sincronizou ou entrou em
+    /// conflito. Leva a lista inteira, como o estado.
+    PastasMudaram(Vec<crate::pastas::ResumoDePasta>),
+    /// Um pedido sobre as pastas não deu certo: a frase do ajudante, já com o que fazer.
+    RecadoDasPastas(String),
 }
 
 impl Aviso {

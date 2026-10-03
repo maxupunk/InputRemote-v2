@@ -1,0 +1,23 @@
+[package]
+name = "ir-acervo"
+description = "Uma pasta compartilhada no disco: varredura, montagem e publicação, lixeira, índice guardado e os trechos que vão e vêm."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ir-proto.workspace = true
+ir-pasta.workspace = true
+# Se um arquivo da pasta sob demanda já tem conteúdo, antes de lê-lo.
+ir-nuvem.workspace = true
+# Com `std`: o índice guarda o caminho da pasta como `PathBuf`.
+serde = { workspace = true, features = ["std"] }
+postcard.workspace = true
+blake3.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

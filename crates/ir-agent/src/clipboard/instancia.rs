@@ -18,7 +18,13 @@ use std::path::{Path, PathBuf};
 /// Se o arquivo da trava não abrir. Quem chama segue sem trava: um ajudante a mais é melhor que
 /// nenhum.
 pub(crate) fn ser_o_unico() -> std::io::Result<Option<File>> {
-    travar(&caminho())
+    travar(&caminho("inputremote-clipboard.lock"))
+}
+
+/// O mesmo, para o ajudante das pastas: dois deles gravando nas mesmas pastas seria cada um
+/// desfazendo o que o outro fez.
+pub(crate) fn ser_o_unico_das_pastas() -> std::io::Result<Option<File>> {
+    travar(&caminho("inputremote-pastas.lock"))
 }
 
 /// A trava num caminho dado — separada para o teste não depender do diretório do usuário.
@@ -39,15 +45,13 @@ fn travar(caminho: &Path) -> std::io::Result<Option<File>> {
 }
 
 /// Onde fica a trava: num diretório só deste usuário.
-fn caminho() -> PathBuf {
+fn caminho(nome: &str) -> PathBuf {
     #[cfg(windows)]
     let pasta =
         std::env::var_os("LOCALAPPDATA").map(|base| PathBuf::from(base).join("InputRemote"));
     #[cfg(not(windows))]
     let pasta = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
-    pasta
-        .unwrap_or_else(std::env::temp_dir)
-        .join("inputremote-clipboard.lock")
+    pasta.unwrap_or_else(std::env::temp_dir).join(nome)
 }
 
 #[cfg(test)]

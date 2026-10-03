@@ -13,6 +13,7 @@
 //! |---|---|---|
 //! | interface ↔ serviço | [`ui`] | o usuário interativo, com elevação para o que decide quem digita |
 //! | agente ↔ serviço | [`agent`] | só o agente, autenticado por token e por segredo de uma via |
+//! | ajudante das pastas ↔ serviço | [`pastas`] | o usuário interativo dono de cada pasta |
 //!
 //! `Injetar` não existe no vocabulário da interface, e essa ausência é a garantia. Se qualquer
 //! processo do usuário pudesse pedir injeção, qualquer programa que ele rodasse poderia digitar
@@ -58,6 +59,7 @@ pub mod cliente;
 pub mod codec;
 pub mod endereco;
 pub mod falha;
+pub mod pastas;
 pub mod status;
 pub mod texto;
 pub mod transferencia;
@@ -68,6 +70,10 @@ pub use agent::{ComandoDoAgente, FatoDoAgente};
 pub use chegada::{Chegando, ItemChegando};
 pub use codec::{ErroDeCodec, MAX_MENSAGEM, PREFIXO};
 pub use falha::Falha;
+pub use pastas::{
+    ComandoDePasta, DoAjudanteDePastas, EscolhaDeConflito, IdDePasta, PapelDaPasta,
+    ParaOAjudanteDePastas, ResumoDePasta, SituacaoDaPasta,
+};
 pub use status::{
     AvisoDeRede, EconomiaDoWifi, Estado, Latencia, LinkState, MotivoDaQueda, MotivoDoPortador,
     ParConhecido, Pausa, Politica,

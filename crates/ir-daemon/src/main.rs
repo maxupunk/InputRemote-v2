@@ -109,6 +109,7 @@ async fn subir_e_rodar(
     #[cfg(target_os = "linux")]
     fundo::vigiar_a_tela(&de_fundo);
     let arquivos = arquivos::abrir(&cfg, &dir, &identity, &canais.avisos, &abertos.descoberta);
+    let pastas = arquivos::abrir_pastas(&arquivos, &canais.avisos, (&cfg, &dir));
 
     let mut daemon = Daemon::new(Parts {
         session: actor::nova_sessao(politica, edge, identidade.clone(), cfg.borda_escolhida_em),
@@ -132,6 +133,7 @@ async fn subir_e_rodar(
         identidade_local: identidade,
         arquivos,
         ajudantes: canais.ajudantes,
+        pastas,
     });
 
     dar_partida(&mut daemon, screen);

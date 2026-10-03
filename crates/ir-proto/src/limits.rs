@@ -82,6 +82,30 @@ pub const MAX_MANIFEST_ITEMS: usize = 10_000;
 /// Máximo de bytes num caminho relativo dentro de um manifesto.
 pub const MAX_RELATIVE_PATH: usize = 1024;
 
+/// Máximo de bytes que um pedido de trecho da pasta compartilhada pode pedir de uma vez.
+///
+/// Origem: o controle de fluxo da pasta ([ADR-0015](../../../docs/adr/0015-pastas-compartilhadas.md)).
+/// Quem pede guarda no máximo isto pendente por pedido, e é o que impede um arquivo grande de
+/// ocupar o canal 5 inteiro enquanto o clipboard espera. Os bytes voltam em pedaços de no máximo
+/// [`MAX_FILE_BLOCK`].
+pub const MAX_RANGE_REQUEST: u32 = 4 * 1024 * 1024;
+
+/// Máximo de bytes no nome de uma pasta compartilhada.
+///
+/// Origem: o maior componente de caminho em NTFS e ext4. O nome vira o nome da pasta na réplica.
+pub const MAX_FOLDER_NAME: usize = 255;
+
+/// Máximo de pastas que um lado anuncia no `Hello` da pasta compartilhada.
+///
+/// Origem: limite prático. Impede que o par force alocação grande com um anúncio absurdo.
+pub const MAX_KNOWN_FOLDERS: usize = 64;
+
+/// Máximo de entradas — arquivos e subpastas — numa pasta compartilhada.
+///
+/// Origem: o índice da réplica fica inteiro na memória do ajudante; cem mil entradas são uns
+/// quinze megabytes. Acima disto a pasta não é compartilhada, com o motivo dito.
+pub const MAX_FOLDER_ENTRIES: usize = 100_000;
+
 // As relações entre estes números são invariantes, não comportamento — então são conferidas
 // em tempo de compilação, e não por teste. Um limite incoerente deixa de compilar, o que é
 // estritamente melhor que falhar num teste que alguém pode marcar como ignorado.
@@ -122,4 +146,15 @@ const _TCP_FITS_ONE_NOISE_MESSAGE: () = {
 /// Um bloco de arquivo tem de deixar espaço para o cabeçalho da mensagem que o carrega.
 const _FILE_BLOCK_LEAVES_ROOM_FOR_ITS_HEADER: () = {
     assert!(MAX_FILE_BLOCK < MAX_TCP_PLAINTEXT);
+};
+
+/// Um pedido de trecho tem de render pelo menos um bloco cheio, senão o arquivo anda em pedaços
+/// menores que o que o quadro comporta.
+const _A_RANGE_REQUEST_HOLDS_A_FULL_BLOCK: () = {
+    assert!(MAX_RANGE_REQUEST as usize >= MAX_FILE_BLOCK);
+};
+
+/// O nome de uma pasta é um componente de caminho, e tem de caber num caminho relativo.
+const _A_FOLDER_NAME_FITS_A_PATH: () = {
+    assert!(MAX_FOLDER_NAME < MAX_RELATIVE_PATH);
 };

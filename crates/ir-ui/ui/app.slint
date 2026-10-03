@@ -17,11 +17,13 @@ import { Inicio } from "inicio.slint";
 import { Pareamento } from "pareamento.slint";
 import { Preferencias } from "preferencias.slint";
 import { SemServico } from "ativacao.slint";
+import { Pastas } from "pastas.slint";
 
 // O Rust só enxerga o que o arquivo de entrada exporta. Sem esta linha, `Dados` e `Acoes`
 // existem no Slint e não existem na ponte — que é o único jeito de a janela receber dados.
 export { Dados, Acoes, EstadoUi, EtapaDoPareamento } from "dados.slint";
 export { CopiaUi, ItemDeCopia } from "copia.slint";
+export { PastaUi, ConflitoUi } from "pastas-tipos.slint";
 // A janelinha do canto, que o Rust cria e posiciona quando uma cópia começa.
 export { Flutuante } from "flutuante.slint";
 
@@ -95,7 +97,8 @@ export component Janela inherits Window {
                 Text {
                     text: root.tela == 0 || Dados.desconectado
                         ? "InputRemote"
-                        : (root.tela == 1 ? "Parear computador" : "Preferências");
+                        : (root.tela == 1 ? "Parear computador"
+                            : (root.tela == 3 ? "Pastas compartilhadas" : "Preferências"));
                     vertical-alignment: center;
                     font-size: Tema.fonte-titulo;
                     font-weight: 600;
@@ -187,6 +190,9 @@ export component Janela inherits Window {
                     ir-para-preferencias => {
                         root.tela = 2;
                     }
+                    ir-para-pastas => {
+                        root.tela = 3;
+                    }
                 }
 
                 if !Dados.desconectado && root.tela == 1: Pareamento {
@@ -196,6 +202,8 @@ export component Janela inherits Window {
                 }
 
                 if !Dados.desconectado && root.tela == 2: Preferencias { }
+
+                if !Dados.desconectado && root.tela == 3: Pastas { }
             }
         }
     }

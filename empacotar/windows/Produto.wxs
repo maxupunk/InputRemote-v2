@@ -82,8 +82,26 @@
                   Execute="deferred"
                   Impersonate="no"
                   Return="ignore" />
+    <!-- As pastas compartilhadas sob demanda (ADR-0015) sao raizes de sincronia do Windows, por
+         usuario. Removido o programa, os arquivos que ainda nao vieram apontariam para um provedor
+         que nao existe mais. Na remocao (e nao na atualizacao), o ajudante desliga as pastas
+         do usuario que esta desinstalando: o que veio fica como arquivo comum, o que nao veio sai
+         (esta inteiro no outro computador), e a raiz sai do painel do Explorer. Como o usuario
+         (Impersonate="yes"): as raizes sao dele. Antes de apagar os arquivos, depois de encerrar
+         os ajudantes que estavam rodando. Falhar nao interrompe a desinstalacao. -->
+    <SetProperty Id="DesligarPastas"
+                 Value="&quot;[PASTAINSTALACAO]inputremote-agent.exe&quot; --pastas --desregistrar"
+                 Before="DesligarPastas"
+                 Sequence="execute" />
+    <CustomAction Id="DesligarPastas"
+                  BinaryKey="WixCA"
+                  DllEntry="WixQuietExec64"
+                  Execute="deferred"
+                  Impersonate="yes"
+                  Return="ignore" />
     <InstallExecuteSequence>
       <Custom Action="EncerrarAjudantes" After="StopServices" />
+      <Custom Action="DesligarPastas" After="EncerrarAjudantes">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
     </InstallExecuteSequence>
 
     <!-- O icone da entrada em Aplicativos. Vem do arquivo, e nao extraido do executavel:

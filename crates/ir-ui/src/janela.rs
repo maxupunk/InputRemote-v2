@@ -10,6 +10,7 @@
 
 mod acoes;
 mod pareamento;
+mod pastas;
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -55,6 +56,8 @@ struct Contexto {
     conectado_antes: Cell<bool>,
     /// As últimas medianas de atraso, para o gráfico.
     atrasos: RefCell<crate::historico::Atrasos>,
+    /// As pastas compartilhadas na tela, e o seletor de pasta aberto.
+    pastas: pastas::EstadoDasPastas,
 }
 
 impl Contexto {
@@ -145,6 +148,7 @@ impl Contexto {
         self.mostrar_situacao(agora);
         if agora == Situacao::Conectado {
             self.sincronizar();
+            self.buscar_pastas();
         }
     }
 
@@ -183,6 +187,8 @@ impl Contexto {
                 self.sincronizar();
             }
             Aviso::Transferencia(transferencia) => self.mostrar_copia(&transferencia),
+            Aviso::PastasMudaram(lista) => self.mostrar_pastas(lista),
+            Aviso::RecadoDasPastas(frase) => self.recado_das_pastas(&frase),
             Aviso::PareamentoFalhou(falha) => self.falha_no_pareamento(falha),
             Aviso::Falhou(falha) => self.recado(Some(falha)),
             Aviso::BordaAjustada(borda) => {
@@ -338,6 +344,7 @@ pub fn abrir(
         pasta_de_recebidos: RefCell::default(),
         conectado_antes: Cell::new(false),
         atrasos: RefCell::default(),
+        pastas: pastas::EstadoDasPastas::default(),
     });
 
     {
@@ -355,7 +362,9 @@ pub fn abrir(
     acoes::ligar_configuracao(&janela, &contexto);
     pareamento::ligar(&janela, &contexto);
     acoes::ligar_sessao(&janela, &contexto);
+    pastas::ligar(&janela, &contexto);
     contexto.sincronizar();
+    contexto.buscar_pastas();
 
     // A mesma batida recolhe os avisos e mantém a ligação: é consultando o serviço que a
     // interface percebe uma queda e tenta de novo, sem thread nem temporizador a mais.
@@ -364,6 +373,7 @@ pub fn abrir(
     cronometro.start(TimerMode::Repeated, INTERVALO, move || {
         batida.escutar();
         batida.observar_conexao();
+        batida.conferir_escolha();
     });
 
     // Com a janela aberta, o estado a cada segundo: o atraso muda sem a fase mudar, e o serviço só

@@ -93,6 +93,10 @@ crates/
 ├── ir-input/      traits de captura/injeção + backends por SO
 ├── ir-clip/       modelos de clipboard + backends por SO
 ├── ir-files/      manifesto, blocos, BLAKE3, cotas, staging ......... sem rede
+├── ir-pasta/      a pasta compartilhada: versões, conflito, o que não viaja . PURO, sem E/S
+├── ir-acervo/     o disco de uma pasta compartilhada: varredura, montagem, lixeira, índice
+├── ir-nuvem/      a pasta recebida sob demanda: Cloud Files API (Windows), FUSE (Linux)
+├── ir-sincronia/  o ajudante das pastas: o laço, a conversa com o par, a vigia do disco
 ├── ir-transferencia/ a transferência conduzida: o motor ligado à porta
 ├── ir-configuracao/ configuração e identidade persistentes da máquina
 ├── ir-canais/     os canais locais do serviço: controle (interface) e agente
@@ -114,13 +118,15 @@ ir-daemon ──► ir-session ──► ir-proto ──► (nada)
     ├──► ir-input ──► ir-geometry
     └──► ir-ipc
 
-ir-agent  ──► ir-ipc, ir-input, ir-clip, ir-geometry
+ir-agent  ──► ir-ipc, ir-input, ir-clip, ir-geometry, ir-sincronia
+ir-sincronia ──► ir-pasta, ir-acervo, ir-nuvem, ir-ipc, ir-proto
+ir-acervo    ──► ir-pasta, ir-nuvem, ir-proto
 ir-ui     ──► ir-ipc          (e mais nada — a interface não conhece o produto)
 ```
 
 Proibições verificadas automaticamente:
 
-- `ir-proto`, `ir-confiabilidade`, `ir-session` e `ir-geometry` **NÃO DEVEM** depender de `tokio`, de sockets,
+- `ir-proto`, `ir-confiabilidade`, `ir-session`, `ir-geometry` e `ir-pasta` **NÃO DEVEM** depender de `tokio`, de sockets,
   de relógio de parede, de sistema de arquivos ou de qualquer API de sistema operacional;
 - `ir-ui` **NÃO DEVE** depender de `ir-session`, `ir-net`, `ir-bt` ou `ir-input`;
 - nenhum crate de plataforma (`ir-input`, `ir-bt`, `ir-clip`) depende de outro;
@@ -148,6 +154,11 @@ Por isso `ir-ipc` tem dois vocabulários:
 |---|---|---|
 | `status`, `ui`, `vocabulario` | tipos próprios (`Portador`, `Borda`, `Nivel`, `Maquina`, `Nome`, `Recursos`) | `ir-ui` |
 | `agent` | tipos de `ir-proto` (`Injection`, `Capture`, `PointerPosition`) | `ir-agent` |
+| `pastas` | `FolderMessage` de `ir-proto` no repasse; tipos próprios (`ResumoDePasta`, `ComandoDePasta`) no que a janela vê | o ajudante das pastas |
+
+O canal do ajudante das pastas ([ADR-0015](adr/0015-pastas-compartilhadas.md)) segue a mesma
+divisão por dentro: o que vai e vem do par é `FolderMessage`, que o serviço repassa sem abrir; o que
+chega à janela — o resumo de cada pasta e os comandos — tem vocabulário próprio.
 
 A exceção do canal do agente é deliberada: ele carrega injeção de entrada, e ali os tipos do
 protocolo são exatamente os certos. A interface nunca vê esse módulo, porque `Injetar` não

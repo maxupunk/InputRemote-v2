@@ -106,6 +106,8 @@ pub(crate) struct Parts {
     pub(crate) identidade_local: LocalIdentity,
     /// Quantos ajudantes de clipboard estão ligados, para o diagnóstico.
     pub(crate) ajudantes: crate::ipc::Ajudantes,
+    /// Os ajudantes das pastas compartilhadas, quando o canal deles subiu.
+    pub(crate) pastas: Option<crate::ipc::Pastas>,
     /// Quem está por perto para parear: rede e rádio.
     pub(crate) descoberta: ir_transporte::Descoberta,
     /// Por onde pedir um envio de arquivos.
@@ -121,11 +123,13 @@ pub(crate) struct Parts {
 
 impl Daemon {
     /// Monta o ator.
+    ///
+    /// O endereço do par sai da configuração — `ip:porta` ou endereço de rádio —, e é ele que diz
+    /// o portador.
     #[must_use]
     pub(crate) fn new(parts: Parts) -> Self {
         let mut daemon = Self {
             alcance: super::alcance::da_configuracao(&parts.config),
-            // `ip:porta` ou endereço de rádio: é o endereço que diz o portador.
             peer: parts.config.endereco_do_par().and_then(Endereco::ler),
             #[cfg(windows)]
             atencao: super::protegido::aplicador_de_atencao(&parts.config, &parts.de_fundo),
@@ -177,6 +181,7 @@ impl Daemon {
             arquivos: parts.arquivos,
             descoberta: parts.descoberta,
             ajudantes: parts.ajudantes,
+            pastas: parts.pastas,
             ultimo_arranjo: None,
         };
         daemon.alimentar_sessao_nova();

@@ -27,6 +27,7 @@ mod agente;
 mod apoio;
 mod controle;
 mod escuta;
+mod pastas;
 mod quadros;
 
 use anyhow::Result;
@@ -36,6 +37,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 
 pub use ir_sessao::Ajudantes;
+pub use pastas::{Pastas, endereco_das_pastas, iniciar_pastas};
 
 /// Um pedido da interface, com o caminho de volta para a resposta do ator.
 #[derive(Debug)]

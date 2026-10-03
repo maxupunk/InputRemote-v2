@@ -83,6 +83,12 @@ impl Escuta {
         ))
     }
 
+    /// Quem conectou. No Windows só se sabe depois de ler ([`quem_depois_de_ler`]).
+    #[allow(clippy::unused_self)] // a assinatura é a mesma do Linux
+    pub(crate) const fn quem_conectou(&self, _conexao: &Conexao) -> Option<String> {
+        None
+    }
+
     /// Com a autoridade de quem os arquivos pedidos por esta conexão seriam lidos — provisória.
     ///
     /// O descritor de segurança decide **se** alguém entra, mas não diz **quem** entrou, e o
@@ -92,6 +98,28 @@ impl Escuta {
     pub(crate) fn leitor_de(&self, _conexao: &Conexao) -> ir_transferencia::Leitor {
         ir_transferencia::Leitor::do_chamador(None, 0, ir_sessao::como_servico())
     }
+}
+
+/// Quem conectou, agora que o primeiro quadro já foi lido: o SID, ou o próprio usuário quando o
+/// serviço roda como ele.
+#[cfg(windows)]
+pub(crate) fn quem_depois_de_ler(conexao: &Conexao) -> Option<String> {
+    if !ir_sessao::como_servico() {
+        return Some("proprio".to_owned());
+    }
+    match ir_acesso::identidade::TokenDoCliente::do_pipe(conexao).and_then(|token| token.sid()) {
+        Ok(sid) => Some(format!("sid:{sid}")),
+        Err(erro) => {
+            tracing::warn!(%erro, "não consegui identificar quem conectou");
+            None
+        }
+    }
+}
+
+/// No Linux quem conectou já é sabido na aceitação ([`Escuta::quem_conectou`]).
+#[cfg(not(windows))]
+pub(crate) const fn quem_depois_de_ler(_conexao: &Conexao) -> Option<String> {
+    None
 }
 
 /// O leitor desta conexão, agora que o primeiro pedido já foi lido.
@@ -183,6 +211,15 @@ impl Escuta {
     pub(crate) fn leitor_de(&self, conexao: &Conexao) -> ir_transferencia::Leitor {
         let chamador = conexao.peer_cred().ok().map(|credencial| credencial.uid());
         ir_transferencia::Leitor::do_chamador(chamador, self.dono, true)
+    }
+
+    /// Quem conectou, pelo `SO_PEERCRED`.
+    #[allow(clippy::unused_self)] // a assinatura é a mesma do Windows
+    pub(crate) fn quem_conectou(&self, conexao: &Conexao) -> Option<String> {
+        conexao
+            .peer_cred()
+            .ok()
+            .map(|credencial| format!("uid:{}", credencial.uid()))
     }
 
     /// Lê quem conectou e pergunta ao porteiro se pode.
