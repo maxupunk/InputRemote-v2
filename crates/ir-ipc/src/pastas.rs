@@ -118,6 +118,8 @@ pub enum ComandoDePasta {
         /// Os caminhos, relativos à pasta, com `/`.
         caminhos: Vec<String>,
     },
+    /// Esvaziar a lixeira da pasta, neste computador: o que estava lá some de vez.
+    EsvaziarLixeira(IdDePasta),
 }
 
 /// O que fazer com as duas versões de um arquivo em conflito.
@@ -153,6 +155,9 @@ pub struct ResumoDePasta {
     pub baixando: u32,
     /// Os conflitos, um por arquivo, para a tela oferecer a escolha.
     pub lista_de_conflitos: Vec<ConflitoDePasta>,
+    /// Se há algo na lixeira da pasta, neste computador — para "Esvaziar" não agir sobre o nada.
+    #[serde(default)]
+    pub lixeira_com_algo: bool,
 }
 
 /// Um arquivo que foi mudado nos dois computadores ao mesmo tempo: as duas versões estão guardadas.

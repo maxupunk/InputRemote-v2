@@ -145,6 +145,19 @@ pub enum Control {
     /// dele para cá, para de mandar e volta a usar a própria tela. Também é a resposta a um
     /// `EnterScreen` que esta máquina não aceita.
     Reclaim,
+    /// Se "copiar e colar" está ligado, e quando isso foi escolhido. Desde a versão 9, e só para
+    /// quem a negociou ([`crate::version::supports_copy_paste`]).
+    ///
+    /// Uma escolha só para os dois computadores: desligada num lado e ligada no outro, o Ctrl+C de
+    /// lá continuaria chegando aqui só para ser recusado. Os dois lados enviam — ao estabelecer a
+    /// sessão e a cada troca —; se divergirem, vale a mais recente, e no empate vale desligado.
+    CopyPaste {
+        /// Ligado ou desligado.
+        enabled: bool,
+        /// Quando foi escolhido, em milissegundos desde 1970 no relógio de quem envia; `0` quando
+        /// nunca foi mudado (o padrão, ligado).
+        chosen_at: u64,
+    },
 }
 
 /// A economia de energia do Wi-Fi de uma máquina.

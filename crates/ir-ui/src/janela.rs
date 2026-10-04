@@ -42,9 +42,8 @@ struct Contexto {
     /// A última situação da ligação que a janela mostrou: só se redesenha a faixa quando ela muda,
     /// e é a mudança para conectado que manda buscar o estado de novo.
     situacao: Cell<Situacao>,
-    /// O aviso de cópia no canto da tela, que aparece com a janela fechada.
-    #[cfg(windows)]
-    aviso: RefCell<crate::flutuante::Aviso>,
+    /// Os recados fora da janela: a notificação do sistema (`recados`).
+    recados: RefCell<crate::recados::Recados>,
     /// A taxa da cópia em curso, medida entre avisos.
     velocimetro: RefCell<crate::historico::Velocimetro>,
     /// De qual cópia é a medida corrente.
@@ -128,7 +127,7 @@ impl Contexto {
     }
 
     /// Um recado que não é falha: algo mudou sozinho, e a tela conta o porquê.
-    fn informar(&self, frase: &'static str) {
+    fn informar(&self, frase: &str) {
         self.com_janela(|janela| {
             let dados = janela.global::<Dados>();
             dados.set_recado(frase.into());
@@ -200,6 +199,11 @@ impl Contexto {
             Aviso::Falhou(falha) => self.recado(Some(falha)),
             Aviso::BordaAjustada(borda) => {
                 self.informar(ir_ipc::status::frase_da_borda_ajustada(borda));
+            }
+            Aviso::CopiarEColarAjustado { ligado, par } => {
+                let recado = ir_recado::Recado::copiar_e_colar_ajustado(ligado, &par);
+                self.informar(&recado.corpo);
+                self.recados.borrow_mut().do_par(&recado);
             }
             Aviso::PareamentoConcluido { sucesso: false } => {
                 // Uma recusa que a própria janela pediu já está na tela com o motivo certo, e o
@@ -290,8 +294,7 @@ pub fn abrir(
         candidatos: RefCell::new(Vec::new()),
         par: RefCell::new(None),
         situacao: Cell::new(situacao),
-        #[cfg(windows)]
-        aviso: RefCell::new(crate::flutuante::Aviso::novo()),
+        recados: RefCell::new(crate::recados::Recados::novos()),
         velocimetro: RefCell::default(),
         copia_medida: RefCell::default(),
         historico: RefCell::default(),

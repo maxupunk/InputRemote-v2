@@ -30,6 +30,7 @@ members = [
     "crates/ir-daemon",
     "crates/ir-agent",
     "crates/ir-ui",
+    "crates/ir-recado",
     "xtask",
 ]
 
@@ -69,6 +70,7 @@ ir-energia = { path = "crates/ir-energia", version = "0.1.0-dev" }
 ir-configuracao = { path = "crates/ir-configuracao", version = "0.1.0-dev" }
 ir-servico = { path = "crates/ir-servico", version = "0.1.0-dev" }
 ir-painel = { path = "crates/ir-painel", version = "0.1.0-dev" }
+ir-recado = { path = "crates/ir-recado", version = "0.1.0-dev" }
 
 postcard = { version = "1.1", default-features = false, features = ["alloc"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }

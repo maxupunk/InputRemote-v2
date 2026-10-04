@@ -71,9 +71,7 @@ impl Daemon {
             Pedido::BloquearJuntos(juntos) => {
                 self.definir_preferencia(|config| config.bloquear_juntos = juntos)
             }
-            Pedido::CopiarEColar(ligado) => {
-                self.definir_preferencia(|config| config.copiar_e_colar = ligado)
-            }
+            Pedido::CopiarEColar(ligado) => self.definir_copiar_e_colar(ligado),
             Pedido::EsquecerPar { .. } => self.esquecer_par(),
             Pedido::FixarPortador(portador) => self.fixar_portador(portador),
             // As duas trocas valem na hora (`super::papel`): a de papel refaz a sessão, e a de borda
@@ -238,7 +236,7 @@ impl Daemon {
     /// próximo reinício perderia.
     /// Uma preferência que só se grava e vale: grava, aplica o que o serviço segura fora da
     /// configuração (a chave de copiar e colar) e conta à janela.
-    fn definir_preferencia(&mut self, mudar: impl FnOnce(&mut Config)) -> Resposta {
+    pub(super) fn definir_preferencia(&mut self, mudar: impl FnOnce(&mut Config)) -> Resposta {
         let resposta = self.persistir_com(mudar);
         self.arquivos.copias().ligar(self.config.copiar_e_colar);
         self.avisar_estado();

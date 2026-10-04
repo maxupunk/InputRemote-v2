@@ -43,7 +43,14 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // vocabulário do canal local, e com o par só pelas mensagens do protocolo.
     (
         "ir-sincronia",
-        &["ir-proto", "ir-ipc", "ir-pasta", "ir-nuvem", "ir-acervo"],
+        &[
+            "ir-proto",
+            "ir-ipc",
+            "ir-pasta",
+            "ir-nuvem",
+            "ir-acervo",
+            "ir-recado",
+        ],
     ),
     // O disco de uma pasta compartilhada: o que o ajudante faz com ele, sem a conversa.
     ("ir-acervo", &["ir-proto", "ir-pasta", "ir-nuvem"]),
@@ -116,12 +123,15 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "ir-clip",
             "ir-processo",
             "ir-sincronia",
+            "ir-recado",
         ],
     ),
     // A interface não conhece o produto. É a fronteira que impede o v1 de acontecer de novo,
     // e também o que mantém a licença do Slint contida num binário só
     // (`docs/adr/0007-ui-slint-processo-separado.md`).
-    ("ir-ui", &["ir-ipc"]),
+    ("ir-ui", &["ir-ipc", "ir-recado"]),
+    // O recado fora da janela: a notificação do sistema e o ícone da bandeja. Só o vocabulário.
+    ("ir-recado", &["ir-ipc"]),
 ];
 
 /// Crates que **não podem** depender de nada que faça E/S.
@@ -248,17 +258,24 @@ mod tests {
         }
     }
 
+    /// A interface não pode conhecer o produto: por qualquer caminho, ela só alcança o vocabulário
+    /// de `ir-ipc`. Pode depender dele, e de crate que só se apoia nele — o `ir-recado`, que sabe
+    /// dar recado e não sabe o que acontece.
     #[test]
-    fn the_interface_may_depend_on_nothing_but_ipc() {
-        let (_, allowed) = ALLOWED
-            .iter()
-            .find(|(name, _)| *name == "ir-ui")
-            .expect("ir-ui está na tabela");
-        assert_eq!(
-            *allowed,
-            ["ir-ipc"],
-            "a interface não pode conhecer o produto"
-        );
+    fn the_interface_reaches_nothing_but_the_ipc_vocabulary() {
+        let allowed = |crate_name: &str| {
+            ALLOWED
+                .iter()
+                .find(|(name, _)| *name == crate_name)
+                .map(|(_, deps)| *deps)
+                .expect("está na tabela")
+        };
+        for dep in allowed("ir-ui") {
+            assert!(
+                *dep == "ir-ipc" || allowed(dep) == ["ir-ipc"],
+                "a interface não pode conhecer o produto: `{dep}` leva além de ir-ipc"
+            );
+        }
     }
 
     #[test]

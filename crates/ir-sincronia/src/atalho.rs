@@ -14,23 +14,9 @@ use std::path::Path;
 /// No Linux pelo `notify-send`, como o ajudante de clipboard conta as cópias; no Windows quem
 /// avisa é a janela, no canto da tela, quando a lista de pastas muda.
 pub fn avisar_oferta(par: &str, nome: &str) {
-    #[cfg(not(windows))]
-    {
-        let quem = if par.is_empty() {
-            "O outro computador"
-        } else {
-            par
-        };
-        let _ = std::process::Command::new("notify-send")
-            .args([
-                "--app-name=InputRemote",
-                "--icon=inputremote",
-                &format!("{quem} quer compartilhar a pasta \"{nome}\""),
-                "Abra o InputRemote, em Pastas compartilhadas, para aceitar.",
-            ])
-            .spawn();
-    }
-    #[cfg(windows)]
+    #[cfg(target_os = "linux")]
+    ir_recado::linux::avisar(&ir_recado::Recado::oferta_de_pasta(par, nome));
+    #[cfg(not(target_os = "linux"))]
     let _ = (par, nome);
 }
 

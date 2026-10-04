@@ -11,8 +11,8 @@ impl Contexto {
     /// Conta o que está acontecendo com uma cópia de arquivos.
     ///
     /// Na janela, num cartão que **fica** depois de terminar: a pergunta "aquilo copiou mesmo?"
-    /// vem depois, quando a pessoa já está no outro computador. E, no Windows, também num aviso no
-    /// canto da tela — porque quem copia está no Explorer, e não aqui.
+    /// vem depois, quando a pessoa já está no outro computador. E, no Windows, também na
+    /// notificação do sistema — porque quem copia está no Explorer, e não aqui.
     pub(super) fn mostrar_copia(&self, transferencia: &ir_ipc::transferencia::Transferencia) {
         let velocidade = self.medir(transferencia);
         let copia = copia::copia_ui(transferencia, velocidade);
@@ -22,10 +22,7 @@ impl Contexto {
             dados.set_tem_copia(true);
         });
         self.guardar_no_historico(transferencia);
-        #[cfg(windows)]
-        self.aviso
-            .borrow_mut()
-            .mostrar(copia, transferencia.terminou());
+        self.recados.borrow_mut().copia(transferencia);
     }
 
     /// A taxa desta cópia, zerando o velocímetro quando começa outra.

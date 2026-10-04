@@ -41,6 +41,7 @@ use anyhow::{Context, Result};
 use ir_clip::{Clipboard, Conteudo, Eco};
 use ir_ipc::transferencia::{Fase, Sentido, Transferencia};
 use ir_ipc::{Aviso, Pedido, TextoDoClipboard};
+use ir_recado::Recado;
 use tracing::{debug, info, warn};
 
 pub(crate) mod atualizacao;
@@ -192,6 +193,11 @@ fn atender(partes: Partes<'_>) -> Fim {
                 oferecer(escrita, clip, eco, &pastas);
             }
             Evento::Aviso(Aviso::EstadoMudou(estado)) => ligado = estado.copiar_e_colar,
+            // O outro computador mudou copiar e colar, e este acompanhou: quem está aqui precisa
+            // saber por que o Ctrl+C parou (ou voltou) sem ter mexido em nada.
+            Evento::Aviso(Aviso::CopiarEColarAjustado { ligado, par }) => {
+                notificador.avisar(&Recado::copiar_e_colar_ajustado(ligado, &par));
+            }
             Evento::Aviso(Aviso::PastasMudaram(lista)) => pastas.atualizar(&lista),
             // O outro computador copiou da pasta: os mesmos arquivos daqui, no clipboard.
             Evento::Aviso(Aviso::ArquivosDaPasta(caminhos)) => {

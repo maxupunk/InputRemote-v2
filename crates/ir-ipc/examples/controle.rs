@@ -246,7 +246,7 @@ fn mostrar_transferencia(t: &ir_ipc::Transferencia) -> bool {
         t.fase
     );
     if let ir_ipc::Fase::Parada(motivo) = &t.fase {
-        println!("  motivo: {}", motivo.descricao());
+        println!("  motivo: {}", motivo.descricao(t.sentido));
     }
     // Acabou de vez: a bancada não tem por que continuar pendurada.
     !t.em_curso()

@@ -328,6 +328,7 @@ impl Pastas {
             conflitos: 0,
             baixando: 0,
             lista_de_conflitos: Vec::new(),
+            lixeira_com_algo: false,
         }));
         resumo
     }

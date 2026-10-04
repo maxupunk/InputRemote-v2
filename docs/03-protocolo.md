@@ -231,6 +231,7 @@ Nomes definitivos vivem em `ir-proto`. Este é o contrato.
 | `ProtectedDesktop{refused}` | se quem envia está recusando digitação num desktop protegido (tela de bloqueio, UAC) por falta de permissão do administrador — quem digita precisa saber por que o teclado parou ([04, §6](04-seguranca.md)). Só vai para um par da versão 4 |
 | `LockScreen` | bloqueie a tela aí: quem envia bloqueou a própria, e a outra não pode ficar aberta. Só com "bloquear juntos" ligado, e só obedecido por quem aceita ser controlado |
 | `Reclaim` | quem envia retoma o controle: o teclado ou o mouse dele foi usado enquanto o par o controlava, e o par para de mandar. Também é a resposta a um `EnterScreen` que quem envia não aceita. Desde a versão 6 ([ADR-0014](adr/0014-controle-simetrico.md)) |
+| `CopyPaste{enabled, chosen_at}` | se "copiar e colar" está ligado em quem envia, e quando foi escolhido. Uma escolha dos dois computadores: os dois anunciam ao estabelecer e a cada troca, e se divergirem vale a mais recente — no empate, desligado. Só vai para um par da versão 9 ([log 64](logs/64-copiar-e-colar-nos-dois.md)) |
 
 ### Canal 1 — Entrada confiável
 
@@ -324,6 +325,10 @@ A versão 8 acrescentou `Folder`, a pasta compartilhada, e é diferente da 7 num
 mensagem que um par antigo **receberia** e não entenderia. Por isso existe portão: quem envia só manda
 mensagem da pasta a um par que negociou a 8 (`version::supports_folders`). As versões 6 e 7 continuam
 aceitas para todo o resto, e o par antigo só não vê a pasta.
+
+A versão 9 acrescentou `CopyPaste` ao canal 0, com portão pelo mesmo motivo
+(`version::supports_copy_paste`). Com um par da 8, cada computador segue com a própria escolha, como
+antes.
 
 Regra deliberadamente estrita: **mensagem desconhecida em canal confiável derruba o
 enlace**; campo desconhecido não é ignorado. Um KVM que age sob ambiguidade digita a

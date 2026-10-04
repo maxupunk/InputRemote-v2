@@ -41,10 +41,26 @@ use crate::error::{ProtoError, Result};
 /// ([ADR-0015](../../../docs/adr/0015-pastas-compartilhadas.md)). Diferente da 7, esta acrescenta
 /// mensagem que um par antigo **receberia**: por isso ela só sai para quem negociou a versão 8 —
 /// [`supports_folders`] é o portão —, e as versões 6 e 7 continuam aceitas para todo o resto.
-pub const CURRENT: ProtocolVersion = ProtocolVersion(8);
+///
+/// Versão 9: `Control::CopyPaste`, a escolha "copiar e colar" valendo para os dois computadores
+/// ([log 64](../../../docs/logs/64-copiar-e-colar-nos-dois.md)). Como a 8, acrescenta mensagem que
+/// um par antigo receberia: só sai para quem negociou a 9 ([`supports_copy_paste`]).
+pub const CURRENT: ProtocolVersion = ProtocolVersion(9);
 
 /// A primeira versão que conhece a pasta compartilhada.
 pub const FOLDERS_SINCE: ProtocolVersion = ProtocolVersion(8);
+
+/// A primeira versão em que "copiar e colar" é uma escolha dos dois computadores.
+pub const COPY_PASTE_SINCE: ProtocolVersion = ProtocolVersion(9);
+
+/// Se a versão acordada com o par permite mandar [`Control::CopyPaste`](crate::message::Control).
+///
+/// O portão de quem envia, pelo mesmo motivo de [`supports_folders`]: para um par da versão 8 a
+/// mensagem seria desconhecida, e derrubaria a sessão.
+#[must_use]
+pub fn supports_copy_paste(agreed: ProtocolVersion) -> bool {
+    agreed >= COPY_PASTE_SINCE
+}
 
 /// Se a versão acordada com o par permite mandar mensagens da pasta compartilhada.
 ///

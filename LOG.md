@@ -87,3 +87,5 @@ quê. Um registro que se reescreve não é registro.
 | 60 | 2026-10-03 | [A cópia e a pasta, sem o mesmo arquivo atravessar duas vezes; e o Nautilus que só via com F5](docs/logs/60-a-copia-e-a-pasta.md) |
 | 61 | 2026-10-03 | [A tela inicial mais leve: a borda vai para Preferências, e o tráfego aparece](docs/logs/61-a-tela-inicial-mais-leve.md) |
 | 62 | 2026-10-03 | [Copiar e colar, ligado ou desligado nas Preferências](docs/logs/62-copiar-e-colar-nas-preferencias.md) |
+| 63 | 2026-10-03 | [O cartão da pasta, mais baixo, e esvaziar a lixeira](docs/logs/63-o-cartao-da-pasta-e-a-lixeira.md) |
+| 64 | 2026-10-04 | [Copiar e colar vale para os dois; o recado nativo e o ícone que conta](docs/logs/64-copiar-e-colar-nos-dois.md) |

@@ -54,16 +54,22 @@ pub enum Motivo {
 }
 
 impl Motivo {
-    /// A frase que a interface mostra.
+    /// A frase que a interface mostra, do ponto de vista de quem a lê.
+    ///
+    /// A recusa acontece no computador que **recebe**. Quem envia lê "no outro computador"; quem
+    /// recebe — e recusou — lê "neste computador". Antes as duas pontas liam a frase de quem envia,
+    /// e o Linux, com copiar e colar desligado, dizia que estava desligado "no outro".
     #[must_use]
-    pub fn descricao(&self) -> String {
+    pub fn descricao(&self, sentido: Sentido) -> String {
+        let onde = match sentido {
+            Sentido::Enviando => "no outro computador",
+            Sentido::Recebendo => "neste computador",
+        };
         match self {
-            // Hoje a única recusa assim é a escolha da pessoa de lá: dizer onde ela muda.
-            Self::SemPermissao => {
-                "copiar e colar está desligado no outro computador (Preferências)".to_owned()
-            }
-            Self::AcimaDaCota => "passa do limite configurado no outro computador".to_owned(),
-            Self::SemEspaco => "não há espaço em disco no outro computador".to_owned(),
+            // Hoje a única recusa assim é a escolha de quem recebe: dizer onde ela muda.
+            Self::SemPermissao => format!("copiar e colar está desligado {onde} (Preferências)"),
+            Self::AcimaDaCota => format!("passa do limite configurado {onde}"),
+            Self::SemEspaco => format!("não há espaço em disco {onde}"),
             Self::CaminhoInseguro => "um dos caminhos não é seguro para o destino".to_owned(),
             Self::ItensDemais => "são arquivos demais numa transferência só".to_owned(),
             Self::ResumoDivergente => {
@@ -184,7 +190,9 @@ impl Transferencia {
         let nome = &self.nome;
         let tamanho = tamanho_legivel(self.bytes_total);
         match (&self.fase, self.sentido) {
-            (Fase::Parada(motivo), _) => format!("{nome} · {}", motivo.descricao()),
+            (Fase::Parada(motivo), sentido) => {
+                format!("{nome} · {}", motivo.descricao(sentido))
+            }
             (Fase::AguardandoConexao, _) => format!(
                 "{nome} · segue sozinha quando a conexão de arquivos voltar; teclado e mouse não foram afetados"
             ),

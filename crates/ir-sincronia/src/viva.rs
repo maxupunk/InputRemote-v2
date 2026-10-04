@@ -320,6 +320,7 @@ impl Viva {
                     copia: copia.clone(),
                 })
                 .collect(),
+            lixeira_com_algo: crate::disco::tem_algo(&self.lixeira()),
         }
     }
 

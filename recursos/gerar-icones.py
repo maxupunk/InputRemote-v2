@@ -123,9 +123,115 @@ def desenhar() -> Image.Image:
 TAMANHOS_PNG = [16, 22, 24, 32, 48, 64, 128, 256]
 TAMANHOS_ICO = [16, 24, 32, 48, 64, 128, 256]
 
+# --- A bandeja do Windows ----------------------------------------------------------------------
+#
+# O ícone ao lado do relógio responde "está acontecendo alguma coisa?" sem abrir nada. Um selo no
+# canto de baixo à direita, como o do OneDrive: o arco que gira enquanto algo atravessa, o ✓ quando
+# terminou, o ! quando não deu. Sem conexão, o ícone fica cinza.
+#
+# Uma tira por tamanho de bandeja (100%, 125%, 150% e 200% de escala), os quadros lado a lado, na
+# ordem de QUADROS. A ordem é contrato com `crates/ir-ui/src/bandeja/icones.rs`.
+QUADROS = ["normal", "inativo", "feito", "problema"] + [f"trabalhando-{i}" for i in range(8)]
+TAMANHOS_BANDEJA = [16, 20, 24, 32]
+
+# As cores de significado de `crates/ir-ui/ui/tema.slint`, as do tema claro: a bandeja não sabe o
+# tema, e estas têm contraste nos dois.
+BOM = (21, 128, 61, 255)
+RUIM = (192, 38, 38, 255)
+
+# O selo, num quadrado de 256: o diâmetro, e a folga transparente em volta dele, que o separa do
+# ícone mesmo quando as cores se parecem.
+SELO = 150
+FOLGA = 18
+
+
+def cinza(imagem: Image.Image) -> Image.Image:
+    """O ícone apagado: em tons de cinza e meio transparente."""
+    r, g, b, a = imagem.split()
+    luz = Image.merge("RGB", (r, g, b)).convert("L")
+    a = a.point(lambda v: v * 55 // 100)
+    return Image.merge("RGBA", (luz, luz, luz, a))
+
+
+def com_selo(base: Image.Image, desenhar_selo) -> Image.Image:
+    """O ícone com um selo no canto, desenhado em alta resolução por `desenhar_selo`."""
+    lado = LADO * ESCALA
+    imagem = base.resize((lado, lado), Image.LANCZOS)
+
+    def e(valor: float) -> float:
+        return valor * ESCALA
+
+    centro = e(LADO - SELO / 2)
+    raio = e(SELO / 2)
+    # A folga: um anel apagado do ícone em volta do selo.
+    vazio = Image.new("L", (lado, lado), 0)
+    ImageDraw.Draw(vazio).ellipse(
+        [(centro - raio - e(FOLGA), centro - raio - e(FOLGA)),
+         (centro + raio + e(FOLGA), centro + raio + e(FOLGA))],
+        fill=255,
+    )
+    imagem.putalpha(Image.composite(Image.new("L", (lado, lado), 0), imagem.getchannel("A"), vazio))
+    desenhar_selo(ImageDraw.Draw(imagem), centro, raio, e)
+    return imagem.resize((LADO, LADO), Image.LANCZOS)
+
+
+def selo_feito(pincel, centro, raio, e):
+    pincel.ellipse([(centro - raio, centro - raio), (centro + raio, centro + raio)], fill=BOM)
+    pincel.line(
+        [(centro - raio * 0.45, centro + raio * 0.02),
+         (centro - raio * 0.1, centro + raio * 0.38),
+         (centro + raio * 0.48, centro - raio * 0.3)],
+        fill=BRANCO, width=round(raio * 0.28), joint="curve",
+    )
+
+
+def selo_problema(pincel, centro, raio, e):
+    pincel.ellipse([(centro - raio, centro - raio), (centro + raio, centro + raio)], fill=RUIM)
+    largura = raio * 0.26
+    pincel.rounded_rectangle(
+        [(centro - largura / 2, centro - raio * 0.58), (centro + largura / 2, centro + raio * 0.14)],
+        radius=largura / 2, fill=BRANCO,
+    )
+    pincel.ellipse(
+        [(centro - largura / 1.6, centro + raio * 0.3), (centro + largura / 1.6, centro + raio * 0.3 + largura * 1.25)],
+        fill=BRANCO,
+    )
+
+
+def selo_trabalhando(quadro: int):
+    """O arco de três quartos, girado um oitavo de volta por quadro."""
+    def desenhar_selo(pincel, centro, raio, e):
+        pincel.ellipse([(centro - raio, centro - raio), (centro + raio, centro + raio)], fill=BRANCO)
+        dentro = raio * 0.62
+        inicio = -90 + quadro * 45
+        pincel.arc(
+            [(centro - dentro, centro - dentro), (centro + dentro, centro + dentro)],
+            start=inicio, end=inicio + 270, fill=AZUL_FUNDO, width=round(raio * 0.3),
+        )
+    return desenhar_selo
+
+
+def bandeja(mestre: Image.Image) -> None:
+    quadros = {
+        "normal": mestre,
+        "inativo": cinza(mestre),
+        "feito": com_selo(mestre, selo_feito),
+        "problema": com_selo(mestre, selo_problema),
+    }
+    for i in range(8):
+        quadros[f"trabalhando-{i}"] = com_selo(mestre, selo_trabalhando(i))
+    for tamanho in TAMANHOS_BANDEJA:
+        tira = Image.new("RGBA", (tamanho * len(QUADROS), tamanho), (0, 0, 0, 0))
+        for indice, nome in enumerate(QUADROS):
+            tira.paste(quadros[nome].resize((tamanho, tamanho), Image.LANCZOS), (indice * tamanho, 0))
+        caminho = AQUI / f"bandeja-{tamanho}.png"
+        tira.save(caminho, "PNG")
+        print(f"  {caminho.name}  ({len(QUADROS)} quadros)")
+
 
 def main() -> None:
     mestre = desenhar()
+    bandeja(mestre)
 
     for tamanho in TAMANHOS_PNG:
         caminho = AQUI / f"icone-{tamanho}.png"

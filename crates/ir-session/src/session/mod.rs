@@ -6,6 +6,7 @@
 mod agent;
 mod area;
 mod consultas;
+mod copy_paste;
 mod direction;
 mod edge;
 mod frames;
@@ -226,6 +227,7 @@ impl Session {
             Input::LocalProtectedDesktop(refused) => self.on_local_refusal(now, refused, out),
             Input::LockEdge(locked) => self.edge_locked = locked,
             Input::LockPeerScreen => self.request_peer_lock(now, out),
+            Input::SetCopyPaste(choice) => self.on_set_copy_paste(now, choice, out),
             Input::DisablePeerNetworkPowerSaving => {
                 if !self.on_disable_peer_network_power(now, out) {
                     out.push(Command::Notify(Notice::PeerCannotFixNetworkPower));

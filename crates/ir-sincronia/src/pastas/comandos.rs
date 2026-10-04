@@ -1,4 +1,5 @@
-//! O que a janela pede: compartilhar, criar, aceitar, recusar, parar, abrir e resolver.
+//! O que a janela pede: compartilhar, criar, aceitar, recusar, parar, abrir, resolver e esvaziar a
+//! lixeira.
 //!
 //! Cada pedido que não dá certo devolve uma frase para a pessoa, com o que fazer — a regra da casa
 //! para toda mensagem de problema.
@@ -63,13 +64,8 @@ impl Pastas {
                 self.copiar_para_la(FolderId(id), caminhos, saida);
                 Ok(())
             }
-            ComandoDePasta::AbrirLixeira(IdDePasta(id)) => {
-                let viva = self.vivas.get(&FolderId(id)).ok_or_else(nao_existe)?;
-                let lixeira = viva.lixeira();
-                std::fs::create_dir_all(&lixeira)
-                    .map_err(|e| format!("Não consegui abrir a lixeira da pasta ({e})."))?;
-                abrir_no_gerenciador(&lixeira)
-            }
+            ComandoDePasta::AbrirLixeira(IdDePasta(id)) => abrir_lixeira(&self.lixeira(id)?),
+            ComandoDePasta::EsvaziarLixeira(IdDePasta(id)) => esvaziar_lixeira(&self.lixeira(id)?),
             ComandoDePasta::Resolver {
                 pasta: IdDePasta(id),
                 caminho,
@@ -80,6 +76,12 @@ impl Pastas {
             }
             _ => Err("Este pedido é de uma versão mais nova do InputRemote.".to_owned()),
         }
+    }
+
+    /// A lixeira de uma pasta deste computador.
+    fn lixeira(&self, id: [u8; 16]) -> Result<PathBuf, String> {
+        let viva = self.vivas.get(&FolderId(id)).ok_or_else(nao_existe)?;
+        Ok(viva.lixeira())
     }
 
     fn compartilhar(&mut self, raiz: &Path, saida: &mut dyn Saida) -> Result<(), String> {
@@ -216,6 +218,21 @@ impl Pastas {
         }
         None
     }
+}
+
+fn abrir_lixeira(lixeira: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(lixeira)
+        .map_err(|e| format!("Não consegui abrir a lixeira da pasta ({e})."))?;
+    abrir_no_gerenciador(lixeira)
+}
+
+fn esvaziar_lixeira(lixeira: &Path) -> Result<(), String> {
+    crate::disco::esvaziar(lixeira).map_err(|e| {
+        format!(
+            "Não consegui esvaziar a lixeira da pasta ({e}). Feche o que estiver aberto de lá e \
+             tente de novo."
+        )
+    })
 }
 
 fn nao_existe() -> String {

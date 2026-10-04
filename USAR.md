@@ -87,8 +87,24 @@ Copie de um lado e cole do outro, com o Ctrl+C e o Ctrl+V de sempre. Atravessam:
 - **imagens** — uma captura de tela, uma figura copiada do navegador —, que chegam como imagem, e
   não como arquivo.
 
-Para desligar, **Copiar e colar** em Preferências: desligado, o que se copia num computador fica
-só nele, nos dois sentidos. A pasta compartilhada continua sincronizando.
+Para desligar, **Copiar e colar** em Preferências. A escolha vale para os **dois** computadores:
+desligar aqui desliga lá, e o outro computador avisa que mudou. Desligado, o que se copia num
+computador fica só nele. A pasta compartilhada continua sincronizando.
+
+**Como saber o que aconteceu, sem abrir a janela.** Cada cópia aparece na central de notificações do
+sistema — no Windows, com a barra andando e, no que chegou, o botão **Abrir a pasta**; no Linux, na
+notificação do GNOME, também com **Abrir a pasta**. Uma cópia rápida dá um aviso só, o do fim. No
+Windows, o ícone ao lado do relógio também conta:
+
+| O ícone | Quer dizer |
+|---|---|
+| o arco girando | algo está atravessando: uma cópia, ou uma pasta sincronizando |
+| ✓ verde, por alguns segundos | a cópia chegou, ou foi entregue |
+| ! vermelho | uma cópia não atravessou — some quando você abre a janela ou copia de novo |
+| cinza | sem o outro computador, ou pausado |
+
+Passar o mouse sobre ele mostra o que está acontecendo, em palavras. As notificações respeitam o
+"não perturbe"; para desligá-las, **Configurações do Windows › Notificações › InputRemote**.
 
 No Linux sem aviso de mudança de clipboard (o GNOME), o que foi copiado atravessa quando o ponteiro
 atravessa ([ADR-0011](docs/adr/0011-clipboard-na-travessia.md)). Os arquivos recebidos ficam na pasta
@@ -117,7 +133,8 @@ na barra lateral do Nautilus.
   `nome (conflito NOTEBOOK 2026-10-02 14h30).ext`, ao lado. A tela mostra o conflito com **Manter as
   duas**, **Só a mais recente** e **Só a de** o outro computador; a que sai vai para a lixeira.
 - **Apagou sem querer?** O que é apagado — ou descartado num conflito — fica 30 dias na **Lixeira**
-  da pasta. Para recuperar, arraste de volta para a pasta.
+  da pasta. Para recuperar, arraste de volta para a pasta. **Esvaziar lixeira** apaga de vez o que
+  está lá, só neste computador; o botão pede um segundo clique ("Apagar de vez?").
 - **Copiar e colar com a pasta.** Copiar (Ctrl+C) um arquivo de dentro da pasta compartilhada e
   colar no outro computador cola o arquivo da pasta de lá — nada atravessa pela cópia, porque ele já
   está nos dois. E colar na pasta um arquivo que acabou de chegar pela cópia não o manda de novo: a

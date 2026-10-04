@@ -140,6 +140,30 @@ impl Default for Timings {
     }
 }
 
+/// "Copiar e colar" ligado ou desligado, e quando isso foi escolhido.
+///
+/// Uma escolha dos dois computadores: quem muda num lado muda no outro (`session/copy_paste.rs`).
+/// A sessão não aplica nada — quem segura o clipboard e os arquivos é o serviço —; ela só faz os
+/// dois lados concordarem.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CopyPaste {
+    /// Ligado ou desligado.
+    pub enabled: bool,
+    /// Quando foi escolhido, em milissegundos desde 1970; `0` se nunca foi mudado.
+    pub chosen_at: u64,
+}
+
+impl CopyPaste {
+    /// Como nasce: ligado, e nunca escolhido.
+    pub const DEFAULT: Self = Self::new(true, 0);
+
+    /// Ligado ou desligado, escolhido em `chosen_at`.
+    #[must_use]
+    pub const fn new(enabled: bool, chosen_at: u64) -> Self {
+        Self { enabled, chosen_at }
+    }
+}
+
 /// A configuração de uma sessão.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SessionConfig {
@@ -153,6 +177,8 @@ pub struct SessionConfig {
     /// Quando [`Self::peer_edge`] foi escolhida na tela, em milissegundos desde 1970; `0` se nunca
     /// foi.
     pub edge_chosen_at: u64,
+    /// "Copiar e colar", a escolha que vale para os dois computadores.
+    pub copy_paste: CopyPaste,
     /// Os prazos.
     pub timings: Timings,
     /// De onde nascem as épocas desta sessão ([`ir_proto::frame::Epoch`]).
@@ -173,6 +199,7 @@ impl SessionConfig {
             policy: Policy::Both,
             peer_edge,
             edge_chosen_at: 0,
+            copy_paste: CopyPaste::DEFAULT,
             timings: Timings::DEFAULT,
             incarnation_seed: 0,
         }

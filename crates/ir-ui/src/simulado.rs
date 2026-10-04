@@ -329,9 +329,11 @@ fn pastas_de_demonstracao() -> Vec<ir_ipc::pastas::ResumoDePasta> {
         conflitos: 0,
         baixando: 0,
         lista_de_conflitos: Vec::new(),
+        lixeira_com_algo: true,
     };
     let mut fotos = pasta(2, "Fotos", "/home/ana/InputRemote/Fotos");
     fotos.papel = PapelDaPasta::Recebida;
+    fotos.lixeira_com_algo = false;
     fotos.conflitos = 1;
     fotos.lista_de_conflitos = vec![ir_ipc::pastas::ConflitoDePasta {
         original: "praia/pôr do sol.jpg".to_owned(),

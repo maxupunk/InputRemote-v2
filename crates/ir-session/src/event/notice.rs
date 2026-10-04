@@ -117,6 +117,9 @@ pub enum Notice {
     },
     /// O pedido de desligar a economia no par não pôde sair: sem sessão, ou o par não entende.
     PeerCannotFixNetworkPower,
+    /// O par ligou ou desligou "copiar e colar", e esta ponta passou a valer o mesmo. O serviço
+    /// grava — com o horário do par, para esta ponta não vencer a próxima comparação — e avisa.
+    CopyPasteAdopted(crate::config::CopyPaste),
 }
 
 /// Por que um portador foi escolhido.

@@ -268,6 +268,8 @@ export global Acoes {
     callback abrir-pasta(int);
     /// Abrir a lixeira da pasta desta posição: o que a sincronia tirou nos últimos 30 dias.
     callback abrir-lixeira(int);
+    /// Esvaziar a lixeira da pasta desta posição, neste computador. Não tem volta.
+    callback esvaziar-lixeira(int);
     /// Resolver o conflito `indice` da pasta `posicao`: 0 manter as duas, 1 só a mais recente,
     /// 2 só a cópia.
     callback resolver-conflito(int, int, int);

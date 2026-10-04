@@ -52,6 +52,7 @@ pub(super) fn ligar(janela: &Janela, contexto: &Rc<Contexto>) {
     acoes.on_parar_pasta(por_posicao(contexto, ComandoDePasta::Parar));
     acoes.on_abrir_pasta(por_posicao(contexto, ComandoDePasta::Abrir));
     acoes.on_abrir_lixeira(por_posicao(contexto, ComandoDePasta::AbrirLixeira));
+    acoes.on_esvaziar_lixeira(por_posicao(contexto, ComandoDePasta::EsvaziarLixeira));
 
     let alvo = Rc::clone(contexto);
     acoes.on_resolver_conflito(move |posicao, indice, escolha| {
@@ -130,38 +131,20 @@ impl Contexto {
         });
     }
 
-    /// Uma oferta que não estava na lista anterior vira aviso no canto da tela, no Windows: quem
-    /// compartilhou está no outro computador, e a janela daqui pode estar fechada. No Linux quem
-    /// avisa é o ajudante, pelo `notify-send`.
-    #[cfg_attr(not(windows), allow(clippy::unused_self))]
+    /// Uma oferta que não estava na lista anterior vira recado fora da janela: quem compartilhou
+    /// está no outro computador, e a janela daqui pode estar fechada (`recados`).
     fn avisar_ofertas_novas(&self, lista: &[ResumoDePasta]) {
-        #[cfg(windows)]
-        {
-            let anteriores = self.pastas.lista.borrow();
-            let nova = lista.iter().find(|p| {
-                p.situacao == SituacaoDaPasta::Oferecida
-                    && p.caminho_local.is_empty()
-                    && !anteriores.iter().any(|a| a.id == p.id)
-            });
-            if let Some(oferta) = nova {
-                let aviso = crate::gerado::CopiaUi {
-                    titulo: "Uma pasta compartilhada com você".into(),
-                    detalhe: format!(
-                        "O outro computador quer compartilhar \"{}\". Abra o InputRemote para aceitar.",
-                        oferta.nome
-                    )
-                    .into(),
-                    progresso: 1.0,
-                    estado: 1,
-                    velocidade: SharedString::new(),
-                    cancelavel: false,
-                    recebida: false,
-                };
-                self.aviso.borrow_mut().mostrar(aviso, true);
-            }
+        let anteriores = self.pastas.lista.borrow();
+        let nova = lista.iter().find(|p| {
+            p.situacao == SituacaoDaPasta::Oferecida
+                && p.caminho_local.is_empty()
+                && !anteriores.iter().any(|a| a.id == p.id)
+        });
+        if let Some(oferta) = nova {
+            self.recados
+                .borrow_mut()
+                .do_par(&ir_recado::Recado::oferta_de_pasta("", &oferta.nome));
         }
-        #[cfg(not(windows))]
-        let _ = lista;
     }
 
     /// Um recado que veio do ajudante das pastas, já com o que fazer.
@@ -211,6 +194,7 @@ fn pasta_ui(pasta: &ResumoDePasta) -> PastaUi {
         lista: ModelRc::new(VecModel::from(lista)),
         saude: pasta.saude(),
         oferta: pasta.situacao == SituacaoDaPasta::Oferecida && pasta.caminho_local.is_empty(),
+        lixeira: pasta.lixeira_com_algo,
     }
 }
 

@@ -112,7 +112,7 @@ async fn subir_e_rodar(
     let pastas = arquivos::abrir_pastas(&arquivos, &canais.avisos, (&cfg, &dir));
 
     let mut daemon = Daemon::new(Parts {
-        session: actor::nova_sessao(politica, edge, identidade.clone(), cfg.borda_escolhida_em),
+        session: actor::nova_sessao(politica, edge, identidade.clone(), &cfg),
         rede: abertos.rede,
         radio: abertos.radio,
         reabridor: Some(abertos.reabridor),

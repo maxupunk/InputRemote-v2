@@ -141,7 +141,7 @@ fn todo_motivo_tem_frase_em_portugues_e_nao_vazia() {
         Motivo::Outro("o disco falhou".to_owned()),
     ];
     for motivo in motivos {
-        let frase = motivo.descricao();
+        let frase = motivo.descricao(Sentido::Enviando);
         assert!(!frase.is_empty(), "{motivo:?}");
         assert!(
             !frase.contains("Reason") && !frase.contains('_'),
@@ -189,4 +189,19 @@ fn o_numero_de_cada_fase_no_fio_nao_muda() {
     );
     assert_eq!(numero(Fase::Parada(Motivo::Cancelada)), 3);
     assert_eq!(numero(Fase::AguardandoConexao), 4);
+}
+
+/// O defeito relatado: o computador que recusou, por ter copiar e colar desligado, dizia que estava
+/// desligado "no outro computador".
+#[test]
+fn a_recusa_diz_onde_do_ponto_de_vista_de_quem_le() {
+    let quem_enviou = Motivo::SemPermissao.descricao(Sentido::Enviando);
+    let quem_recusou = Motivo::SemPermissao.descricao(Sentido::Recebendo);
+    assert!(quem_enviou.contains("no outro computador"), "{quem_enviou}");
+    assert!(quem_recusou.contains("neste computador"), "{quem_recusou}");
+    assert!(
+        Motivo::SemEspaco
+            .descricao(Sentido::Recebendo)
+            .contains("neste computador")
+    );
 }

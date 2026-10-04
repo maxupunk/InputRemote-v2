@@ -569,6 +569,11 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       atravessando agora ([log 61](docs/logs/61-a-tela-inicial-mais-leve.md))
 - [x] "Copiar e colar" nas Preferências, ligado por padrão; desligado, nada vai e nada chega, e a
       pasta compartilhada segue ([log 62](docs/logs/62-copiar-e-colar-nas-preferencias.md))
+- [x] Cartão da pasta compacto (cerca de um quarto mais baixo) e "Esvaziar lixeira", com
+      confirmação e apagado quando a lixeira está vazia ([log 63](docs/logs/63-o-cartao-da-pasta-e-a-lixeira.md))
+- [x] "Copiar e colar" vale para os dois computadores (protocolo 9), e o aviso de recusa fala do
+      ponto de vista de quem lê; notificação nativa nos dois sistemas e ícone da bandeja com
+      estados ([log 64](docs/logs/64-copiar-e-colar-nos-dois.md))
 - [ ] Fechar, matar ou não abrir não altera a sessão
 
 ## Etapa 10 — Qualidade e lançamento

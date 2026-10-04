@@ -9,6 +9,10 @@
 //! ([02, §1](../../../docs/02-arquitetura.md)). Esconder em vez de fechar é só para o ícone continuar
 //! lá, onde o usuário o procura.
 //!
+//! O ícone também é o retorno mais à vista do produto (`ir_recado::bandeja`): gira enquanto algo
+//! atravessa, mostra o ✓ ou o ! no fim de uma cópia, fica cinza sem o outro computador. A dica dele
+//! diz o mesmo em palavras.
+//!
 //! Fora do Windows não há bandeja: o GNOME não tem uma por padrão, e a janela funciona como antes.
 
 #[cfg(windows)]
@@ -138,13 +142,19 @@ impl Bandeja {
             pausar,
             sair: sair.id().clone(),
         };
-        let dica = icone.clone();
-        let mut ultima = String::new();
+        let mut vitrine = Vitrine {
+            icone: icone.clone(),
+            icones: ir_recado::bandeja::icones::Icones::da_bandeja(),
+            selo: ir_recado::bandeja::aparencia::Selo::default(),
+            batida: 0,
+            quadro: None,
+            dica: None,
+        };
         let batida = slint::Timer::default();
         batida.start(slint::TimerMode::Repeated, BATIDA, move || {
             let Some(janela) = alvo.upgrade() else { return };
             atender(&janela, &marca, &itens);
-            atualizar_dica(&janela, &dica, &itens.pausar, &mut ultima);
+            vitrine.atualizar(&janela, &itens.pausar);
         });
         Some(Self {
             _icone: icone,
@@ -166,27 +176,82 @@ struct Itens {
 #[cfg(windows)]
 const BATIDA: std::time::Duration = std::time::Duration::from_millis(100);
 
-/// A dica do ícone acompanha o estado — passar o mouse sobre ele responde "está funcionando?" sem
-/// abrir a janela. Antes ela dizia "InputRemote" para sempre.
+/// O que o ícone mostra: o quadro, que acompanha o que acontece, e a dica.
 #[cfg(windows)]
-fn atualizar_dica(
-    janela: &Janela,
-    icone: &tray_icon::TrayIcon,
-    pausar: &tray_icon::menu::MenuItem,
-    ultima: &mut String,
-) {
-    use slint::ComponentHandle;
-    let estado = janela.global::<crate::gerado::Dados>().get_estado();
-    let dica = crate::ponte::dica_da_bandeja(&estado.enlace, &estado.resumo);
-    if dica != *ultima {
-        let _ = icone.set_tooltip(Some(&dica));
-        pausar.set_text(if estado.pausado {
-            "Retomar o compartilhamento"
+struct Vitrine {
+    icone: tray_icon::TrayIcon,
+    /// Os quadros; sem eles, o ícone fica o de sempre e só a dica muda.
+    icones: Option<ir_recado::bandeja::icones::Icones>,
+    selo: ir_recado::bandeja::aparencia::Selo,
+    /// As batidas desde o começo, que fazem o arco girar.
+    batida: usize,
+    /// O último quadro posto, para não repor o mesmo a cada batida.
+    quadro: Option<(ir_recado::bandeja::aparencia::Aparencia, usize)>,
+    /// A última dica e o estado do menu, pelo mesmo motivo.
+    dica: Option<(String, bool, bool)>,
+}
+
+#[cfg(windows)]
+impl Vitrine {
+    /// Uma batida: o quadro e a dica, pelo que a janela sabe agora.
+    fn atualizar(&mut self, janela: &Janela, pausar: &tray_icon::menu::MenuItem) {
+        use ir_recado::bandeja::aparencia::{Aparencia, Retrato};
+        use slint::ComponentHandle;
+
+        let dados = janela.global::<crate::gerado::Dados>();
+        let estado = dados.get_estado();
+        let copia = dados.get_copia();
+        let retrato = Retrato {
+            parado: !estado.conectado || estado.pausado,
+            atravessando: dados.get_trafego_ativo(),
+            copia: dados
+                .get_tem_copia()
+                .then(|| crate::copia::tom(copia.estado)),
+            janela_visivel: janela.window().is_visible(),
+        };
+        let aparencia = self.selo.aparencia(&retrato, std::time::Instant::now());
+
+        self.batida = self.batida.wrapping_add(1);
+        let passo = if aparencia == Aparencia::Trabalhando {
+            self.batida
         } else {
-            "Pausar o compartilhamento"
-        });
-        pausar.set_enabled(estado.pausado || estado.conectado);
-        *ultima = dica;
+            0
+        };
+        if self.quadro != Some((aparencia, passo % 8)) {
+            if let Some(quadro) = self
+                .icones
+                .as_ref()
+                .and_then(|i| i.quadro(aparencia, passo))
+            {
+                let _ = self.icone.set_icon(Some(quadro));
+            }
+            self.quadro = Some((aparencia, passo % 8));
+        }
+
+        // A dica responde "está funcionando?" sem abrir a janela; com uma cópia andando, ou uma que
+        // não atravessou, ela fala da cópia.
+        let fala_da_copia =
+            retrato.copia == Some(ir_recado::Tom::Andamento) || aparencia == Aparencia::Problema;
+        let segunda = if fala_da_copia {
+            format!("{}\n{}", copia.titulo, copia.detalhe)
+        } else {
+            estado.resumo.to_string()
+        };
+        let dica = (
+            crate::ponte::dica_da_bandeja(&estado.enlace, &segunda),
+            estado.pausado,
+            estado.conectado,
+        );
+        if self.dica.as_ref() != Some(&dica) {
+            let _ = self.icone.set_tooltip(Some(&dica.0));
+            pausar.set_text(if estado.pausado {
+                "Retomar o compartilhamento"
+            } else {
+                "Pausar o compartilhamento"
+            });
+            pausar.set_enabled(estado.pausado || estado.conectado);
+            self.dica = Some(dica);
+        }
     }
 }
 

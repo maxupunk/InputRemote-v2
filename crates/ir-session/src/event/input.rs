@@ -119,6 +119,9 @@ pub enum Input {
     LockEdge(bool),
     /// A tela daqui bloqueou: peça ao par que bloqueie a dele.
     LockPeerScreen,
+    /// O usuário ligou ou desligou "copiar e colar" aqui. Vale dos dois lados: a sessão conta ao
+    /// par, que adota a escolha (`session/copy_paste.rs`).
+    SetCopyPaste(crate::config::CopyPaste),
 }
 
 /// Por que um portador caiu, do ponto de vista local.

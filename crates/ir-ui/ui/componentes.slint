@@ -8,6 +8,8 @@ import { Tema } from "tema.slint";
 /// Um bloco de conteúdo sobre a superfície.
 export component Cartao inherits Rectangle {
     in property <color> cor-de-fundo: Tema.superficie;
+    /// Menos respiro, para cartões que repetem numa lista.
+    in property <bool> compacto: false;
 
     background: root.cor-de-fundo;
     border-radius: Tema.raio;
@@ -15,8 +17,8 @@ export component Cartao inherits Rectangle {
     border-color: Tema.borda;
 
     VerticalLayout {
-        padding: Tema.e4;
-        spacing: Tema.e3;
+        padding: root.compacto ? Tema.e3 : Tema.e4;
+        spacing: root.compacto ? Tema.e2 : Tema.e3;
         @children
     }
 }
@@ -33,9 +35,11 @@ export component Botao inherits Rectangle {
     in property <bool> primario: false;
     in property <bool> perigo: false;
     in property <bool> habilitado: true;
+    /// Mais baixo e mais estreito, para cartões que repetem numa lista.
+    in property <bool> compacto: false;
     callback acionado();
 
-    height: 34px;
+    height: root.compacto ? 28px : 34px;
     border-radius: Tema.raio-pequeno;
     border-width: foco.has-focus ? 2px : (root.primario ? 0px : Tema.traco);
     border-color: foco.has-focus ? Tema.foco : (root.perigo ? Tema.ruim : Tema.borda);
@@ -56,13 +60,13 @@ export component Botao inherits Rectangle {
 
     HorizontalLayout {
         alignment: center;
-        padding-left: Tema.e4;
-        padding-right: Tema.e4;
+        padding-left: root.compacto ? Tema.e3 : Tema.e4;
+        padding-right: root.compacto ? Tema.e3 : Tema.e4;
 
         Text {
             text: root.texto;
             vertical-alignment: center;
-            font-size: Tema.fonte-corpo;
+            font-size: root.compacto ? Tema.fonte-nota : Tema.fonte-corpo;
             font-weight: root.primario ? 600 : 400;
             color: root.primario
                 ? Tema.texto-sobre-cor
@@ -138,13 +142,15 @@ export component BotaoDeSegurar inherits Rectangle {
     in property <string> texto;
     in property <bool> habilitado: true;
     in property <duration> tempo: 700ms;
+    /// Como o do `Botao`: mais baixo, para cartões que repetem numa lista.
+    in property <bool> compacto: false;
     callback acionado();
 
     property <bool> segurando: false;
     property <bool> tecla-presa: false;
     property <bool> soltou-cedo: false;
 
-    height: 34px;
+    height: root.compacto ? 28px : 34px;
     border-radius: Tema.raio-pequeno;
     border-width: foco.has-focus ? 2px : Tema.traco;
     border-color: foco.has-focus ? Tema.foco : Tema.borda;
@@ -177,13 +183,13 @@ export component BotaoDeSegurar inherits Rectangle {
 
     HorizontalLayout {
         alignment: center;
-        padding-left: Tema.e4;
-        padding-right: Tema.e4;
+        padding-left: root.compacto ? Tema.e3 : Tema.e4;
+        padding-right: root.compacto ? Tema.e3 : Tema.e4;
 
         Text {
             text: root.soltou-cedo ? "Segure para confirmar" : root.texto;
             vertical-alignment: center;
-            font-size: Tema.fonte-corpo;
+            font-size: root.compacto ? Tema.fonte-nota : Tema.fonte-corpo;
             color: root.soltou-cedo ? Tema.texto-fraco : Tema.texto;
         }
     }

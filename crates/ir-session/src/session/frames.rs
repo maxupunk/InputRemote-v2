@@ -148,6 +148,9 @@ impl Session {
             Control::NetworkPower(state) => Self::on_peer_network_power(state, out),
             Control::DisableNetworkPowerSaving => Self::on_network_power_fix_requested(out),
             Control::Reclaim => self.on_peer_reclaim(out),
+            Control::CopyPaste { enabled, chosen_at } => {
+                self.on_copy_paste(crate::config::CopyPaste { enabled, chosen_at }, out);
+            }
             // Só quem aceita ser controlado gera Ctrl+Alt+Del a pedido do par. Quem gera, e decide
             // se pode, é a periferia daqui.
             Control::SecureAttention if self.config.policy.receives() => {

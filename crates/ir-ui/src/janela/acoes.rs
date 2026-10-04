@@ -146,25 +146,8 @@ impl Contexto {
         if aberta {
             return;
         }
-        let detalhe = estado.resumo();
-        #[cfg(windows)]
-        self.aviso.borrow_mut().mostrar(
-            crate::gerado::CopiaUi {
-                titulo: "Conexão perdida".into(),
-                detalhe: detalhe.into(),
-                progresso: 0.0,
-                estado: crate::copia::PARADA,
-                velocidade: slint::SharedString::default(),
-                cancelavel: false,
-                recebida: false,
-            },
-            true,
-        );
-        #[cfg(not(windows))]
-        {
-            let _ = std::process::Command::new("notify-send")
-                .args(["--app-name=InputRemote", "Conexão perdida", &detalhe])
-                .spawn();
-        }
+        self.recados
+            .borrow_mut()
+            .avulso(&ir_recado::Recado::conexao_perdida(&estado.resumo()));
     }
 }

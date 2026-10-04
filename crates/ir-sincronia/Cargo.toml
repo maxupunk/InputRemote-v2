@@ -11,6 +11,8 @@ repository.workspace = true
 [dependencies]
 ir-proto.workspace = true
 ir-ipc.workspace = true
+# O recado da pasta oferecida, no Linux.
+ir-recado.workspace = true
 # As decisões: o que mudou, o que é conflito, o que baixar.
 ir-pasta.workspace = true
 # O disco da pasta: varredura, montagem, lixeira, índice guardado e trechos.

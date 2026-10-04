@@ -110,21 +110,54 @@ pub fn guardar_na_lixeira(lixeira: &Path, atual: &Path, relativo: &str) -> std::
 
 /// Tira da lixeira o que passou da retenção.
 pub fn faxina(lixeira: &Path) {
-    let Ok(dias) = std::fs::read_dir(lixeira) else {
-        return;
-    };
     let agora = SystemTime::now();
-    for dia in dias.filter_map(Result::ok) {
-        let velho = dia
-            .metadata()
+    let _ = tirar_da_lixeira(lixeira, |dia| {
+        dia.metadata()
             .and_then(|dados| dados.modified())
             .ok()
             .and_then(|quando| agora.duration_since(quando).ok())
-            .is_some_and(|idade| idade > RETENCAO);
-        if velho {
-            let _ = std::fs::remove_dir_all(dia.path());
+            .is_some_and(|idade| idade > RETENCAO)
+    });
+}
+
+/// Esvazia a lixeira: o que a pessoa pediu para sumir de vez. A lixeira em si fica.
+///
+/// # Errors
+///
+/// O primeiro erro de disco — um arquivo aberto, no Windows. O resto é tirado do mesmo jeito.
+pub fn esvaziar(lixeira: &Path) -> std::io::Result<()> {
+    tirar_da_lixeira(lixeira, |_| true)
+}
+
+/// Se há algo na lixeira.
+#[must_use]
+pub fn tem_algo(lixeira: &Path) -> bool {
+    std::fs::read_dir(lixeira).is_ok_and(|mut dentro| dentro.next().is_some())
+}
+
+/// Tira da lixeira cada dia que `sai` escolher. Lixeira que não existe está vazia, e não é erro.
+fn tirar_da_lixeira(
+    lixeira: &Path,
+    sai: impl Fn(&std::fs::DirEntry) -> bool,
+) -> std::io::Result<()> {
+    let Ok(dias) = std::fs::read_dir(lixeira) else {
+        return Ok(());
+    };
+    let mut primeiro_erro = Ok(());
+    for dia in dias.filter_map(Result::ok).filter(|dia| sai(dia)) {
+        let caminho = dia.path();
+        let tirado = if dia.file_type().is_ok_and(|tipo| tipo.is_dir()) {
+            std::fs::remove_dir_all(&caminho)
+        } else {
+            std::fs::remove_file(&caminho)
+        };
+        if let Err(erro) = tirado
+            && primeiro_erro.is_ok()
+        {
+            primeiro_erro = Err(erro);
         }
     }
+    primeiro_erro
 }
 
 /// Um caminho livre perto de `desejado`: ele mesmo, ou com um número no fim.
@@ -203,6 +236,26 @@ mod testes {
         assert_eq!(std::fs::read(dia.join("a.txt")).unwrap(), b"1");
         assert_eq!(std::fs::read(dia.join("a.txt (2)")).unwrap(), b"2");
         assert!(para_lixeira(&lixeira, &raiz, "nao-existe").is_ok());
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn esvaziar_tira_tudo_e_a_lixeira_que_nao_existe_ja_esta_vazia() {
+        let raiz = std::env::temp_dir().join(format!("ir-esvaziar-{}", std::process::id()));
+        let lixeira = raiz.join("lixeira");
+        let _ = std::fs::remove_dir_all(&raiz);
+        assert!(!tem_algo(&lixeira));
+        assert!(esvaziar(&lixeira).is_ok());
+
+        std::fs::create_dir_all(raiz.join("d")).unwrap();
+        std::fs::write(raiz.join("d/a.txt"), b"1").unwrap();
+        para_lixeira(&lixeira, &raiz, "d/a.txt").unwrap();
+        std::fs::write(lixeira.join("solto.txt"), b"2").unwrap();
+        assert!(tem_algo(&lixeira));
+
+        esvaziar(&lixeira).unwrap();
+        assert!(!tem_algo(&lixeira));
+        assert!(lixeira.is_dir(), "a lixeira em si fica");
         let _ = std::fs::remove_dir_all(&raiz);
     }
 

@@ -8,7 +8,7 @@ import { LineEdit } from "std-widgets.slint";
 import { Tema } from "tema.slint";
 import { Dados, Acoes, Saude } from "dados.slint";
 import { PastaUi } from "pastas-tipos.slint";
-import { Cartao, Botao, BotaoDeSegurar, Faixa, Ponto, Secao } from "componentes.slint";
+import { Cartao, Botao, BotaoConfirmado, BotaoDeSegurar, Faixa, Ponto, Secao } from "componentes.slint";
 
 /// O cartão da tela inicial: uma linha sobre todas, e o caminho para a tela delas.
 export component CartaoDePastas inherits Cartao {
@@ -43,53 +43,74 @@ export component CartaoDePastas inherits Cartao {
     }
 }
 
+// Um cartão por pasta, numa lista que pode ser longa: compacto, e cada coisa no seu lugar. Em
+// cima, o que ela é e como está, com "Abrir" ao lado — o que mais se faz. Embaixo, a lixeira e o
+// parar, que se fazem pouco.
 component LinhaDePasta inherits Cartao {
     in property <PastaUi> pasta;
     in property <int> posicao;
 
+    compacto: true;
+
     HorizontalLayout {
         spacing: Tema.e2;
 
-        Ponto {
-            cor: Saude.cor(pasta.saude);
-            pulsando: pasta.saude == 1;
-            y: (parent.height - self.height) / 2;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 2px;
+
+            HorizontalLayout {
+                spacing: Tema.e2;
+
+                Ponto {
+                    cor: Saude.cor(pasta.saude);
+                    pulsando: pasta.saude == 1;
+                    y: (parent.height - self.height) / 2;
+                }
+
+                Text {
+                    text: pasta.nome;
+                    font-weight: 600;
+                    color: Tema.texto;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+            }
+
+            Text {
+                text: pasta.linha;
+                font-size: Tema.fonte-nota;
+                color: Tema.texto;
+                wrap: word-wrap;
+            }
+
+            // O caminho pode ser longo; o começo e o fim dizem onde é, e cabem numa linha.
+            if pasta.detalhe != "": Text {
+                text: pasta.detalhe;
+                font-size: Tema.fonte-nota;
+                color: Tema.texto-fraco;
+                overflow: elide;
+            }
         }
 
-        Text {
-            text: pasta.nome;
-            font-size: Tema.fonte-destaque;
-            font-weight: 600;
-            color: Tema.texto;
-            vertical-alignment: center;
+        if !pasta.oferta: Botao {
+            texto: "Abrir";
+            compacto: true;
+            accessible-label: "Abrir a pasta " + pasta.nome;
+            acionado => {
+                Acoes.abrir-pasta(posicao);
+            }
         }
     }
 
-    Text {
-        text: pasta.linha;
-        color: Tema.texto;
-        wrap: word-wrap;
-    }
-
-    if pasta.detalhe != "": Text {
-        text: pasta.detalhe;
-        font-size: Tema.fonte-nota;
-        color: Tema.texto-fraco;
-        wrap: word-wrap;
-    }
-
-    // Conflito não é erro: as duas versões estão guardadas. A faixa diz isso, e leva até elas.
     // Conflito não é erro: as duas versões estão guardadas. A faixa diz isso, e cada arquivo
-    // oferece a escolha — sem obrigar ninguém a escolher: manter as duas é uma resposta.
+    // oferece a escolha — sem obrigar ninguém a escolher: manter as duas é uma resposta. "Abrir",
+    // logo acima, leva até as duas.
     if pasta.conflitos != "": Faixa {
         texto: pasta.conflitos;
         cor: Tema.atencao;
         cor-de-fundo: Tema.atencao-suave;
-        botao: "Ver as duas";
-        nota: "Abre a pasta: a cópia tem \"conflito\" e o nome do computador no nome.";
-        acionado => {
-            Acoes.abrir-pasta(posicao);
-        }
+        botao: "";
     }
 
     for conflito[indice] in pasta.lista: VerticalLayout {
@@ -107,6 +128,7 @@ component LinhaDePasta inherits Cartao {
 
             Botao {
                 texto: "Manter as duas";
+                compacto: true;
                 horizontal-stretch: 1;
                 acionado => {
                     Acoes.resolver-conflito(posicao, indice, 0);
@@ -115,6 +137,7 @@ component LinhaDePasta inherits Cartao {
 
             Botao {
                 texto: "Só a mais recente";
+                compacto: true;
                 horizontal-stretch: 1;
                 acionado => {
                     Acoes.resolver-conflito(posicao, indice, 1);
@@ -123,6 +146,7 @@ component LinhaDePasta inherits Cartao {
 
             Botao {
                 texto: "Só a de " + conflito.de-quem;
+                compacto: true;
                 horizontal-stretch: 1;
                 acionado => {
                     Acoes.resolver-conflito(posicao, indice, 2);
@@ -131,7 +155,7 @@ component LinhaDePasta inherits Cartao {
         }
 
         Text {
-            text: "A versão que não ficar vai para a lixeira da pasta, e pode ser recuperada por 30 dias.";
+            text: "A que não ficar vai para a lixeira da pasta, por 30 dias.";
             font-size: Tema.fonte-nota;
             color: Tema.texto-fraco;
             wrap: word-wrap;
@@ -144,6 +168,7 @@ component LinhaDePasta inherits Cartao {
         Botao {
             texto: "Aceitar";
             primario: true;
+            compacto: true;
             horizontal-stretch: 1;
             acionado => {
                 Acoes.aceitar-pasta(posicao);
@@ -152,6 +177,7 @@ component LinhaDePasta inherits Cartao {
 
         Botao {
             texto: "Agora não";
+            compacto: true;
             horizontal-stretch: 1;
             acionado => {
                 Acoes.recusar-pasta(posicao);
@@ -163,25 +189,35 @@ component LinhaDePasta inherits Cartao {
         spacing: Tema.e2;
 
         Botao {
-            texto: "Abrir a pasta";
-            horizontal-stretch: 1;
-            acionado => {
-                Acoes.abrir-pasta(posicao);
-            }
-        }
-
-        Botao {
             texto: "Lixeira";
+            compacto: true;
+            accessible-label: "Abrir a lixeira da pasta " + pasta.nome;
             acionado => {
                 Acoes.abrir-lixeira(posicao);
             }
+        }
+
+        // Esvaziar apaga de vez o que a lixeira guardava para desfazer: pede o segundo clique.
+        // Com a lixeira vazia, não há o que esvaziar, e o botão diz isso apagado.
+        BotaoConfirmado {
+            texto-normal: "Esvaziar lixeira";
+            texto-de-confirmacao: "Apagar de vez?";
+            compacto: true;
+            habilitado: pasta.lixeira;
+            confirmado => {
+                Acoes.esvaziar-lixeira(posicao);
+            }
+        }
+
+        Rectangle {
+            horizontal-stretch: 1;
         }
 
         // Parar não apaga nada — mas é uma decisão que vale para os dois computadores, então se
         // segura, como Pausar.
         BotaoDeSegurar {
             texto: "Parar de compartilhar";
-            horizontal-stretch: 1;
+            compacto: true;
             acionado => {
                 Acoes.parar-pasta(posicao);
             }

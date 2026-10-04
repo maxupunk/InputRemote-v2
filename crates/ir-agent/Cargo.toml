@@ -18,6 +18,7 @@ ir-proto.workspace = true
 # Onde prender o ponteiro: a posição do protocolo em pixels do arranjo desta sessão.
 ir-geometry.workspace = true
 ir-ipc.workspace = true
+ir-recado.workspace = true
 ir-input.workspace = true
 ir-clip.workspace = true
 serde.workspace = true

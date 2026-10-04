@@ -87,6 +87,12 @@ impl Session {
         self.config.peer_edge
     }
 
+    /// "Copiar e colar" como vale agora — a escolha daqui, ou a do par, se foi adotada.
+    #[must_use]
+    pub const fn copy_paste(&self) -> crate::config::CopyPaste {
+        self.config.copy_paste
+    }
+
     /// O que está pressionado, do ponto de vista desta máquina.
     #[must_use]
     pub const fn input_state(&self) -> &InputState {

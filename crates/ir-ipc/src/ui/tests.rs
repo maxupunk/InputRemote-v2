@@ -119,6 +119,11 @@ fn os_avisos_novos_vao_no_fim_e_nao_renumeram_os_antigos() {
     assert_eq!(numero(&Aviso::PastasMudaram(vec![])), 12);
     assert_eq!(numero(&Aviso::RecadoDasPastas(String::new())), 13);
     assert_eq!(numero(&Aviso::ArquivosDaPasta(vec![])), 14);
+    let ajustado = Aviso::CopiarEColarAjustado {
+        ligado: false,
+        par: String::new(),
+    };
+    assert_eq!(numero(&ajustado), 15);
 }
 
 #[test]

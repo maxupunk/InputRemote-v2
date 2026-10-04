@@ -18,13 +18,15 @@ use ir_ipc::{Aviso, Falha, Resposta};
 #[cfg(test)]
 use ir_proto::carrier::Carrier;
 use ir_proto::screens::Edge;
-use ir_session::{Input, LinkDown, LocalIdentity, Phase, Policy, Session, SessionConfig};
+use ir_session::{CopyPaste, Input, LinkDown, LocalIdentity, Phase, Policy, Session};
 use tracing::{info, warn};
 
 use super::Daemon;
-use crate::config::{edge_para_texto, politica_sustentada, texto_da_politica};
+use crate::config::{Config, edge_para_texto, politica_sustentada, texto_da_politica};
 
-/// Uma sessão nova, desconectada, com esta política, esta borda e esta identidade.
+/// Uma sessão nova, desconectada, com esta política, esta borda e esta identidade — e com o que
+/// mais vale para os dois computadores tirado do que está gravado: quando a borda foi escolhida, e
+/// copiar e colar.
 ///
 /// O mesmo ponto para a subida do serviço e para a sessão recriada numa mudança de política: duas
 /// maneiras de montar a sessão acabariam montando duas sessões diferentes.
@@ -32,11 +34,15 @@ pub(crate) fn nova_sessao(
     politica: Policy,
     edge: Edge,
     identidade: LocalIdentity,
-    borda_escolhida_em: Option<u64>,
+    gravado: &Config,
 ) -> Session {
-    let mut config = SessionConfig::new(edge);
+    let mut config = ir_session::SessionConfig::new(edge);
     config.policy = politica;
-    config.edge_chosen_at = borda_escolhida_em.unwrap_or(0);
+    config.edge_chosen_at = gravado.borda_escolhida_em.unwrap_or(0);
+    config.copy_paste = CopyPaste {
+        enabled: gravado.copiar_e_colar,
+        chosen_at: gravado.copiar_e_colar_escolhido_em.unwrap_or(0),
+    };
     // Uma semente nova a cada sessão criada — também na recriada por mudança de política.
     // Repetir a anterior faria o par tomar a sessão nova pela antiga (log 22).
     config.incarnation_seed = rand::random();
@@ -125,6 +131,32 @@ impl Daemon {
         self.avisar_estado();
     }
 
+    /// Liga ou desliga copiar e colar: aqui e, pela sessão, no outro computador. Com o horário de
+    /// agora, para valer sobre a escolha que o par tiver.
+    pub(super) fn definir_copiar_e_colar(&mut self, ligado: bool) -> Resposta {
+        let escolha = CopyPaste::new(ligado, agora_em_ms());
+        let resposta =
+            self.definir_preferencia(|c| c.escolher_copiar_e_colar(ligado, escolha.chosen_at));
+        if resposta == Resposta::Feito {
+            self.drive(Input::SetCopyPaste(escolha));
+        }
+        resposta
+    }
+
+    /// O outro computador ligou ou desligou copiar e colar, e este acompanhou: grava, aplica, e a
+    /// tela conta por que mudou sozinho.
+    pub(crate) fn adotar_copiar_e_colar(&mut self, escolha: CopyPaste) {
+        // Sem esperar, como a borda: o anúncio chega com a sessão de pé, e o horário é o do par.
+        self.gravar_ja(|c| c.escolher_copiar_e_colar(escolha.enabled, escolha.chosen_at));
+        self.arquivos.copias().ligar(escolha.enabled);
+        let par = self.session.peer().map(|par| par.name.to_string());
+        let _ = self.avisos.send(Aviso::CopiarEColarAjustado {
+            ligado: escolha.enabled,
+            par: par.unwrap_or_default(),
+        });
+        self.avisar_estado();
+    }
+
     /// Encerra a sessão em uso e põe no lugar uma nova, com esta política.
     fn recriar_sessao(&mut self, politica: Policy) {
         // Primeiro soltar, depois qualquer outra coisa. Não "pedido pelo usuário": o par entenderia
@@ -137,7 +169,7 @@ impl Daemon {
             politica,
             self.edge(),
             self.identidade_local.clone(),
-            self.config.borda_escolhida_em,
+            &self.config,
         );
         // A sessão nova nasce sem saber nada: o mesmo que a da subida precisa saber.
         self.alimentar_sessao_nova();

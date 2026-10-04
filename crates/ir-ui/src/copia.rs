@@ -31,6 +31,16 @@ pub fn copia_ui(copia: &Transferencia, velocidade: String) -> CopiaUi {
     }
 }
 
+/// O estado da tela no tom do recado: o ícone da bandeja fala a mesma língua da notificação.
+#[must_use]
+pub fn tom(estado: i32) -> ir_recado::Tom {
+    match estado {
+        CONCLUIDA => ir_recado::Tom::Feito,
+        PARADA => ir_recado::Tom::Problema,
+        _ => ir_recado::Tom::Andamento,
+    }
+}
+
 /// O estado no vocabulário da tela.
 pub(crate) fn estado(copia: &Transferencia) -> i32 {
     if copia.falhou() {

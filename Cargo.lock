@@ -2715,6 +2715,7 @@ dependencies = [
  "ir-ipc",
  "ir-processo",
  "ir-proto",
+ "ir-recado",
  "ir-sincronia",
  "serde",
  "tracing",
@@ -2941,6 +2942,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ir-recado"
+version = "0.1.0-dev"
+dependencies = [
+ "ir-ipc",
+ "png 0.18.1",
+ "tracing",
+ "tray-icon",
+ "windows 0.62.2",
+ "windows-registry",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "ir-servico"
 version = "0.1.0-dev"
 dependencies = [
@@ -2986,6 +3000,7 @@ dependencies = [
  "ir-nuvem",
  "ir-pasta",
  "ir-proto",
+ "ir-recado",
  "notify",
  "rand 0.8.8",
  "tracing",
@@ -3023,6 +3038,7 @@ name = "ir-ui"
 version = "0.1.0-dev"
 dependencies = [
  "ir-ipc",
+ "ir-recado",
  "rfd",
  "slint",
  "slint-build",
@@ -6766,6 +6782,17 @@ checksum = "6e2e40844ac143cdb44aead537bbf727de9b044e107a0f1220392177d15b0f26"
 dependencies = [
  "windows-core 0.62.2",
  "windows-link 0.2.1",
+]
+
+[[package]]
+name = "windows-registry"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02752bf7fbdcce7f2a27a742f798510f3e5ad88dbe84871e5168e2120c3d5720"
+dependencies = [
+ "windows-link 0.2.1",
+ "windows-result 0.4.1",
+ "windows-strings 0.5.1",
 ]
 
 [[package]]

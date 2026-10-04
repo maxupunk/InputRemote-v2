@@ -49,12 +49,11 @@ pub mod conector;
 pub mod conexao;
 pub mod copia;
 pub(crate) mod escolher_pasta;
-#[cfg(windows)]
-pub mod flutuante;
 pub mod historico;
 pub mod janela;
 pub mod ponte;
 pub mod real;
+pub(crate) mod recados;
 pub mod servico;
 pub mod simulado;
 pub mod trafego;

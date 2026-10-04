@@ -62,7 +62,7 @@ pub use ir_confiabilidade as reliability;
 /// O tempo injetado, que mora no `ir-confiabilidade` junto com quem mais o usa.
 pub use ir_confiabilidade::time;
 
-pub use config::{Policy, SessionConfig, Timings};
+pub use config::{CopyPaste, Policy, SessionConfig, Timings};
 pub use event::{
     CarrierChoice, ClipText, Command, CommandBatch, Injection, Input, LinkDown, Notice,
 };

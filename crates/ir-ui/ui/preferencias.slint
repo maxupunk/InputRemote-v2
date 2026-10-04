@@ -122,12 +122,13 @@ export component Preferencias inherits VerticalLayout {
     if Dados.estado.tem-par: Cartao {
         Grupo {
             titulo: "COPIAR E COLAR";
+            // "Vale para os dois" na frase, e não só no comportamento: quem desliga aqui precisa
+            // saber que o outro computador também para, e por quê.
             nota: Dados.estado.copiar-e-colar
                 ? "O que você copia (Ctrl+C) num computador fica pronto para colar no outro: texto, "
-                    + "imagens e arquivos."
-                : "Copiar fica só em cada computador: nada do que se copia aqui vai para o outro, e "
-                    + "nada do que se copia lá chega aqui. A pasta compartilhada continua "
-                    + "sincronizando.";
+                    + "imagens e arquivos. Vale para os dois computadores: mudar aqui muda lá."
+                : "Desligado nos dois computadores: nada do que se copia num passa para o outro. "
+                    + "Mudar aqui muda lá. A pasta compartilhada continua sincronizando.";
 
             Alternativas {
                 opcoes: ["Ligado", "Desligado"];

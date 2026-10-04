@@ -1,0 +1,31 @@
+[package]
+name = "ir-recado"
+description = "O recado fora da janela: a notificação do sistema, no Windows e no Linux, e o ícone da bandeja."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Só o vocabulário: a cópia de arquivos (`Transferencia`), que é o recado mais comum.
+ir-ipc.workspace = true
+
+# No Linux, o recado é o `notify-send`; o registro conta quando ele falta.
+[target.'cfg(target_os = "linux")'.dependencies]
+tracing.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+# A central de notificações do Windows, com barra de andamento (`src/central.rs`).
+windows = { version = "0.62", features = ["Foundation", "Foundation_Collections", "Data_Xml_Dom", "UI_Notifications"] }
+# O nome e o ícone do InputRemote na central, registrados por usuário, sem `unsafe`.
+windows-registry = "0.6"
+# O tamanho dos ícones da bandeja nesta escala de tela (`GetSystemMetrics`).
+windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
+# Os quadros do ícone da bandeja, prontos para o ícone que a interface põe lá.
+tray-icon = { version = "0.25", default-features = false }
+png.workspace = true
+
+[lints]
+workspace = true

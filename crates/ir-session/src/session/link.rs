@@ -217,6 +217,8 @@ impl Session {
         }
         // E a borda: se as duas não forem opostas, vale a escolha mais recente (`edge`).
         self.announce_edge(now, out);
+        // E copiar e colar, pela mesma regra (`copy_paste`).
+        self.announce_copy_paste(now, out);
     }
 
     /// Encerra a sessão corrente.

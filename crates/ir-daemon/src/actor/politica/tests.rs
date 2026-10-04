@@ -160,3 +160,56 @@ fn na_subida_uma_politica_que_a_plataforma_nao_sustenta_e_corrigida() {
         );
     }
 }
+
+#[test]
+fn desligar_copiar_e_colar_grava_o_horario_e_chega_a_sessao() {
+    let (mut daemon, dir) = daemon();
+    assert_eq!(daemon.definir_copiar_e_colar(false), Resposta::Feito);
+    daemon.gravador.esperar();
+
+    let escolha = daemon.session.copy_paste();
+    assert!(!escolha.enabled, "a sessão leva a escolha ao par");
+    assert!(
+        escolha.chosen_at > 0,
+        "com o horário, para valer sobre a do par"
+    );
+    let arquivo = gravado(&dir);
+    assert!(
+        arquivo.contains(&format!(
+            "copiar_e_colar_escolhido_em = {}",
+            escolha.chosen_at
+        )),
+        "{arquivo}"
+    );
+}
+
+#[test]
+fn copiar_e_colar_que_o_par_escolheu_vale_aqui_e_e_contado() {
+    // O defeito relatado: desligado no Linux, o Windows continuava mandando, e o Linux mostrava
+    // "desligado no outro computador". Agora a escolha de lá vale aqui também.
+    let (mut daemon, dir) = daemon();
+    let mut avisos = daemon.avisos.subscribe();
+    daemon.out.push(Command::Notify(Notice::CopyPasteAdopted(
+        ir_session::CopyPaste {
+            enabled: false,
+            chosen_at: 700,
+        },
+    )));
+    daemon.apply_commands();
+    daemon.gravador.esperar();
+
+    assert!(!daemon.estado().copiar_e_colar);
+    assert!(
+        !daemon.arquivos.copias().ligada(),
+        "a chave do serviço desliga"
+    );
+    let arquivo = gravado(&dir);
+    assert!(arquivo.contains("copiar_e_colar = false"), "{arquivo}");
+    assert!(
+        arquivo.contains("copiar_e_colar_escolhido_em = 700"),
+        "{arquivo}"
+    );
+    let contou = std::iter::from_fn(|| avisos.try_recv().ok())
+        .any(|aviso| matches!(aviso, Aviso::CopiarEColarAjustado { ligado: false, .. }));
+    assert!(contou, "a tela conta por que mudou sozinho");
+}

@@ -344,6 +344,15 @@ pub enum Aviso {
     /// O outro computador copiou arquivos de uma pasta compartilhada: estes caminhos, na cópia
     /// daqui da pasta, vão para o clipboard. Só para o ajudante de clipboard.
     ArquivosDaPasta(Vec<String>),
+    /// O outro computador ligou ou desligou "copiar e colar", e este acompanhou: a escolha vale
+    /// para os dois. Como [`Self::BordaAjustada`], para a tela **contar** — o Ctrl+C que para de
+    /// atravessar sem ninguém mexer aqui parece defeito.
+    CopiarEColarAjustado {
+        /// Como ficou.
+        ligado: bool,
+        /// O nome do outro computador, como ele se anuncia.
+        par: String,
+    },
 }
 
 impl Aviso {

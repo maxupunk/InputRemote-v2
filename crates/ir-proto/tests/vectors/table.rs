@@ -210,6 +210,23 @@ fn control_vectors_v4() -> Vec<Vector> {
             control(Control::Hello(greeting(ProtocolVersion(8))), 26),
             "0000080102030405060708090a0b0c0d0e0f100762616e63616461010101010200001a0000",
         ),
+        v(
+            "hello_v9",
+            // Versão 9: copiar e colar valendo para os dois. A saudação só muda no número.
+            control(Control::Hello(greeting(ProtocolVersion(9))), 27),
+            "0000090102030405060708090a0b0c0d0e0f100762616e63616461010101010200001b0000",
+        ),
+        v(
+            "copy_paste",
+            control(
+                Control::CopyPaste {
+                    enabled: false,
+                    chosen_at: 1_759_500_000_000,
+                },
+                28,
+            ),
+            "00130080b6fdd29a331c0000",
+        ),
     ]
 }
 

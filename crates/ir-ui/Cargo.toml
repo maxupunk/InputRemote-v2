@@ -16,15 +16,15 @@ path = "src/main.rs"
 
 [dependencies]
 ir-ipc.workspace = true
+# A notificação do sistema e o ícone da bandeja com estados.
+ir-recado.workspace = true
 slint = "1.14"
 
 # So no Windows: o icone na bandeja do sistema (o mesmo crate que o Tauri usa, com o menu do `muda`),
 # e o evento nomeado que faz a segunda abertura trazer a janela da primeira em vez de abrir outra.
 [target.'cfg(windows)'.dependencies]
 tray-icon = { version = "0.25", default-features = false }
-# `Win32_UI_WindowsAndMessaging` traz `GetSystemMetrics`: é dele que sai o tamanho da tela, para o
-# aviso de cópia nascer no canto de baixo à direita.
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_Security", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_Security"] }
 # O seletor de pasta nativo do Windows (`IFileOpenDialog`), para "Compartilhar uma pasta". Sem as
 # features padrão: elas são o portal do Linux, onde quem abre o seletor é o `zenity`. ADR-0016.
 rfd = { version = "0.16", default-features = false }

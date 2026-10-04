@@ -64,6 +64,7 @@ fn o_numero_de_cada_comando_da_janela_no_fio_nao_muda() {
             pasta: PASTA,
             caminhos: vec![],
         },
+        ComandoDePasta::EsvaziarLixeira(PASTA),
     ];
     for (esperado, comando) in comandos.iter().enumerate() {
         assert_eq!(usize::from(numero(comando)), esperado, "{comando:?}");

@@ -100,6 +100,7 @@ crates/
 ├── ir-transferencia/ a transferência conduzida: o motor ligado à porta
 ├── ir-configuracao/ configuração e identidade persistentes da máquina
 ├── ir-canais/     os canais locais do serviço: controle (interface) e agente
+├── ir-recado/     o recado fora da janela: notificação do sistema e ícone da bandeja
 ├── ir-daemon/     binário do serviço
 ├── ir-agent/      binário do agente
 └── ir-ui/         interface (Slint): biblioteca testável + binário fino
@@ -118,10 +119,11 @@ ir-daemon ──► ir-session ──► ir-proto ──► (nada)
     ├──► ir-input ──► ir-geometry
     └──► ir-ipc
 
-ir-agent  ──► ir-ipc, ir-input, ir-clip, ir-geometry, ir-sincronia
-ir-sincronia ──► ir-pasta, ir-acervo, ir-nuvem, ir-ipc, ir-proto
+ir-agent  ──► ir-ipc, ir-input, ir-clip, ir-geometry, ir-sincronia, ir-recado
+ir-sincronia ──► ir-pasta, ir-acervo, ir-nuvem, ir-ipc, ir-proto, ir-recado
 ir-acervo    ──► ir-pasta, ir-nuvem, ir-proto
-ir-ui     ──► ir-ipc          (e mais nada — a interface não conhece o produto)
+ir-ui     ──► ir-ipc, ir-recado   (e mais nada — a interface não conhece o produto)
+ir-recado ──► ir-ipc          (só o vocabulário: sabe dar recado, e não o que acontece)
 ```
 
 Proibições verificadas automaticamente:
@@ -135,7 +137,9 @@ Proibições verificadas automaticamente:
   deixou o serviço mandando por um portador o que a sessão marcara para outro.
 
 O `ir-transferencia` nasceu de uma fronteira **comprovada**, e não prevista: o serviço passou de
-2 500 linhas de produção no dia em que a transferência entrou nele. É para isso que aquele limite
+2 500 linhas de produção no dia em que a transferência entrou nele. O `ir-recado` também: a
+interface passou do limite no dia em que a notificação nativa e o ícone com estados entraram nela,
+e o `notify-send` estava repetido em três crates ([log 64](logs/64-copiar-e-colar-nos-dois.md)). É para isso que aquele limite
 existe — ele não pede um número maior, pede a fronteira que estava faltando
 ([09, §1](09-padroes-de-codigo.md), [log 32](logs/32-arquivos-atravessando.md)).
 

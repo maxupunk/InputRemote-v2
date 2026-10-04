@@ -61,25 +61,21 @@ impl Daemon {
     /// Um aviso da sessão: registrar, e o que ele muda no serviço e na janela.
     fn on_notice(&mut self, notice: &Notice) {
         log_notice(notice);
-        // A borda que o par escolheu precisa ir para o arquivo e para a janela; a escolhida aqui
-        // já foi gravada antes de chegar à sessão.
-        if let Notice::EdgeAdopted { edge, chosen_at } = notice {
-            self.adotar_borda(*edge, *chosen_at);
-        }
-        // O controle saiu desta máquina: o que está no clipboard daqui vai junto. É o
-        // gatilho que funciona onde o sistema não avisa mudança de clipboard — o GNOME não
-        // avisa (ADR-0011).
-        if let Notice::ControlMoved { remote: true } = notice
-            && self.arquivos.copias().ligada()
-        {
-            let _ = self.avisos.send(ir_ipc::Aviso::LerClipboard);
-        }
-        // O rádio do par forma a rota dupla quando os dois se conheceram pela rede.
-        if let Notice::PeerRadio(radio) = notice {
-            self.on_radio_do_par(*radio);
-        }
-        // A rota mudou sem a fase mudar, e o aviso de fase não acordaria a janela.
         match notice {
+            // A borda e copiar e colar que o par escolheu vão para o arquivo e para a janela; os
+            // escolhidos aqui já foram gravados antes de chegar à sessão.
+            Notice::EdgeAdopted { edge, chosen_at } => self.adotar_borda(*edge, *chosen_at),
+            Notice::CopyPasteAdopted(escolha) => self.adotar_copiar_e_colar(*escolha),
+            // O controle saiu desta máquina: o que está no clipboard daqui vai junto. É o gatilho
+            // que funciona onde o sistema não avisa mudança de clipboard — o GNOME não avisa
+            // (ADR-0011).
+            Notice::ControlMoved { remote: true } if self.arquivos.copias().ligada() => {
+                let _ = self.avisos.send(ir_ipc::Aviso::LerClipboard);
+            }
+            // O rádio do par forma a rota dupla quando os dois se conheceram pela rede.
+            Notice::PeerRadio(radio) => self.on_radio_do_par(*radio),
+            // A rota mudou sem a fase mudar, e o aviso de fase não acordaria a janela.
+            Notice::RouteChanged { .. } => self.avisar_estado(),
             Notice::PeerNetworkPower(estado) => self.on_economia_do_par(Some(*estado)),
             Notice::NetworkPowerFixRequested => {
                 self.on_pedido_de_economia_do_par(std::time::Instant::now());
@@ -102,9 +98,6 @@ impl Daemon {
                 self.on_par_recusa_protegido(*refused);
             }
             _ => {}
-        }
-        if let Notice::RouteChanged { .. } = notice {
-            self.avisar_estado();
         }
     }
 
@@ -227,6 +220,12 @@ fn log_notice(notice: &Notice) {
         Notice::LatencySample(rtt) => debug!(%rtt, "latência medida"),
         Notice::ProtocolError { code, fatal } => warn!(?code, fatal, "erro de protocolo"),
         Notice::EdgeChanged { edge, .. } => debug!(%edge, "borda escolhida aqui"),
+        Notice::CopyPasteAdopted(escolha) => {
+            info!(
+                ligado = escolha.enabled,
+                "copiar e colar mudado no par; este acompanhou"
+            );
+        }
         Notice::ControlReclaimed { here } => info!(here, "controle retomado sem atravessar"),
         _ => {}
     }

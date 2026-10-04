@@ -99,6 +99,12 @@ pub struct Config {
     /// reiniciar perderia para qualquer outra.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub borda_escolhida_em: Option<u64>,
+    /// Quando "copiar e colar" foi ligado ou desligado, em milissegundos desde 1970.
+    ///
+    /// A escolha vale para os dois computadores: se divergirem, vale a mais recente, como a borda.
+    /// Sem horário — o padrão, ou um arquivo de antes disto —, um desligado vence um ligado.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub copiar_e_colar_escolhido_em: Option<u64>,
 }
 
 /// O padrão das opções que nascem ligadas.
@@ -162,11 +168,18 @@ impl Default for Config {
             bloquear_juntos: true,
             copiar_e_colar: true,
             borda_escolhida_em: None,
+            copiar_e_colar_escolhido_em: None,
         }
     }
 }
 
 impl Config {
+    /// Liga ou desliga "copiar e colar", com o horário da escolha.
+    pub const fn escolher_copiar_e_colar(&mut self, ligado: bool, quando: u64) {
+        self.copiar_e_colar = ligado;
+        self.copiar_e_colar_escolhido_em = Some(quando);
+    }
+
     /// Quem pode controlar quem.
     ///
     /// # Errors

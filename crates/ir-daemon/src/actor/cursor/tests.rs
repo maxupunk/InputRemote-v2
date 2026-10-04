@@ -132,7 +132,7 @@ fn quem_nunca_controla_ou_nao_tem_injetor_nao_conduz() {
         ir_session::Policy::OnlyControlled,
         ir_proto::screens::Edge::Right,
         so_o_outro.daemon.identidade_local.clone(),
-        None,
+        &crate::config::Config::default(),
     );
     so_o_outro.daemon.capturer = Some(Box::new(CapturaDeMentira));
     so_o_outro.daemon.injector = Some(Box::new(Anotador::default()));
