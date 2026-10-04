@@ -192,7 +192,7 @@ fn every_folder_message_variant_is_recorded_once() {
     // do quadro: canal, `BulkMessage::Folder`, `FolderMessage`. Conferido contra os bytes
     // gravados, para que acrescentar variante sem gravar o vetor — ou gravar duas vezes a mesma —
     // falhe aqui.
-    const VARIANTES_DA_PASTA: u8 = 22;
+    const VARIANTES_DA_PASTA: u8 = 23;
     const BULK_FOLDER: u8 = 10;
 
     let mut terceiros: Vec<u8> = vectors()

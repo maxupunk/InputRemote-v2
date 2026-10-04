@@ -26,16 +26,20 @@ const INDEXADORES: [&str; 4] = [
     "localsearch-3",
 ];
 
+/// Barato de clonar: uma operação que espera o conteúdo vai para uma thread própria com o clone, e
+/// a thread do FUSE fica livre. Sem isso, programas esperando downloads ocupariam todas as threads,
+/// e o próprio ajudante, que mexe na pasta pela montagem, não teria quem o atendesse.
+#[derive(Clone)]
 pub(super) struct Sistema {
     pub(super) comum: Arc<Comum>,
-    pub(super) inodes: Mutex<Inodes>,
+    pub(super) inodes: Arc<Mutex<Inodes>>,
 }
 
 impl Sistema {
     pub(super) fn novo(comum: Arc<Comum>) -> Self {
         Self {
             comum,
-            inodes: Mutex::new(Inodes::novos()),
+            inodes: Arc::new(Mutex::new(Inodes::novos())),
         }
     }
 
@@ -120,7 +124,7 @@ impl Sistema {
     /// dele, ou até o fim, traz o arquivo inteiro antes.
     pub(super) fn ler(
         &self,
-        req: &Request,
+        pid: u32,
         relativo: &str,
         (offset, tamanho): (u64, u32),
     ) -> Result<Vec<u8>, Errno> {
@@ -139,7 +143,7 @@ impl Sistema {
                     .trecho(relativo, offset, fim - offset)
                     .ok_or(Errno::ENETUNREACH);
             }
-            self.garantir_conteudo(req, relativo)?;
+            self.garantir_conteudo(pid, relativo)?;
         }
         let mut arquivo = File::open(&caminho)?;
         arquivo.seek(SeekFrom::Start(offset))?;
@@ -149,11 +153,11 @@ impl Sistema {
     }
 
     /// Traz o conteúdo inteiro, se ele ainda não veio. `Err` quando não vem.
-    pub(super) fn garantir_conteudo(&self, req: &Request, relativo: &str) -> Result<(), Errno> {
+    pub(super) fn garantir_conteudo(&self, pid: u32, relativo: &str) -> Result<(), Errno> {
         if !sem_conteudo(&self.no_cache(relativo)) {
             return Ok(());
         }
-        let (processo, fio) = quem_abriu(req.pid());
+        let (processo, fio) = quem_abriu(pid);
         if de_fundo_pelo_nome(&processo) || de_fundo_pelo_nome(&fio) {
             tracing::debug!(
                 processo,
@@ -176,14 +180,29 @@ impl Sistema {
         Ok(())
     }
 
-    pub(super) fn entrada(&self, pai: INodeNo, nome: &OsStr) -> Result<String, Errno> {
+    /// O caminho de `nome` dentro de `pai`. A pasta de controle não existe para ninguém além do
+    /// próprio ajudante: ele monta ao lado e publica **pela montagem**, para o núcleo avisar o
+    /// gerenciador de arquivos (inotify) do que apareceu, mudou de lugar ou saiu.
+    pub(super) fn entrada(&self, pid: u32, pai: INodeNo, nome: &OsStr) -> Result<String, Errno> {
         let pai = self.caminho(pai).ok_or(Errno::ENOENT)?;
         let nome = nome.to_str().ok_or(Errno::EINVAL)?;
-        if pai.is_empty() && nome == ".inputremote" {
+        if pai.is_empty() && nome == ".inputremote" && !do_proprio_processo(pid) {
             return Err(Errno::ENOENT);
         }
         Ok(juntar(&pai, nome))
     }
+}
+
+/// Se a thread `tid` é deste processo — o ajudante, que serve a montagem e também mexe nela.
+fn do_proprio_processo(tid: u32) -> bool {
+    std::fs::read_to_string(format!("/proc/{tid}/status"))
+        .ok()
+        .and_then(|status| {
+            status
+                .lines()
+                .find_map(|linha| linha.strip_prefix("Tgid:").map(|v| v.trim().to_owned()))
+        })
+        .is_some_and(|dono| dono == std::process::id().to_string())
 }
 
 /// O nome do processo e o da thread que abriu; vazios se ela já saiu.
@@ -230,12 +249,12 @@ pub(super) fn tempo(valor: TimeOrNow) -> SystemTime {
 impl Sistema {
     pub(super) fn remover(
         &self,
-        parent: INodeNo,
+        (pid, parent): (u32, INodeNo),
         name: &OsStr,
         reply: ReplyEmpty,
         tirar: impl FnOnce(&std::path::Path) -> std::io::Result<()>,
     ) {
-        let feito = self.entrada(parent, name).and_then(|relativo| {
+        let feito = self.entrada(pid, parent, name).and_then(|relativo| {
             tirar(&self.no_cache(&relativo))?;
             if let Ok(mut inodes) = self.inodes.lock() {
                 inodes.esquecer(&relativo);

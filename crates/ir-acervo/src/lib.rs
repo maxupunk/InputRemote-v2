@@ -19,6 +19,7 @@
 )]
 
 pub mod baixa;
+pub mod conhecidos;
 pub mod disco;
 pub mod envio;
 pub mod guardado;

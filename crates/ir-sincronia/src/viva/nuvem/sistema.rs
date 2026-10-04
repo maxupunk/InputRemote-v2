@@ -20,6 +20,40 @@ pub(crate) fn limpar_orfas(manter: &[String]) {
 }
 
 impl crate::viva::Viva {
+    /// O mesmo caminho do cache, visto pela montagem — na réplica sob demanda do Linux, com ela de
+    /// pé. É por onde se cria, move e apaga o que a pessoa vê: mexer direto no cache não passa pelo
+    /// núcleo, e o Nautilus só via a mudança depois de um F5. Ler continua sendo no cache.
+    #[cfg_attr(not(target_os = "linux"), allow(clippy::unused_self))] // só o Linux monta
+    pub(crate) fn pela_montagem(&self, caminho: &std::path::Path) -> std::path::PathBuf {
+        #[cfg(target_os = "linux")]
+        if self.nuvem.montagem.is_some()
+            && let Some(ponto) = &self.guardada.ponto
+            && let Ok(resto) = caminho.strip_prefix(&self.guardada.raiz)
+        {
+            return ponto.join(resto);
+        }
+        caminho.to_path_buf()
+    }
+
+    /// Leva um caminho da pasta à lixeira. Na réplica do Linux, ele sai da vista **pela montagem**
+    /// — para a montagem do cache, o que o núcleo avisa a quem observa a pasta — e de lá vai à
+    /// lixeira direto: ela fica na pasta de estado, fora da montagem, e um `rename` da montagem até
+    /// lá cruzaria sistemas de arquivos.
+    pub(crate) fn levar_a_lixeira(&self, relativo: &str) -> std::io::Result<()> {
+        let raiz = &self.guardada.raiz;
+        if self.pela_montagem(raiz) == *raiz {
+            return crate::disco::para_lixeira(&self.lixeira(), raiz, relativo);
+        }
+        let origem = crate::disco::absoluto(raiz, relativo);
+        if std::fs::symlink_metadata(&origem).is_err() {
+            return Ok(());
+        }
+        let nome = format!("saindo-{}", crate::disco::nanos_agora());
+        let saindo = crate::disco::arquivo_de_montagem(raiz, &nome)?;
+        crate::disco::mover(&self.pela_montagem(&origem), &self.pela_montagem(&saindo))?;
+        crate::disco::guardar_na_lixeira(&self.lixeira(), &saindo, relativo)
+    }
+
     /// Diz à montagem do Linux se o outro computador está ao alcance: sem ele, abrir um arquivo
     /// que não veio falha na hora, com o motivo certo.
     #[cfg_attr(not(target_os = "linux"), allow(clippy::unused_self))] // só o Linux monta
@@ -64,6 +98,7 @@ pub(super) fn por_marcador(
     _raiz: &std::path::Path,
     destino: &std::path::Path,
     (tamanho, horario): (u64, i64),
+    _escrita: &dyn Fn(&std::path::Path) -> std::path::PathBuf,
 ) -> std::io::Result<()> {
     let existia = std::fs::symlink_metadata(destino).ok();
     match existia {
@@ -80,12 +115,15 @@ pub(super) fn por_marcador(
 }
 
 /// No Linux, o marcador é um arquivo esparso com o tamanho e a data, montado ao lado e posto no
-/// lugar de uma vez, com a marca de sem conteúdo.
+/// lugar de uma vez, com a marca de sem conteúdo. Montado no cache (a marca é um atributo
+/// estendido, que a montagem não repassa); posto no lugar pela montagem (`escrita`), para o
+/// gerenciador de arquivos ver o arquivo novo na hora.
 #[cfg(target_os = "linux")]
 pub(super) fn por_marcador(
     raiz: &std::path::Path,
     destino: &std::path::Path,
     (tamanho, horario): (u64, i64),
+    escrita: &dyn Fn(&std::path::Path) -> std::path::PathBuf,
 ) -> std::io::Result<()> {
     let montado = crate::disco::arquivo_de_montagem(
         raiz,
@@ -93,7 +131,7 @@ pub(super) fn por_marcador(
     )?;
     std::fs::File::create(&montado)?.set_len(tamanho)?;
     ir_nuvem::marcar_sem_conteudo(&montado, true)?;
-    crate::disco::publicar(&montado, destino, horario)
+    crate::disco::publicar(&escrita(&montado), &escrita(destino), horario)
 }
 
 #[cfg(not(any(windows, target_os = "linux")))]
@@ -101,6 +139,7 @@ pub(super) fn por_marcador(
     _raiz: &std::path::Path,
     _destino: &std::path::Path,
     _metadados: (u64, i64),
+    _escrita: &dyn Fn(&std::path::Path) -> std::path::PathBuf,
 ) -> std::io::Result<()> {
     Err(std::io::ErrorKind::Unsupported.into())
 }
@@ -227,4 +266,16 @@ pub(super) fn icone() -> String {
             || r"%SystemRoot%\system32\imageres.dll,-1043".to_owned(),
             |ui| format!("{},0", ui.display()),
         )
+}
+
+/// Os dados de download de uma entrada da origem.
+pub(super) fn baixar_de(entrada: &ir_proto::message::Entry) -> ir_pasta::Baixar {
+    ir_pasta::Baixar {
+        caminho: entrada.path.clone(),
+        entrada: entrada.id,
+        versao: entrada.version,
+        tamanho: entrada.size,
+        resumo: entrada.hash,
+        modificado_ns: entrada.modified_ns,
+    }
 }

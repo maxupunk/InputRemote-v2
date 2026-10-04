@@ -162,7 +162,7 @@ impl Laco {
             }
             self.estado.varrer_o_que_venceu(&mut self.pastas);
             self.pastas.andar(&mut self.estado.fila);
-            self.estado.despejar(&self.pastas, &mut escrita)?;
+            self.estado.despejar(&mut self.pastas, &mut escrita)?;
         }
     }
 
@@ -255,9 +255,12 @@ impl Estado {
         }
     }
 
-    fn despejar(&mut self, pastas: &Pastas, escrita: &mut dyn Write) -> Result<()> {
+    fn despejar(&mut self, pastas: &mut Pastas, escrita: &mut dyn Write) -> Result<()> {
         for mensagem in self.fila.drain(..) {
             escrever(escrita, &DoAjudanteDePastas::ParaOPar(mensagem))?;
+        }
+        if let Some(caminhos) = pastas.tirar_do_clipboard() {
+            escrever(escrita, &DoAjudanteDePastas::PorNoClipboard(caminhos))?;
         }
         let resumo = pastas.resumo();
         if self.ultimo_resumo.as_ref() != Some(&resumo) {

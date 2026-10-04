@@ -2,8 +2,8 @@
 //!
 //! "Está copiando?" é a pergunta do momento, e o cartão responde. "Aquilo copiou?" é a pergunta de
 //! depois — quando a pessoa já está no outro computador — e quem responde é a lista: nome e o que
-//! aconteceu com cada uma das últimas cópias, nada mais. E "quanto isto usou da minha rede?" é a
-//! terceira, que o total da sessão responde.
+//! aconteceu com cada uma das últimas cópias, nada mais. "Está movendo algo agora?" — cópia ou
+//! pasta — é do [`crate::trafego`].
 //!
 //! A velocidade é medida aqui, e não no serviço: o serviço conta bytes e diz quando; a taxa é uma
 //! leitura disso no tempo, e é a tela que precisa dela. Medir entre dois avisos consecutivos daria
@@ -70,7 +70,7 @@ impl Velocimetro {
 ///
 /// Pela mesma escrita do tamanho da cópia ([`ir_ipc::transferencia::tamanho_legivel`]): taxa e
 /// tamanho lado a lado na mesma tela precisam ter a mesma unidade e a mesma vírgula.
-fn por_segundo(bytes_por_segundo: f64) -> String {
+pub(crate) fn por_segundo(bytes_por_segundo: f64) -> String {
     // A taxa é uma média de números não negativos e finitos; o arredondamento só perde a fração de
     // byte, que nenhuma unidade da tela mostra.
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -78,12 +78,10 @@ fn por_segundo(bytes_por_segundo: f64) -> String {
     format!("{}/s", ir_ipc::transferencia::tamanho_legivel(bytes))
 }
 
-/// As últimas cópias, e quanto trafegou nesta sessão.
+/// As últimas cópias.
 #[derive(Debug, Default)]
 pub struct Historico {
     itens: Vec<ItemDeCopia>,
-    /// Bytes que já atravessaram, nos dois sentidos, desde que a janela abriu.
-    bytes: u64,
 }
 
 impl Historico {
@@ -92,7 +90,6 @@ impl Historico {
         if !copia.terminou() {
             return;
         }
-        self.bytes = self.bytes.saturating_add(copia.bytes_feitos);
         self.itens.insert(
             0,
             ItemDeCopia {
@@ -110,22 +107,12 @@ impl Historico {
     pub fn itens(&self) -> &[ItemDeCopia] {
         &self.itens
     }
-
-    /// Quanto o produto moveu nesta sessão, em texto — vazio enquanto não moveu nada.
-    #[must_use]
-    pub fn trafego(&self) -> String {
-        if self.bytes == 0 {
-            return String::new();
-        }
-        ir_ipc::transferencia::tamanho_legivel(self.bytes)
-    }
 }
 
 /// Quanto os recebidos ocupam, na frase que a tela mostra, e se há o que limpar.
 ///
 /// "nada guardado" em vez de "0 B": zero byte é um número; o que a pessoa quer saber é se há algo
-/// ali ocupando espaço. Mora aqui, junto do tráfego da sessão, porque é o mesmo assunto — espaço
-/// que o produto ocupa — e porque as duas frases têm de sair iguais.
+/// ali ocupando espaço.
 #[must_use]
 pub fn recebidos_ui(bytes: u64) -> (String, bool) {
     if bytes == 0 {
@@ -231,20 +218,6 @@ mod tests {
         }
         assert_eq!(historico.itens().len(), LEMBRADAS);
         assert_eq!(historico.itens()[0].nome.as_str(), "copia-24");
-    }
-
-    #[test]
-    fn o_trafego_soma_os_dois_sentidos_da_sessao() {
-        let mut historico = Historico::default();
-        assert_eq!(historico.trafego(), "", "nada moveu ainda");
-        let pronta = Fase::Concluida {
-            destino: String::new(),
-        };
-        historico.guardar(&copia("a", pronta.clone(), 512 * 1024));
-        let mut recebida = copia("b", pronta, 512 * 1024);
-        recebida.sentido = Sentido::Recebendo;
-        historico.guardar(&recebida);
-        assert_eq!(historico.trafego(), "1,0 MB");
     }
 }
 

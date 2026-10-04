@@ -20,6 +20,9 @@ pub(super) fn conectar(endereco: &str, eventos: &Sender<Evento>) -> Result<Box<d
     let (mut escrita, leitura) = ir_ipc::cliente::abrir(endereco)
         .with_context(|| format!("abrindo o canal de controle em {endereco}"))?;
     pedir(escrita.as_mut(), &Pedido::AcompanharClipboard)?;
+    // As pastas compartilhadas, para a cópia de dentro delas não levar bytes; depois, a cada
+    // mudança, vêm pelo aviso.
+    pedir(escrita.as_mut(), &Pedido::Pastas)?;
     let eventos = eventos.clone();
     thread::spawn(move || ler_avisos(leitura, &eventos));
     Ok(escrita)
@@ -61,6 +64,14 @@ fn ler_avisos(mut leitura: Box<dyn Read + Send>, eventos: &Sender<Evento>) {
                     );
                 }
                 if eventos.send(Evento::Recusado).is_err() {
+                    return;
+                }
+            }
+            ParaInterface::Resposta(Resposta::Pastas(lista)) => {
+                if eventos
+                    .send(Evento::Aviso(ir_ipc::Aviso::PastasMudaram(lista)))
+                    .is_err()
+                {
                     return;
                 }
             }

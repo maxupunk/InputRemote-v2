@@ -247,11 +247,15 @@ impl Viva {
     fn executar_uma(&mut self, acao: &Acao) -> std::io::Result<()> {
         let raiz = self.guardada.raiz.clone();
         let abs = |c: &str| crate::disco::absoluto(&raiz, c);
+        // O que muda o que a pessoa vê passa pela montagem, no Linux; ler é no cache.
+        let w = |caminho: &std::path::Path| self.pela_montagem(caminho);
         match acao {
-            Acao::Copiar { de, para } => crate::disco::copiar(&raiz, &abs(de), &abs(para))?,
-            Acao::Mover { de, para } => crate::disco::mover(&abs(de), &abs(para))?,
-            Acao::CriarPasta(c) => std::fs::create_dir_all(abs(c))?,
-            Acao::ParaLixeira(c) => crate::disco::para_lixeira(&self.lixeira(), &raiz, c)?,
+            Acao::Copiar { de, para } => {
+                crate::disco::copiar(&w(&raiz), &abs(de), &w(&abs(para)))?;
+            }
+            Acao::Mover { de, para } => crate::disco::mover(&w(&abs(de)), &w(&abs(para)))?,
+            Acao::CriarPasta(c) => std::fs::create_dir_all(w(&abs(c)))?,
+            Acao::ParaLixeira(c) => self.levar_a_lixeira(c)?,
             // Os que vêm da rede, e a publicação da origem, têm caminho próprio.
             Acao::Baixar(_) | Acao::Marcador(_) | Acao::Publicar(_) => return Ok(()),
         }

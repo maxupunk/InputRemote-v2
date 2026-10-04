@@ -84,3 +84,5 @@ quê. Um registro que se reescreve não é registro.
 | 57 | 2026-10-02 | [A pasta compartilhada: o contrato antes do motor](docs/logs/57-a-pasta-compartilhada-o-contrato.md) |
 | 58 | 2026-10-02 | [A pasta que sincroniza: o motor, o ajudante e a primeira prova de ponta a ponta](docs/logs/58-a-pasta-que-sincroniza.md) |
 | 59 | 2026-10-02 | [A pasta sob demanda nos dois sistemas, e as telas que resolvem o conflito](docs/logs/59-a-pasta-sob-demanda.md) |
+| 60 | 2026-10-03 | [A cópia e a pasta, sem o mesmo arquivo atravessar duas vezes; e o Nautilus que só via com F5](docs/logs/60-a-copia-e-a-pasta.md) |
+| 61 | 2026-10-03 | [A tela inicial mais leve: a borda vai para Preferências, e o tráfego aparece](docs/logs/61-a-tela-inicial-mais-leve.md) |

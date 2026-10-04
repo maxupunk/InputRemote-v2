@@ -2,12 +2,12 @@
 //
 // A ordem dos blocos é a ordem em que o usuário quer saber. O estado vem primeiro porque é o
 // motivo de ele ter aberto a janela; o impedimento vem logo depois porque é a única coisa que
-// ele precisa resolver; a configuração vem por último porque quase nunca muda.
+// ele precisa resolver. A configuração — de que lado fica o outro computador, a borda travada —
+// mora em Preferências: quase nunca muda, e aqui só ocupava espaço.
 
 import { Tema } from "tema.slint";
 import { Dados, Acoes, Saude } from "dados.slint";
-import { Cartao, Botao, BotaoDeSegurar, Selo, Dado, Faixa, Ponto, Secao, Alternativas } from "componentes.slint";
-import { EscolhaDeBorda } from "bordas.slint";
+import { Cartao, Botao, BotaoDeSegurar, Selo, Dado, Faixa, Ponto } from "componentes.slint";
 import { CartaoDeCopia, ListaDeCopias } from "copia.slint";
 import { CartaoDePastas } from "pastas.slint";
 
@@ -98,6 +98,14 @@ export component Inicio inherits VerticalLayout {
                 wrap: word-wrap;
             }
 
+            // Uma linha que responde "está fazendo algo agora?": cópias e pastas, nos dois
+            // sentidos, ou "parado". A cor de ação só quando algo atravessa.
+            Dado {
+                rotulo: "Tráfego";
+                valor: Dados.trafego;
+                cor-do-valor: Dados.trafego-ativo ? Tema.acao : Tema.texto-fraco;
+            }
+
             if Dados.estado.latencia != "": Dado {
                 rotulo: "Atraso";
                 valor: Dados.estado.latencia;
@@ -160,13 +168,6 @@ export component Inicio inherits VerticalLayout {
             }
 
             Rectangle { }
-
-            if Dados.trafego != "": Text {
-                text: "nesta sessão: " + Dados.trafego;
-                font-size: Tema.fonte-nota;
-                color: Tema.texto-fraco;
-                vertical-alignment: center;
-            }
         }
 
         if mostrar-recentes: ListaDeCopias {
@@ -222,32 +223,6 @@ export component Inicio inherits VerticalLayout {
     if Dados.estado.tem-par: CartaoDePastas {
         abrir => {
             root.ir-para-pastas();
-        }
-    }
-
-    // Qualquer um dos dois escolhe de que lado fica o outro, e o outro passa a mostrar a oposta:
-    // vale a escolha mais recente (ADR-0014).
-    if Dados.estado.tem-par: Cartao {
-        EscolhaDeBorda { }
-
-        // Travar a borda é para quando o ponteiro atravessa sem querer — uma apresentação, um
-        // jogo em tela cheia. O atalho continua levando o controle.
-        Alternativas {
-            opcoes: ["Borda livre", "Borda travada"];
-            escolhida: Dados.estado.borda-travada ? 1 : 0;
-            escolher(indice) => {
-                Acoes.travar-borda(indice == 1);
-            }
-        }
-
-        Text {
-            text: "Mexa no mouse ou no teclado do computador que está sendo usado de longe para "
-                + "voltar a usá-lo. Atalhos: Ctrl+Alt+Shift+Espaço leva o controle ao outro "
-                + "computador e o traz de volta; Ctrl+Alt+Shift+Esc devolve o controle e solta "
-                + "tudo; Ctrl+Alt+End é o Ctrl+Alt+Del do outro computador.";
-            font-size: Tema.fonte-nota;
-            color: Tema.texto-fraco;
-            wrap: word-wrap;
         }
     }
 

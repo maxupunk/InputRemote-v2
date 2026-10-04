@@ -61,7 +61,8 @@ a mudança é aplicada. Se não é, **os dois lados mexeram no mesmo arquivo**, 
 No Linux, o conteúdo mora num cache na pasta de estado do usuário, e a pasta que a pessoa vê é a
 montagem dele. Um arquivo que não veio é, no cache, um arquivo esparso com tamanho e data certos e
 uma marca num atributo estendido; a marca vai junto num `rename` e some quando o download o
-substitui. A montagem se declara `fuse.sshfs`, o único tipo FUSE que a GLib trata como remoto: o
+substitui. O que o ajudante muda na pasta visível — arquivo novo, renomeado, apagado — passa pela
+montagem, para o núcleo avisar o gerenciador de arquivos na hora ([log 60](../logs/60-a-copia-e-a-pasta.md)). A montagem se declara `fuse.sshfs`, o único tipo FUSE que a GLib trata como remoto: o
 Nautilus não abre cada foto para desenhar a miniatura. Gerador de miniaturas e indexador ouvem
 "acesso negado" num arquivo que não veio.
 
@@ -120,6 +121,14 @@ Protocolo **versão 8**.
   anda por crédito da origem. O canal 5 nunca fica ocupado a ponto de o clipboard esperar.
 - **Arquivos nunca vão pelo rádio**, como na cópia. Só com Bluetooth ao alcance, a pasta espera a
   rede, e a frase diz isso.
+
+### 6a. A cópia (Ctrl+C) e a pasta não mandam o mesmo conteúdo duas vezes
+
+- Copiar de dentro de uma pasta compartilhada leva os caminhos, pela pasta (`Copied`), e não os
+  bytes: o outro computador põe no clipboard os arquivos da cópia dele.
+- O que atravessou pela cópia — o que foi e o que chegou — fica anotado numa lista do usuário. Quando
+  a pasta precisa de um conteúdo, procura nela antes de pedir à rede, pelo tamanho e pelo BLAKE3.
+- Detalhes e a prova em bancada no [log 60](../logs/60-a-copia-e-a-pasta.md).
 
 ### 7. O que nunca sincroniza
 

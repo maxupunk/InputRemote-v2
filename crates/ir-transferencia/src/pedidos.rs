@@ -33,6 +33,8 @@ pub struct Pedidos {
     pub(crate) desvio: crate::desvio::Desvio,
     /// O lado do ajudante da faixa, até alguém tomá-lo ([`Self::tomar_faixa`]).
     pub(crate) faixa: Arc<std::sync::Mutex<Option<crate::Faixa>>>,
+    /// O que o canal moveu, de cópias e pastas.
+    pub(crate) trafego: Arc<ir_transporte::dados::Contador>,
 }
 
 impl Pedidos {
@@ -55,6 +57,16 @@ impl Pedidos {
             avisos,
             desvio: crate::desvio::Desvio::solto(),
             faixa: Arc::default(),
+            trafego: Arc::default(),
+        }
+    }
+
+    /// Quanto o canal de dados moveu até agora, nos dois sentidos.
+    #[must_use]
+    pub fn trafego(&self) -> ir_ipc::Trafego {
+        ir_ipc::Trafego {
+            enviados: self.trafego.enviados(),
+            recebidos: self.trafego.recebidos(),
         }
     }
 

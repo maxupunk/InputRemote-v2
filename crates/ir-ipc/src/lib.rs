@@ -76,7 +76,7 @@ pub use pastas::{
 };
 pub use status::{
     AvisoDeRede, EconomiaDoWifi, Estado, Latencia, LinkState, MotivoDaQueda, MotivoDoPortador,
-    ParConhecido, Pausa, Politica,
+    ParConhecido, Pausa, Politica, Trafego,
 };
 pub use texto::TextoDoClipboard;
 pub use transferencia::{Fase, Motivo, Sentido, Transferencia};

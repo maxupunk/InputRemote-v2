@@ -33,7 +33,7 @@ pub mod vigia;
 pub mod viva;
 
 // O disco da pasta mora no `ir-acervo`; os nomes de sempre continuam valendo aqui dentro.
-pub use ir_acervo::{Saida, baixa, disco, envio, guardado, varredura};
+pub use ir_acervo::{Saida, baixa, conhecidos, disco, envio, guardado, varredura};
 pub use laco::{desregistrar, rodar};
 pub use lugar::Lugar;
 pub use pastas::Pastas;

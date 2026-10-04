@@ -39,8 +39,20 @@ pub fn validate_folder_message(message: &FolderMessage) -> Result<()> {
             result: OpResult::Conflict { conflict_path, .. },
             ..
         } => caminho(conflict_path),
+        FolderMessage::Copied { paths, .. } => copiados(paths),
         _ => Ok(()),
     }
+}
+
+fn copiados(paths: &[String]) -> Result<()> {
+    if paths.len() > limits::MAX_COPIED_PATHS {
+        return Err(ProtoError::CountTooLarge {
+            what: "caminhos copiados",
+            actual: paths.len(),
+            limit: limits::MAX_COPIED_PATHS,
+        });
+    }
+    paths.iter().try_for_each(|path| caminho(path))
 }
 
 fn caminho(path: &str) -> Result<()> {

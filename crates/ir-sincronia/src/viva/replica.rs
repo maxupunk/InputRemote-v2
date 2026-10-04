@@ -92,7 +92,12 @@ impl Viva {
     pub(super) fn andar_replica(&mut self, ambiente: &Ambiente, saida: &mut dyn Saida) {
         let pasta = self.pasta();
         let raiz = self.guardada.raiz.clone();
-        match self.baixas.comecar(&raiz, pasta, saida) {
+        let estado = ambiente.lugar.estado.clone();
+        let achar = |alvo: &ir_pasta::Baixar| {
+            let resumo = alvo.resumo?;
+            crate::conhecidos::achar(&estado, &resumo, alvo.tamanho)
+        };
+        match self.baixas.comecar(&raiz, pasta, saida, &achar) {
             Ok(Some(chegada)) => self.chegou(chegada, ambiente),
             Ok(None) => {}
             Err(erro) => warn!(%erro, "não consegui montar um download"),

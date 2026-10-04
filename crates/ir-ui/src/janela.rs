@@ -9,6 +9,7 @@
 //! interface é a cópia que vai ficar desatualizada.
 
 mod acoes;
+mod copias;
 mod pareamento;
 mod pastas;
 
@@ -23,7 +24,7 @@ use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel, 
 
 use crate::gerado::{Dados, EtapaDoPareamento, Janela};
 use crate::servico::{Servico, Situacao};
-use crate::{ativacao, copia, ponte};
+use crate::{ativacao, ponte};
 
 /// De quanto em quanto tempo a interface recolhe avisos e confere a ligação com o serviço.
 ///
@@ -48,8 +49,10 @@ struct Contexto {
     velocimetro: RefCell<crate::historico::Velocimetro>,
     /// De qual cópia é a medida corrente.
     copia_medida: RefCell<Option<String>>,
-    /// As últimas cópias e o tráfego da sessão.
+    /// As últimas cópias.
     historico: RefCell<crate::historico::Historico>,
+    /// O que o canal de dados está movendo agora, para a tela inicial.
+    trafego: RefCell<crate::trafego::MedidorDeTrafego>,
     /// Onde os recebidos ficam, pelo último estado, para o botão "Abrir a pasta".
     pasta_de_recebidos: RefCell<String>,
     /// Se o último estado tinha sessão de pé, para perceber a queda.
@@ -81,12 +84,16 @@ impl Contexto {
             atrasos.barras()
         };
         let (recebidos, tem_o_que_limpar) = crate::historico::recebidos_ui(estado.recebidos_bytes);
+        let agora = std::time::Instant::now();
+        let (trafego, ativo) = self.trafego.borrow_mut().medir(estado.trafego, agora);
         self.com_janela(|janela| {
             let dados = janela.global::<Dados>();
             dados.set_estado(ponte::estado_ui(estado));
             dados.set_recebidos(recebidos.clone().into());
             dados.set_recebidos_tem_o_que_limpar(tem_o_que_limpar);
             dados.set_atrasos(ModelRc::new(VecModel::from(barras.clone())));
+            dados.set_trafego(trafego.clone().into());
+            dados.set_trafego_ativo(ativo);
         });
     }
 
@@ -209,59 +216,6 @@ impl Contexto {
         }
     }
 
-    /// Conta o que está acontecendo com uma cópia de arquivos.
-    ///
-    /// Na janela, num cartão que **fica** depois de terminar: a pergunta "aquilo copiou mesmo?"
-    /// vem depois, quando a pessoa já está no outro computador. E, no Windows, também num aviso no
-    /// canto da tela — porque quem copia está no Explorer, e não aqui.
-    fn mostrar_copia(&self, transferencia: &ir_ipc::transferencia::Transferencia) {
-        let velocidade = self.medir(transferencia);
-        let copia = copia::copia_ui(transferencia, velocidade);
-        self.com_janela(|janela| {
-            let dados = janela.global::<Dados>();
-            dados.set_copia(copia.clone());
-            dados.set_tem_copia(true);
-        });
-        self.guardar_no_historico(transferencia);
-        #[cfg(windows)]
-        self.aviso
-            .borrow_mut()
-            .mostrar(copia, transferencia.terminou());
-    }
-
-    /// A taxa desta cópia, zerando o velocímetro quando começa outra.
-    fn medir(&self, copia: &ir_ipc::transferencia::Transferencia) -> String {
-        let mut velocimetro = self.velocimetro.borrow_mut();
-        let mut anterior = self.copia_medida.borrow_mut();
-        if anterior.as_deref() != Some(copia.nome.as_str()) {
-            velocimetro.zerar();
-            *anterior = Some(copia.nome.clone());
-        }
-        if copia.terminou() {
-            // No fim não há taxa: há resultado. Mostrar a última medida ao lado de "Cópia
-            // entregue" faria parecer que ainda está indo.
-            velocimetro.zerar();
-            return String::new();
-        }
-        velocimetro.medir(copia.bytes_feitos, std::time::Instant::now())
-    }
-
-    /// Guarda a cópia que terminou na lista das últimas, e atualiza o tráfego da sessão.
-    fn guardar_no_historico(&self, copia: &ir_ipc::transferencia::Transferencia) {
-        if !copia.terminou() {
-            return;
-        }
-        let mut historico = self.historico.borrow_mut();
-        historico.guardar(copia);
-        let itens: Vec<crate::gerado::ItemDeCopia> = historico.itens().to_vec();
-        let trafego = historico.trafego();
-        self.com_janela(|janela| {
-            let dados = janela.global::<Dados>();
-            dados.set_copias_recentes(ModelRc::new(VecModel::from(itens.clone())));
-            dados.set_trafego(trafego.clone().into());
-        });
-    }
-
     fn etapa(&self, etapa: EtapaDoPareamento) {
         self.com_janela(|janela| janela.global::<Dados>().set_etapa(etapa));
     }
@@ -341,6 +295,7 @@ pub fn abrir(
         velocimetro: RefCell::default(),
         copia_medida: RefCell::default(),
         historico: RefCell::default(),
+        trafego: RefCell::default(),
         pasta_de_recebidos: RefCell::default(),
         conectado_antes: Cell::new(false),
         atrasos: RefCell::default(),

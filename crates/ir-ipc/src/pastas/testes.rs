@@ -21,6 +21,7 @@ fn o_numero_de_cada_variante_no_fio_nao_muda() {
     );
     assert_eq!(numero(&DoAjudanteDePastas::Resumo(vec![])), 2);
     assert_eq!(numero(&DoAjudanteDePastas::Recado(String::new())), 3);
+    assert_eq!(numero(&DoAjudanteDePastas::PorNoClipboard(vec![])), 4);
 
     assert_eq!(
         numero(&ParaOAjudanteDePastas::DoPar(FolderMessage::HelperAbsent)),
@@ -59,6 +60,10 @@ fn o_numero_de_cada_comando_da_janela_no_fio_nao_muda() {
             escolha: EscolhaDeConflito::ManterAsDuas,
         },
         ComandoDePasta::AbrirLixeira(PASTA),
+        ComandoDePasta::Copiado {
+            pasta: PASTA,
+            caminhos: vec![],
+        },
     ];
     for (esperado, comando) in comandos.iter().enumerate() {
         assert_eq!(usize::from(numero(comando)), esperado, "{comando:?}");

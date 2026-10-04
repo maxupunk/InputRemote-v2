@@ -173,8 +173,12 @@ export global Dados {
     /// As últimas cópias que terminaram, da mais nova para a mais antiga.
     in property <[ItemDeCopia]> copias-recentes;
 
-    /// Quanto o produto moveu nesta sessão ("1,2 GB"), ou vazio enquanto nada moveu.
+    /// O que o canal de dados — cópias e pastas — está movendo agora: "↓ 2,4 MB/s  ↑ 12 kB/s",
+    /// ou "parado".
     in property <string> trafego;
+
+    /// Se algo está atravessando agora: a linha do tráfego ganha a cor de ação.
+    in property <bool> trafego-ativo: false;
 
     /// As últimas medianas de atraso, de 0 a 1 da altura do gráfico, da mais antiga à mais nova.
     in property <[float]> atrasos;

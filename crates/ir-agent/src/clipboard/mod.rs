@@ -47,6 +47,7 @@ pub(crate) mod atualizacao;
 mod imagem;
 pub(crate) mod instancia;
 mod notificacao;
+mod pasta;
 mod rede;
 mod servico;
 
@@ -180,9 +181,19 @@ fn atender(partes: Partes<'_>) -> Fim {
         eco,
         notificador,
     } = partes;
+    // As pastas compartilhadas daqui: o serviço manda a lista na conexão e a cada mudança.
+    let mut pastas = pasta::Pastas::default();
     while let Ok(evento) = eventos.recv() {
         match evento {
-            Evento::Mudou | Evento::Aviso(Aviso::LerClipboard) => oferecer(escrita, clip, eco),
+            Evento::Mudou | Evento::Aviso(Aviso::LerClipboard) => {
+                oferecer(escrita, clip, eco, &pastas);
+            }
+            Evento::Aviso(Aviso::PastasMudaram(lista)) => pastas.atualizar(&lista),
+            // O outro computador copiou da pasta: os mesmos arquivos daqui, no clipboard.
+            Evento::Aviso(Aviso::ArquivosDaPasta(caminhos)) => {
+                let caminhos = caminhos.into_iter().map(PathBuf::from).collect();
+                publicar(&Conteudo::Arquivos(caminhos), clip, eco);
+            }
             Evento::Aviso(Aviso::Transferencia(transferencia)) => {
                 notificador.contar(&transferencia);
                 reagir(&transferencia, clip, eco);
@@ -202,7 +213,12 @@ fn atender(partes: Partes<'_>) -> Fim {
 }
 
 /// Lê o clipboard e, se ele mudou de verdade, oferece ao par.
-fn oferecer(escrita: &mut dyn Write, clip: &mut dyn Clipboard, eco: &mut Eco) {
+fn oferecer(
+    escrita: &mut dyn Write,
+    clip: &mut dyn Clipboard,
+    eco: &mut Eco,
+    pastas: &pasta::Pastas,
+) {
     let conteudo = match clip.ler() {
         Ok(Some(conteudo)) => conteudo,
         Ok(None) => return,
@@ -211,7 +227,7 @@ fn oferecer(escrita: &mut dyn Write, clip: &mut dyn Clipboard, eco: &mut Eco) {
             return;
         }
     };
-    let Some(pedido) = pedido_para(&conteudo) else {
+    let Some(pedido) = pastas.pedido(&conteudo, pedido_para) else {
         // Não marcado como oferecido: se um dia houver caminho, a mesma cópia tem de ir.
         debug!(
             tipo = conteudo.tipo().name(),
@@ -226,6 +242,9 @@ fn oferecer(escrita: &mut dyn Write, clip: &mut dyn Clipboard, eco: &mut Eco) {
     // Só depois da guarda de eco: trazer uma pasta de rede para perto pode ser demorado, e não pode
     // se repetir a cada aviso de mudança do mesmo clipboard.
     let pedido = trazer_da_rede(pedido);
+    if let Pedido::EnviarArquivos { caminhos } = &pedido {
+        pasta::anotar(&caminhos.iter().map(PathBuf::from).collect::<Vec<_>>());
+    }
     // Tipo e tamanho, nunca o conteúdo nem nomes ([04, §7](../../../docs/04-seguranca.md)).
     info!(
         tipo = conteudo.tipo().name(),
@@ -291,6 +310,7 @@ fn reagir(transferencia: &Transferencia, clip: &mut dyn Clipboard, eco: &mut Eco
                     Err(erro) => warn!(%erro, "não consegui ler a imagem que chegou"),
                 }
             } else {
+                pasta::anotar(std::slice::from_ref(&destino));
                 publicar(&Conteudo::Arquivos(vec![destino]), clip, eco);
             }
         }

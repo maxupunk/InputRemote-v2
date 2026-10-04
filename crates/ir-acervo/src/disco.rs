@@ -93,9 +93,19 @@ pub fn para_lixeira(lixeira: &Path, raiz: &Path, relativo: &str) -> std::io::Res
     if std::fs::symlink_metadata(&origem).is_err() {
         return Ok(());
     }
+    guardar_na_lixeira(lixeira, &origem, relativo)
+}
+
+/// Guarda na lixeira, sob o nome `relativo` e a data de hoje, o que está em `atual` — que pode já
+/// ter saído do lugar (a réplica do Linux o tira da vista pela montagem antes).
+///
+/// # Errors
+///
+/// Erro de disco.
+pub fn guardar_na_lixeira(lixeira: &Path, atual: &Path, relativo: &str) -> std::io::Result<()> {
     let destino = absoluto(&lixeira.join(dia_de_hoje()), relativo);
     let destino = livre(&destino);
-    mover(&origem, &destino)
+    mover(atual, &destino)
 }
 
 /// Tira da lixeira o que passou da retenção.

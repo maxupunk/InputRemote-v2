@@ -56,6 +56,13 @@ impl Pastas {
                 let viva = self.vivas.get(&FolderId(id)).ok_or_else(nao_existe)?;
                 abrir_no_gerenciador(viva.visivel())
             }
+            ComandoDePasta::Copiado {
+                pasta: IdDePasta(id),
+                caminhos,
+            } => {
+                self.copiar_para_la(FolderId(id), caminhos, saida);
+                Ok(())
+            }
             ComandoDePasta::AbrirLixeira(IdDePasta(id)) => {
                 let viva = self.vivas.get(&FolderId(id)).ok_or_else(nao_existe)?;
                 let lixeira = viva.lixeira();
@@ -226,15 +233,14 @@ fn resolver(viva: &mut Viva, caminho: &str, escolha: EscolhaDeConflito) -> Resul
         return Err("Esse conflito já foi resolvido.".to_owned());
     };
     let (original, copia) = viva.guardada.conflitos.remove(posicao);
-    let raiz = viva.raiz().to_path_buf();
-    let lixeira = viva.lixeira();
+    // Pela montagem, no Linux: o gerenciador de arquivos vê a escolha na hora.
+    let raiz = viva.pela_montagem(viva.raiz());
     let resultado = match escolha {
-        EscolhaDeConflito::FicarComEsta => crate::disco::para_lixeira(&lixeira, &raiz, &copia),
-        EscolhaDeConflito::FicarComAOutra => crate::disco::para_lixeira(&lixeira, &raiz, &original)
-            .and_then(|()| {
-                let de = crate::disco::absoluto(&raiz, &copia);
-                crate::disco::mover(&de, &crate::disco::absoluto(&raiz, &original))
-            }),
+        EscolhaDeConflito::FicarComEsta => viva.levar_a_lixeira(&copia),
+        EscolhaDeConflito::FicarComAOutra => viva.levar_a_lixeira(&original).and_then(|()| {
+            let de = crate::disco::absoluto(&raiz, &copia);
+            crate::disco::mover(&de, &crate::disco::absoluto(&raiz, &original))
+        }),
         _ => Ok(()),
     };
     viva.alterou();

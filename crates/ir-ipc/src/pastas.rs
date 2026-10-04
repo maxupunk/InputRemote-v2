@@ -52,6 +52,9 @@ pub enum DoAjudanteDePastas {
     Resumo(Vec<ResumoDePasta>),
     /// Um pedido da janela não deu certo: a frase, com o que fazer, para ela mostrar.
     Recado(String),
+    /// O outro computador copiou (Ctrl+C) arquivos de uma pasta compartilhada: estes caminhos, na
+    /// cópia daqui da mesma pasta, vão para o clipboard deste computador.
+    PorNoClipboard(Vec<String>),
 }
 
 /// O que o serviço diz ao ajudante das pastas.
@@ -107,6 +110,14 @@ pub enum ComandoDePasta {
     },
     /// Abrir a lixeira da pasta, onde fica o que a sincronia tirou nos últimos 30 dias.
     AbrirLixeira(IdDePasta),
+    /// A pessoa copiou (Ctrl+C) estes arquivos da pasta: vão ao outro computador como caminhos da
+    /// pasta, e não pela cópia de arquivos. Quem manda é o ajudante de clipboard.
+    Copiado {
+        /// A pasta.
+        pasta: IdDePasta,
+        /// Os caminhos, relativos à pasta, com `/`.
+        caminhos: Vec<String>,
+    },
 }
 
 /// O que fazer com as duas versões de um arquivo em conflito.

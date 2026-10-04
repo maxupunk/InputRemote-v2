@@ -100,6 +100,11 @@ pub const MAX_FOLDER_NAME: usize = 255;
 /// Origem: limite prático. Impede que o par force alocação grande com um anúncio absurdo.
 pub const MAX_KNOWN_FOLDERS: usize = 64;
 
+/// Quantos caminhos uma cópia (Ctrl+C) de dentro de uma pasta compartilhada leva ao outro
+/// computador. Copiar mais que isso de uma vez não põe nada no clipboard de lá; a pasta continua
+/// sincronizando normalmente.
+pub const MAX_COPIED_PATHS: usize = 1_000;
+
 /// Máximo de entradas — arquivos e subpastas — numa pasta compartilhada.
 ///
 /// Origem: o índice da réplica fica inteiro na memória do ajudante; cem mil entradas são uns

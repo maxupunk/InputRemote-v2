@@ -87,6 +87,21 @@ impl ServicoSimulado {
     }
 }
 
+impl ServicoSimulado {
+    /// Já pareado com a primeira máquina da demonstração, e conectado: a tela inicial de uma vez.
+    #[must_use]
+    pub fn conectado() -> Self {
+        let servico = Self::new();
+        {
+            let mut interno = servico.interno.borrow_mut();
+            interno.escolhido = candidatos_de_demonstracao().into_iter().next();
+            interno.parear();
+            interno.conectar();
+        }
+        servico
+    }
+}
+
 impl Interno {
     fn agendar(&mut self, daqui: u32, passo: Passo) {
         let quando = self.tique.saturating_add(daqui);
@@ -99,6 +114,12 @@ impl Interno {
 
     fn avancar(&mut self) {
         self.tique = self.tique.saturating_add(1);
+        // Na demonstração o canal de dados anda em rajadas — uns dez segundos movendo, dez parado —,
+        // para a linha de tráfego da tela inicial mostrar os dois jeitos.
+        if self.estado.enlace.conectado() && (self.tique / 50).is_multiple_of(2) {
+            self.estado.trafego.recebidos += 600_000;
+            self.estado.trafego.enviados += 4_000;
+        }
         let vencidos: Vec<Passo> = self
             .agenda
             .iter()

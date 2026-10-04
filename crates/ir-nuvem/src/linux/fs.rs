@@ -24,8 +24,11 @@ use super::sem_conteudo;
 use super::sistema::{Sistema, TTL, tempo};
 
 impl Filesystem for Sistema {
-    fn lookup(&self, _req: &Request, parent: INodeNo, name: &OsStr, reply: ReplyEntry) {
-        match self.entrada(parent, name).and_then(|c| self.atributos(&c)) {
+    fn lookup(&self, req: &Request, parent: INodeNo, name: &OsStr, reply: ReplyEntry) {
+        match self
+            .entrada(req.pid(), parent, name)
+            .and_then(|c| self.atributos(&c))
+        {
             Ok(attr) => reply.entry(&TTL, &attr, Generation(0)),
             Err(erro) => reply.error(erro),
         }
@@ -61,50 +64,34 @@ impl Filesystem for Sistema {
         _flags: Option<fuser::BsdFileFlags>,
         reply: ReplyAttr,
     ) {
-        let feito = (|| -> Result<FileAttr, Errno> {
-            let relativo = self.caminho(ino).ok_or(Errno::ENOENT)?;
-            let caminho = self.no_cache(&relativo);
-            if let Some(tamanho) = size {
-                // Esvaziar não precisa do conteúdo antigo — é o `>` do terminal e o "salvar por
-                // cima" de quase todo programa, e funciona offline. Encurtar para outro tamanho
-                // precisa do que fica.
-                if tamanho == 0 && sem_conteudo(&caminho) {
-                    super::marcar_sem_conteudo(&caminho, false)?;
-                } else {
-                    self.garantir_conteudo(req, &relativo)?;
-                }
-                OpenOptions::new()
-                    .write(true)
-                    .open(&caminho)?
-                    .set_len(tamanho)?;
-            }
-            if let Some(modo) = mode {
-                std::fs::set_permissions(&caminho, std::fs::Permissions::from_mode(modo))?;
-            }
-            if let Some(quando) = mtime {
-                File::options()
-                    .write(true)
-                    .open(&caminho)?
-                    .set_modified(tempo(quando))?;
-            }
-            self.atributos(&relativo)
-        })();
-        match feito {
+        let Some(relativo) = self.caminho(ino) else {
+            return reply.error(Errno::ENOENT);
+        };
+        // Encurtar para um tamanho que não é zero precisa do conteúdo: espera noutra thread.
+        let espera = size.is_some_and(|t| t != 0) && sem_conteudo(&self.no_cache(&relativo));
+        let sistema = self.clone();
+        let pid = req.pid();
+        let fazer = move || match sistema.mudar_atributos(pid, &relativo, (mode, size, mtime)) {
             Ok(attr) => reply.attr(&TTL, &attr),
             Err(erro) => reply.error(erro),
+        };
+        if espera {
+            std::thread::spawn(fazer);
+        } else {
+            fazer();
         }
     }
 
     fn mkdir(
         &self,
-        _req: &Request,
+        req: &Request,
         parent: INodeNo,
         name: &OsStr,
         mode: u32,
         _umask: u32,
         reply: ReplyEntry,
     ) {
-        let feito = self.entrada(parent, name).and_then(|relativo| {
+        let feito = self.entrada(req.pid(), parent, name).and_then(|relativo| {
             std::fs::create_dir(self.no_cache(&relativo))?;
             let _ = std::fs::set_permissions(
                 self.no_cache(&relativo),
@@ -118,17 +105,19 @@ impl Filesystem for Sistema {
         }
     }
 
-    fn unlink(&self, _req: &Request, parent: INodeNo, name: &OsStr, reply: ReplyEmpty) {
-        self.remover(parent, name, reply, |c| std::fs::remove_file(c));
+    fn unlink(&self, req: &Request, parent: INodeNo, name: &OsStr, reply: ReplyEmpty) {
+        self.remover((req.pid(), parent), name, reply, |c| {
+            std::fs::remove_file(c)
+        });
     }
 
-    fn rmdir(&self, _req: &Request, parent: INodeNo, name: &OsStr, reply: ReplyEmpty) {
-        self.remover(parent, name, reply, |c| std::fs::remove_dir(c));
+    fn rmdir(&self, req: &Request, parent: INodeNo, name: &OsStr, reply: ReplyEmpty) {
+        self.remover((req.pid(), parent), name, reply, |c| std::fs::remove_dir(c));
     }
 
     fn rename(
         &self,
-        _req: &Request,
+        req: &Request,
         parent: INodeNo,
         name: &OsStr,
         newparent: INodeNo,
@@ -137,8 +126,8 @@ impl Filesystem for Sistema {
         reply: ReplyEmpty,
     ) {
         let feito = (|| -> Result<(), Errno> {
-            let de = self.entrada(parent, name)?;
-            let para = self.entrada(newparent, newname)?;
+            let de = self.entrada(req.pid(), parent, name)?;
+            let para = self.entrada(req.pid(), newparent, newname)?;
             std::fs::rename(self.no_cache(&de), self.no_cache(&para))?;
             if let Ok(mut inodes) = self.inodes.lock() {
                 inodes.renomear(&de, &para);
@@ -173,13 +162,21 @@ impl Filesystem for Sistema {
         _lock_owner: Option<LockOwner>,
         reply: ReplyData,
     ) {
-        let lido = self
-            .caminho(ino)
-            .ok_or(Errno::ENOENT)
-            .and_then(|relativo| self.ler(req, &relativo, (offset, size)));
-        match lido {
+        let Some(relativo) = self.caminho(ino) else {
+            return reply.error(Errno::ENOENT);
+        };
+        // Um arquivo que não veio pode esperar a rede: noutra thread, com a do FUSE livre.
+        let espera = sem_conteudo(&self.no_cache(&relativo));
+        let sistema = self.clone();
+        let pid = req.pid();
+        let fazer = move || match sistema.ler(pid, &relativo, (offset, size)) {
             Ok(dados) => reply.data(&dados),
             Err(erro) => reply.error(erro),
+        };
+        if espera {
+            std::thread::spawn(fazer);
+        } else {
+            fazer();
         }
     }
 
@@ -195,19 +192,31 @@ impl Filesystem for Sistema {
         _lock_owner: Option<LockOwner>,
         reply: ReplyWrite,
     ) {
-        let escrito = (|| -> Result<(), Errno> {
-            let relativo = self.caminho(ino).ok_or(Errno::ENOENT)?;
-            // Escrever no meio de um arquivo que não veio pede o resto dele primeiro.
-            self.garantir_conteudo(req, &relativo)?;
-            let arquivo = OpenOptions::new()
-                .write(true)
-                .open(self.no_cache(&relativo))?;
-            arquivo.write_all_at(data, offset)?;
-            Ok(())
-        })();
-        match escrito {
-            Ok(()) => reply.written(u32::try_from(data.len()).unwrap_or(u32::MAX)),
-            Err(erro) => reply.error(erro),
+        let Some(relativo) = self.caminho(ino) else {
+            return reply.error(Errno::ENOENT);
+        };
+        // Escrever no meio de um arquivo que não veio pede o resto dele primeiro, noutra thread.
+        let espera = sem_conteudo(&self.no_cache(&relativo));
+        let sistema = self.clone();
+        let pid = req.pid();
+        let dados = data.to_vec();
+        let fazer = move || {
+            let escrito = sistema.garantir_conteudo(pid, &relativo).and_then(|()| {
+                let arquivo = OpenOptions::new()
+                    .write(true)
+                    .open(sistema.no_cache(&relativo))?;
+                arquivo.write_all_at(&dados, offset)?;
+                Ok(())
+            });
+            match escrito {
+                Ok(()) => reply.written(u32::try_from(dados.len()).unwrap_or(u32::MAX)),
+                Err(erro) => reply.error(erro),
+            }
+        };
+        if espera {
+            std::thread::spawn(fazer);
+        } else {
+            fazer();
         }
     }
 
@@ -296,7 +305,7 @@ impl Filesystem for Sistema {
 
     fn create(
         &self,
-        _req: &Request,
+        req: &Request,
         parent: INodeNo,
         name: &OsStr,
         mode: u32,
@@ -304,7 +313,7 @@ impl Filesystem for Sistema {
         _flags: i32,
         reply: ReplyCreate,
     ) {
-        let feito = self.entrada(parent, name).and_then(|relativo| {
+        let feito = self.entrada(req.pid(), parent, name).and_then(|relativo| {
             let caminho = self.no_cache(&relativo);
             OpenOptions::new()
                 .write(true)
@@ -324,5 +333,41 @@ impl Filesystem for Sistema {
             ),
             Err(erro) => reply.error(erro),
         }
+    }
+}
+
+impl Sistema {
+    /// O que o `setattr` muda: tamanho, permissões, horário.
+    fn mudar_atributos(
+        &self,
+        pid: u32,
+        relativo: &str,
+        (mode, size, mtime): (Option<u32>, Option<u64>, Option<TimeOrNow>),
+    ) -> Result<FileAttr, Errno> {
+        let caminho = self.no_cache(relativo);
+        if let Some(tamanho) = size {
+            // Esvaziar não precisa do conteúdo antigo — é o `>` do terminal e o "salvar por
+            // cima" de quase todo programa, e funciona offline. Encurtar para outro tamanho
+            // precisa do que fica.
+            if tamanho == 0 && sem_conteudo(&caminho) {
+                super::marcar_sem_conteudo(&caminho, false)?;
+            } else {
+                self.garantir_conteudo(pid, relativo)?;
+            }
+            OpenOptions::new()
+                .write(true)
+                .open(&caminho)?
+                .set_len(tamanho)?;
+        }
+        if let Some(modo) = mode {
+            std::fs::set_permissions(&caminho, std::fs::Permissions::from_mode(modo))?;
+        }
+        if let Some(quando) = mtime {
+            File::options()
+                .write(true)
+                .open(&caminho)?
+                .set_modified(tempo(quando))?;
+        }
+        self.atributos(relativo)
     }
 }

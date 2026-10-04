@@ -280,6 +280,7 @@ levam a pasta (`FolderId`, 16 bytes sorteados por quem compartilha):
 | Enviar | `Upload{op, caminho, base, tamanho, blake3, modificação}`, `Credit{op, bytes}`, `AlreadyHave{op}`, `UploadBlock{op, offset, dados}`, `UploadEnd{op}` |
 | Operações | `Delete{op, caminho, base}`, `CreateDirectory{op, caminho}`, `Rename{op, de, para, base}` |
 | Desfecho | `Outcome{op, Accepted{versão} \| Conflict{versão, caminho da cópia} \| Resurrected{versão} \| Refused(motivo)}` |
+| Cópia | `Copied{caminhos}`: a pessoa copiou (Ctrl+C) estes arquivos da pasta; o outro lado põe no clipboard os mesmos caminhos da cópia dele, e o conteúdo não vai pela cópia de arquivos ([log 60](logs/60-a-copia-e-a-pasta.md)) |
 
 A origem numera cada mudança aceita; a versão de uma entrada é o número da pasta quando ela mudou.
 A réplica manda a versão em que se baseou (`base`), e uma base que não é mais a atual é conflito: as

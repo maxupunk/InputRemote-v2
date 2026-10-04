@@ -53,8 +53,32 @@ fn pedidos(saida: &[u8]) -> Vec<Pedido> {
     todos
 }
 
+/// Nenhuma pasta compartilhada: a cópia de sempre.
+fn nenhuma() -> super::pasta::Pastas {
+    super::pasta::Pastas::default()
+}
+
 fn arquivos(caminho: &str) -> Conteudo {
     Conteudo::Arquivos(vec![PathBuf::from(caminho)])
+}
+
+#[test]
+fn copiar_de_dentro_da_pasta_compartilhada_nao_manda_arquivos() {
+    let pasta = ir_ipc::pastas::IdDePasta([3; 16]);
+    let pastas = super::pasta::Pastas::com(pasta, PathBuf::from("/home/maxuel/InputRemote/Temp"));
+    let mut clip = Mentira {
+        dentro: Some(arquivos("/home/maxuel/InputRemote/Temp/img2.jpg")),
+        ..Mentira::default()
+    };
+    let mut saida = Vec::new();
+    oferecer(&mut saida, &mut clip, &mut Eco::nova(), &pastas);
+    assert_eq!(
+        pedidos(&saida),
+        vec![Pedido::Pasta(ir_ipc::pastas::ComandoDePasta::Copiado {
+            pasta,
+            caminhos: vec!["img2.jpg".to_owned()],
+        })]
+    );
 }
 
 #[test]
@@ -64,7 +88,7 @@ fn arquivos_no_clipboard_viram_pedido_de_envio() {
         ..Mentira::default()
     };
     let mut saida = Vec::new();
-    oferecer(&mut saida, &mut clip, &mut Eco::nova());
+    oferecer(&mut saida, &mut clip, &mut Eco::nova(), &nenhuma());
     assert_eq!(
         pedidos(&saida),
         vec![Pedido::EnviarArquivos {
@@ -84,7 +108,7 @@ fn a_mesma_copia_nao_sai_duas_vezes() {
     let mut eco = Eco::nova();
     let mut saida = Vec::new();
     for _ in 0..5 {
-        oferecer(&mut saida, &mut clip, &mut eco);
+        oferecer(&mut saida, &mut clip, &mut eco, &nenhuma());
     }
     assert_eq!(pedidos(&saida).len(), 1);
 }
@@ -96,7 +120,7 @@ fn texto_no_clipboard_vira_oferta_de_texto() {
         ..Mentira::default()
     };
     let mut saida = Vec::new();
-    oferecer(&mut saida, &mut clip, &mut Eco::nova());
+    oferecer(&mut saida, &mut clip, &mut Eco::nova(), &nenhuma());
     // Canônico em LF, qualquer que seja o sistema: é o que o protocolo leva.
     assert_eq!(
         pedidos(&saida),
@@ -115,7 +139,7 @@ fn texto_grande_demais_nao_sai_e_nao_fica_marcado() {
     };
     let mut eco = Eco::nova();
     let mut saida = Vec::new();
-    oferecer(&mut saida, &mut clip, &mut eco);
+    oferecer(&mut saida, &mut clip, &mut eco, &nenhuma());
     assert!(pedidos(&saida).is_empty());
     assert!(eco.oferecer(&grande), "ficou marcado sem ter ido");
 }
@@ -128,7 +152,7 @@ fn texto_que_chega_vai_para_o_clipboard_e_nao_volta() {
     assert_eq!(clip.publicado, vec![Conteudo::texto("do outro lado")]);
 
     let mut saida = Vec::new();
-    oferecer(&mut saida, &mut clip, &mut eco);
+    oferecer(&mut saida, &mut clip, &mut eco, &nenhuma());
     assert!(pedidos(&saida).is_empty(), "o eco voltou para o par");
 }
 
@@ -154,7 +178,7 @@ fn o_que_chega_vai_para_o_clipboard_e_nao_volta() {
     );
 
     let mut saida = Vec::new();
-    oferecer(&mut saida, &mut clip, &mut eco);
+    oferecer(&mut saida, &mut clip, &mut eco, &nenhuma());
     assert!(pedidos(&saida).is_empty(), "o eco voltou para o par");
 }
 
@@ -184,7 +208,7 @@ fn um_envio_que_falhou_pode_ser_repetido_pela_mesma_copia() {
     };
     let mut eco = Eco::nova();
     let mut saida = Vec::new();
-    oferecer(&mut saida, &mut clip, &mut eco);
+    oferecer(&mut saida, &mut clip, &mut eco, &nenhuma());
     let falhou = Transferencia {
         sentido: Sentido::Enviando,
         nome: "x".to_owned(),
@@ -193,7 +217,7 @@ fn um_envio_que_falhou_pode_ser_repetido_pela_mesma_copia() {
         fase: Fase::Parada(ir_ipc::transferencia::Motivo::CanalCaiu),
     };
     reagir(&falhou, &mut clip, &mut eco);
-    oferecer(&mut saida, &mut clip, &mut eco);
+    oferecer(&mut saida, &mut clip, &mut eco, &nenhuma());
     assert_eq!(
         pedidos(&saida).len(),
         2,
@@ -210,7 +234,7 @@ fn uma_imagem_atravessa_como_arquivo_e_chega_como_imagem() {
         ..Mentira::default()
     };
     let mut saida = Vec::new();
-    oferecer(&mut saida, &mut clip, &mut Eco::nova());
+    oferecer(&mut saida, &mut clip, &mut Eco::nova(), &nenhuma());
     let saiu = pedidos(&saida);
     let [Pedido::EnviarArquivos { caminhos }] = saiu.as_slice() else {
         panic!("a imagem tinha de virar um envio");
@@ -243,7 +267,7 @@ fn uma_imagem_atravessa_como_arquivo_e_chega_como_imagem() {
 
     // E a leitura seguinte não devolve a imagem ao par.
     let mut volta = Vec::new();
-    oferecer(&mut volta, &mut outro, &mut eco);
+    oferecer(&mut volta, &mut outro, &mut eco, &nenhuma());
     assert!(
         pedidos(&volta).is_empty(),
         "o eco da imagem voltou para o par"

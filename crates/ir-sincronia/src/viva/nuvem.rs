@@ -179,9 +179,16 @@ impl Viva {
         let Indice::Replica(replica) = &self.guardada.indice else {
             return;
         };
-        let entrada = replica
-            .remota(&busca.caminho)
-            .map(|e| (e.id, e.version, e.size));
+        let remota = replica.remota(&busca.caminho);
+        // O conteúdo já está neste computador, fora da pasta: daqui, sem rede — até offline.
+        if let Some(e) = remota
+            && let Some(resumo) = e.hash
+            && let Some(fonte) = crate::conhecidos::achar(&ambiente.lugar.estado, &resumo, e.size)
+            && crate::conhecidos::servir(&busca, &fonte, e.size)
+        {
+            return;
+        }
+        let entrada = remota.map(|e| (e.id, e.version, e.size));
         let Some((entrada, versao, tamanho)) = entrada.filter(|_| ambiente.conversando) else {
             info!(
                 conhecido = replica.remota(&busca.caminho).is_some(),
@@ -191,11 +198,7 @@ impl Viva {
             recusar(&busca);
             return;
         };
-        debug!(
-            offset = busca.offset,
-            tamanho = busca.tamanho,
-            "o Windows pediu conteúdo"
-        );
+        debug!(busca.offset, busca.tamanho, "pedido de conteúdo");
         self.nuvem.proximo = self.nuvem.proximo.wrapping_add(1);
         let pedido = RangeId(BASE_DOS_PEDIDOS | (self.nuvem.proximo & !BASE_DOS_PEDIDOS));
         let fim = busca.offset.saturating_add(busca.tamanho).min(tamanho);
@@ -284,7 +287,14 @@ impl Viva {
     pub(crate) fn marcador(&mut self, alvo: &Baixar, ambiente: &Ambiente) {
         let destino = crate::disco::absoluto(&self.guardada.raiz, &alvo.caminho);
         let horario = alvo.modificado_ns.saturating_sub(ambiente.diferenca_ns);
-        if let Err(erro) = por_marcador(&self.guardada.raiz, &destino, (alvo.tamanho, horario)) {
+        let escrita = |caminho: &std::path::Path| self.pela_montagem(caminho);
+        let feito = por_marcador(
+            &self.guardada.raiz,
+            &destino,
+            (alvo.tamanho, horario),
+            &escrita,
+        );
+        if let Err(erro) = feito {
             return warn!(%erro, "não consegui pôr um arquivo sob demanda no lugar");
         }
         let Some(mut visto) = crate::varredura::visto_por_fora(&destino) else {
@@ -378,17 +388,5 @@ impl Busca {
             len,
         });
         self.pedido_ate += u64::from(len);
-    }
-}
-
-/// Os dados de download de uma entrada da origem.
-fn baixar_de(entrada: &ir_proto::message::Entry) -> Baixar {
-    Baixar {
-        caminho: entrada.path.clone(),
-        entrada: entrada.id,
-        versao: entrada.version,
-        tamanho: entrada.size,
-        resumo: entrada.hash,
-        modificado_ns: entrada.modified_ns,
     }
 }

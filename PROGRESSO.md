@@ -565,6 +565,8 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Preferências sem rolagem horizontal: a área rolável tem a largura visível, e nenhum texto
       empurra a largura ([log 37](docs/logs/37-a-bandeja-e-a-rolagem-de-lado.md))
 - [x] Ícone do atalho no menu Iniciar — o atalho anunciado do MSI não tinha ícone ([log 37](docs/logs/37-a-bandeja-e-a-rolagem-de-lado.md))
+- [x] Tela inicial mais leve: a borda em Preferências, e uma linha de tráfego que diz se algo está
+      atravessando agora ([log 61](docs/logs/61-a-tela-inicial-mais-leve.md))
 - [ ] Fechar, matar ou não abrir não altera a sessão
 
 ## Etapa 10 — Qualidade e lançamento
@@ -600,3 +602,8 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       de 2 para 3 a 4 ms — dentro da meta de 01 §6, fora dos 10% da Etapa 8, e igual ao custo da
       cópia de arquivo que já existia; a medida da captura à injeção, e a sincronia cedendo durante
       o uso, ficam com o item da Etapa 8 ([log 59](docs/logs/59-a-pasta-sob-demanda.md))
+- [x] A cópia (Ctrl+C) e a pasta juntas: copiar de dentro da pasta leva os caminhos, e não os bytes;
+      o que veio pela cópia e é colado na pasta é achado pelo conteúdo e não atravessa de novo
+      ([log 60](docs/logs/60-a-copia-e-a-pasta.md))
+- [x] Linux: o Nautilus vê na hora o que a sincronia muda — sem F5 —, pela montagem; e a montagem
+      não trava com programas esperando a rede ([log 60](docs/logs/60-a-copia-e-a-pasta.md))

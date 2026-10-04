@@ -342,19 +342,32 @@ pub fn pasta_operacao_vectors() -> Vec<Vector> {
 
 /// O desfecho que a origem devolve.
 pub fn pasta_desfecho_vectors() -> Vec<Vector> {
-    vec![v(
-        "folder_outcome",
-        pasta(
-            FolderMessage::Outcome {
-                folder: PASTA,
-                op: OP,
-                result: OpResult::Conflict {
-                    version: 0x44,
-                    conflict_path: "relatório/março (conflito NOTEBOOK).xlsx".to_owned(),
+    vec![
+        v(
+            "folder_outcome",
+            pasta(
+                FolderMessage::Outcome {
+                    folder: PASTA,
+                    op: OP,
+                    result: OpResult::Conflict {
+                        version: 0x44,
+                        conflict_path: "relatório/março (conflito NOTEBOOK).xlsx".to_owned(),
+                    },
                 },
-            },
-            61,
+                61,
+            ),
+            "050a15112233445566778899aabbccddeef1f281840c01442a72656c6174c3b372696f2f6d6172c3a76f2028636f6e666c69746f204e4f5445424f4f4b292e786c73783d0000",
         ),
-        "050a15112233445566778899aabbccddeef1f281840c01442a72656c6174c3b372696f2f6d6172c3a76f2028636f6e666c69746f204e4f5445424f4f4b292e786c73783d0000",
-    )]
+        v(
+            "folder_copied",
+            pasta(
+                FolderMessage::Copied {
+                    folder: PASTA,
+                    paths: vec!["fotos/img2.jpg".to_owned(), "notas.txt".to_owned()],
+                },
+                62,
+            ),
+            "050a16112233445566778899aabbccddeef1f2020e666f746f732f696d67322e6a7067096e6f7461732e7478743e0000",
+        ),
+    ]
 }

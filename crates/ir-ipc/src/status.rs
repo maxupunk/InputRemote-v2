@@ -274,6 +274,20 @@ pub struct Estado {
     /// Distinto de [`Self::agente_pronto`], que é conseguir **receber**: no Linux a captura e a
     /// injeção são peças separadas, e uma pode faltar sem a outra.
     pub captura_pronta: bool,
+    /// Quanto o canal de dados — cópias e pastas — moveu desde que o serviço subiu. A tela faz
+    /// disto a taxa de agora, para a pessoa ver se algo está atravessando.
+    #[serde(default)]
+    pub trafego: Trafego,
+}
+
+/// Os bytes que o canal de dados moveu, nos dois sentidos. Contagens que só crescem: a taxa é a
+/// diferença entre duas leituras, e quem lê é que sabe o intervalo.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Trafego {
+    /// Os que saíram desta máquina.
+    pub enviados: u64,
+    /// Os que chegaram a ela.
+    pub recebidos: u64,
 }
 
 impl Estado {
@@ -322,6 +336,7 @@ impl Estado {
             borda_travada: false,
             bloquear_juntos: true,
             captura_pronta: false,
+            trafego: Trafego::default(),
         }
     }
 }

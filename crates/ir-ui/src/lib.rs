@@ -57,3 +57,4 @@ pub mod ponte;
 pub mod real;
 pub mod servico;
 pub mod simulado;
+pub mod trafego;

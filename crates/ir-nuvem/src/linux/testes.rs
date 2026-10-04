@@ -253,3 +253,131 @@ fn offline_abrir_falha_na_hora_e_gravar_por_cima_funciona() {
     );
     assert!(!sem_conteudo(&b.conteudo.join("notas.txt")));
 }
+
+/// Um observador inotify na pasta, como o do Nautilus (o `GFileMonitor` da `GLib`).
+fn observar(pasta: &Path) -> i32 {
+    use std::os::unix::ffi::OsStrExt;
+    let alvo = std::ffi::CString::new(pasta.as_os_str().as_bytes()).unwrap();
+    // SAFETY: sem argumentos de memória.
+    let fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK) };
+    assert!(fd >= 0);
+    let mascara = libc::IN_CREATE | libc::IN_MOVED_TO | libc::IN_MOVED_FROM | libc::IN_DELETE;
+    // SAFETY: o caminho termina em zero e vive até o fim da chamada.
+    let observacao = unsafe { libc::inotify_add_watch(fd, alvo.as_ptr(), mascara) };
+    assert!(observacao >= 0);
+    fd
+}
+
+/// Os eventos que chegaram ao observador em até `prazo`: a máscara e o nome.
+fn eventos(fd: i32, prazo: Duration) -> Vec<(u32, String)> {
+    let fim = std::time::Instant::now() + prazo;
+    let mut vistos = Vec::new();
+    let mut buffer = vec![0u8; 8192];
+    while std::time::Instant::now() < fim {
+        // SAFETY: o buffer é local e o tamanho é o dele.
+        let lidos = unsafe { libc::read(fd, buffer.as_mut_ptr().cast(), buffer.len()) };
+        let Ok(lidos) = usize::try_from(lidos) else {
+            std::thread::sleep(Duration::from_millis(20));
+            continue;
+        };
+        let mut i = 0;
+        while i + 16 <= lidos {
+            let campo =
+                |j: usize| u32::from_ne_bytes(buffer.get(j..j + 4).unwrap().try_into().unwrap());
+            let (mascara, tamanho) = (campo(i + 4), campo(i + 12) as usize);
+            let nome = buffer.get(i + 16..i + 16 + tamanho).unwrap();
+            let nome = String::from_utf8_lossy(nome)
+                .trim_end_matches('\0')
+                .to_owned();
+            vistos.push((mascara, nome));
+            i += 16 + tamanho;
+        }
+    }
+    // SAFETY: o descritor é deste teste.
+    unsafe { libc::close(fd) };
+    vistos
+}
+
+#[test]
+fn o_que_o_ajudante_poe_pela_montagem_aparece_para_quem_observa_a_pasta() {
+    let Some(b) = montada("observar") else { return };
+    let fd = observar(&b.ponto.join("sub"));
+    // Montado no cache, como o ajudante faz, e posto no lugar pela montagem: a pasta de controle
+    // existe para o próprio processo.
+    std::fs::write(b.conteudo.join(".inputremote/novo"), b"chegou").unwrap();
+    std::fs::rename(
+        b.ponto.join(".inputremote/novo"),
+        b.ponto.join("sub/novo.txt"),
+    )
+    .unwrap();
+    std::fs::create_dir(b.ponto.join("sub/pasta-nova")).unwrap();
+    let vistos = eventos(fd, Duration::from_secs(2));
+    let viu = |mascara: u32, nome: &str| vistos.iter().any(|(m, n)| m & mascara != 0 && n == nome);
+    assert!(viu(libc::IN_MOVED_TO, "novo.txt"), "{vistos:?}");
+    assert!(viu(libc::IN_CREATE, "pasta-nova"), "{vistos:?}");
+    assert_eq!(
+        std::fs::read(b.conteudo.join("sub/novo.txt")).unwrap(),
+        b"chegou"
+    );
+    // Para os outros processos, e na listagem, a pasta de controle continua não existindo.
+    let de_fora = std::process::Command::new("stat")
+        .arg(b.ponto.join(".inputremote"))
+        .output()
+        .unwrap();
+    assert!(
+        !de_fora.status.success(),
+        "outro processo não vê a pasta de controle"
+    );
+    let nomes: Vec<_> = std::fs::read_dir(&b.ponto)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert!(!nomes.iter().any(|n| n == ".inputremote"));
+}
+
+#[test]
+fn com_programas_esperando_conteudo_o_ajudante_ainda_mexe_na_pasta() {
+    let Some(b) = montada("esperando") else {
+        return;
+    };
+    // Mais leitores esperando a rede do que threads na montagem.
+    let leitores: Vec<_> = (0..6)
+        .map(|i| {
+            sem(&b, &format!("e{i}.bin"), 600_000);
+            let alvo = b.ponto.join(format!("e{i}.bin"));
+            std::thread::spawn(move || std::fs::read(alvo))
+        })
+        .collect();
+    let mut pedidos = Vec::new();
+    while pedidos.len() < 6 {
+        let Pedido::Buscar(busca) = b.pedidos.recv_timeout(Duration::from_secs(10)).unwrap() else {
+            panic!("esperava uma busca")
+        };
+        pedidos.push(busca);
+    }
+    // Com os seis esperando, o ajudante cria e move pela montagem — sem ninguém o atender, travava.
+    let inicio = std::time::Instant::now();
+    std::fs::create_dir(b.ponto.join("pasta-nova")).unwrap();
+    std::fs::rename(b.ponto.join("sub"), b.ponto.join("sub-movida")).unwrap();
+    assert!(
+        inicio.elapsed() < Duration::from_secs(2),
+        "{:?}",
+        inicio.elapsed()
+    );
+    // Solta os leitores: nada vem.
+    for busca in pedidos {
+        falhar(0, busca.transferencia, (busca.offset, busca.tamanho)).unwrap();
+    }
+    for leitor in leitores {
+        while !leitor.is_finished() {
+            if let Ok(Pedido::Buscar(busca)) = b.pedidos.recv_timeout(Duration::from_millis(50)) {
+                if busca.tamanho == u64::MAX {
+                    b.montagem.pronto(&busca.caminho, false);
+                } else {
+                    falhar(0, busca.transferencia, (busca.offset, busca.tamanho)).unwrap();
+                }
+            }
+        }
+        assert!(leitor.join().unwrap().is_err());
+    }
+}

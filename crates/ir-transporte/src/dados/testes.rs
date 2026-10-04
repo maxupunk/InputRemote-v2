@@ -11,12 +11,14 @@ async fn ligadas() -> (EnlaceDeDados, EnlaceDeDados) {
     let (chave_daqui, chave_de_la) = (aqui.public(), la.public());
 
     // Porta efêmera: o teste não pode brigar com a 52525 de um serviço instalado.
-    let porta_de_la = Porta::abrir(0, Arc::clone(&la)).await.expect("escuta");
+    let porta_de_la = Porta::abrir(0, Arc::clone(&la), Arc::default())
+        .await
+        .expect("escuta");
     let alvo = porta_de_la.endereco().expect("endereço");
     let alvo = SocketAddr::from(([127, 0, 0, 1], alvo.port()));
 
     let atende = tokio::spawn(async move { porta_de_la.aceitar(chave_daqui).await });
-    let porta_daqui = Porta::abrir(0, aqui).await.expect("escuta");
+    let porta_daqui = Porta::abrir(0, aqui, Arc::default()).await.expect("escuta");
     let discado = porta_daqui.discar(alvo, chave_de_la).await.expect("disca");
     let atendido = atende.await.expect("tarefa").expect("atende");
     (discado, atendido)
@@ -100,12 +102,16 @@ async fn quem_atende_recusa_uma_identidade_que_nao_e_a_fixada() {
     let fixada = Identity::generate().public();
     let chave_de_la = la.public();
 
-    let porta_de_la = Porta::abrir(0, Arc::clone(&la)).await.expect("escuta");
+    let porta_de_la = Porta::abrir(0, Arc::clone(&la), Arc::default())
+        .await
+        .expect("escuta");
     let alvo = porta_de_la.endereco().expect("endereço");
     let alvo = SocketAddr::from(([127, 0, 0, 1], alvo.port()));
 
     let atende = tokio::spawn(async move { porta_de_la.aceitar(fixada).await });
-    let porta_do_estranho = Porta::abrir(0, estranho).await.expect("escuta");
+    let porta_do_estranho = Porta::abrir(0, estranho, Arc::default())
+        .await
+        .expect("escuta");
     let _ = porta_do_estranho.discar(alvo, chave_de_la).await;
     assert!(
         atende.await.expect("tarefa").is_err(),
@@ -172,4 +178,46 @@ fn a_regra_da_colisao_chega_ao_servico_sem_ele_conhecer_o_ir_net() {
     let menor = PublicKey([1; 32]);
     assert!(ficar_com_o_proprio(maior, menor));
     assert!(!ficar_com_o_proprio(menor, maior));
+}
+
+#[tokio::test]
+async fn o_contador_soma_o_que_sai_e_o_que_chega() {
+    let aqui = Arc::new(Identity::generate());
+    let la = Arc::new(Identity::generate());
+    let (chave_daqui, chave_de_la) = (aqui.public(), la.public());
+    let (contador_daqui, contador_de_la) = (Arc::<Contador>::default(), Arc::<Contador>::default());
+    let porta_de_la = Porta::abrir(0, la, Arc::clone(&contador_de_la))
+        .await
+        .expect("escuta");
+    let alvo = SocketAddr::from((
+        [127, 0, 0, 1],
+        porta_de_la.endereco().expect("endereço").port(),
+    ));
+    let atende = tokio::spawn(async move { porta_de_la.aceitar(chave_daqui).await });
+    let porta_daqui = Porta::abrir(0, aqui, Arc::clone(&contador_daqui))
+        .await
+        .expect("escuta");
+    let mut daqui = porta_daqui.discar(alvo, chave_de_la).await.expect("disca");
+    let mut de_la = atende.await.expect("tarefa").expect("atende");
+
+    let bloco = BulkMessage::FileBlock {
+        id: TransferId(3),
+        item: 0,
+        offset: 0,
+        data: vec![7; 10_000],
+    };
+    daqui.remetente.enviar_agora(bloco).await.unwrap();
+    de_la.destinatario.receber().await.unwrap();
+
+    // O quadro cifrado: os 10 000 bytes e o envelope.
+    assert!(
+        contador_daqui.enviados() > 10_000,
+        "{}",
+        contador_daqui.enviados()
+    );
+    assert_eq!(contador_de_la.recebidos(), contador_daqui.enviados());
+    assert_eq!(
+        (contador_daqui.recebidos(), contador_de_la.enviados()),
+        (0, 0)
+    );
 }

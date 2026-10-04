@@ -202,17 +202,27 @@ impl Viva {
     ) {
         let pasta = self.pasta();
         let raiz = self.guardada.raiz.clone();
-        // O conteúdo já está aqui — um arquivo renomeado, ou copiado dentro da pasta: copia daqui.
+        // O conteúdo já está aqui — um arquivo renomeado ou copiado dentro da pasta, ou o original
+        // de uma cópia (Ctrl+C) que a pessoa colou na pasta do outro computador: copia daqui.
         let ja_tem = self
             .origem()
-            .and_then(|o| o.com_resumo(&anuncio.resumo).map(str::to_owned));
+            .and_then(|o| o.com_resumo(&anuncio.resumo).map(str::to_owned))
+            .map(|fonte| crate::disco::absoluto(&raiz, &fonte))
+            .or_else(|| {
+                let estado = &ambiente.lugar.estado;
+                crate::conhecidos::achar(estado, &anuncio.resumo, anuncio.tamanho)
+            });
         if let Some(fonte) = ja_tem {
             let copia = crate::disco::arquivo_de_montagem(&raiz, &format!("recebe-{}", op.0))
                 .and_then(|montado| {
-                    std::fs::copy(crate::disco::absoluto(&raiz, &fonte), &montado)?;
-                    Ok(montado)
+                    let bateu =
+                        crate::conhecidos::copiar_conferindo(&fonte, &montado, &anuncio.resumo)?;
+                    bateu
+                        .then_some(montado)
+                        .ok_or(std::io::ErrorKind::InvalidData.into())
                 });
             if let Ok(montado) = copia {
+                tracing::info!("o conteúdo já estava neste computador; não atravessou a rede");
                 saida.enviar(FolderMessage::AlreadyHave { folder: pasta, op });
                 self.decidir_envio((op, &anuncio), &montado, ambiente, saida);
                 return;

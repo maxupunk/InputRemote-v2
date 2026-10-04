@@ -338,6 +338,9 @@ pub enum Aviso {
     PastasMudaram(Vec<crate::pastas::ResumoDePasta>),
     /// Um pedido sobre as pastas não deu certo: a frase do ajudante, já com o que fazer.
     RecadoDasPastas(String),
+    /// O outro computador copiou arquivos de uma pasta compartilhada: estes caminhos, na cópia
+    /// daqui da pasta, vão para o clipboard. Só para o ajudante de clipboard.
+    ArquivosDaPasta(Vec<String>),
 }
 
 impl Aviso {
@@ -347,7 +350,10 @@ impl Aviso {
     pub const fn so_para_o_ajudante(&self) -> bool {
         matches!(
             self,
-            Self::LerClipboard | Self::TextoRecebido(_) | Self::ArquivosChegando(_)
+            Self::LerClipboard
+                | Self::TextoRecebido(_)
+                | Self::ArquivosChegando(_)
+                | Self::ArquivosDaPasta(_)
         )
     }
 }

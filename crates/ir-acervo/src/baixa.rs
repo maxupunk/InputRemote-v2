@@ -82,11 +82,15 @@ impl Baixas {
     /// # Errors
     ///
     /// Erro de disco ao montar.
+    ///
+    /// `achar` diz se o conteúdo já está neste computador, fora da pasta (o que veio ou foi pela
+    /// cópia): então ele é copiado daqui, conferido, e não atravessa a rede.
     pub fn comecar(
         &mut self,
         raiz: &Path,
         pasta: FolderId,
         saida: &mut dyn Saida,
+        achar: &dyn Fn(&Baixar) -> Option<PathBuf>,
     ) -> std::io::Result<Option<Chegada>> {
         if self.atual.is_some() {
             return Ok(None);
@@ -97,6 +101,12 @@ impl Baixas {
         self.proximo = self.proximo.wrapping_add(1);
         let pedido = RangeId(self.proximo);
         let montado = crate::disco::arquivo_de_montagem(raiz, &format!("baixa-{}", pedido.0))?;
+        if let (Some(resumo), Some(fonte)) = (alvo.resumo, achar(&alvo))
+            && crate::conhecidos::copiar_conferindo(&fonte, &montado, &resumo)?
+        {
+            tracing::info!("o conteúdo já estava neste computador; não atravessou a rede");
+            return Ok(Some(Chegada::Pronto { alvo, montado }));
+        }
         let arquivo = std::fs::File::create(&montado)?;
         let mut baixando = Baixando {
             pedido,

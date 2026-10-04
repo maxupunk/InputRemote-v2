@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use ir_ipc::transferencia::Motivo;
-use ir_transporte::dados::Porta;
+use ir_transporte::dados::{Contador, Porta};
 use tracing::warn;
 
 use crate::{Ajuste, Entrada, recusar_enquanto};
@@ -14,10 +14,15 @@ use crate::{Ajuste, Entrada, recusar_enquanto};
 /// falha aqui recusava toda cópia até o próximo reinício; agora a porta é tentada de novo a cada
 /// [`REABRIR_A_PORTA`], e os pedidos que chegam nesse meio são recusados com o motivo. `None` só
 /// quando o serviço está saindo.
-pub(crate) async fn abrir_a_porta(ajuste: &Ajuste, entrada: &mut Entrada) -> Option<Porta> {
+pub(crate) async fn abrir_a_porta(
+    ajuste: &Ajuste,
+    entrada: &mut Entrada,
+    trafego: Arc<Contador>,
+) -> Option<Porta> {
     let mut avisou = false;
     loop {
-        match Porta::abrir(ajuste.porta, Arc::clone(&ajuste.identidade)).await {
+        let contador = Arc::clone(&trafego);
+        match Porta::abrir(ajuste.porta, Arc::clone(&ajuste.identidade), contador).await {
             Ok(porta) => return Some(porta),
             Err(erro) => {
                 if !avisou {

@@ -53,7 +53,7 @@ Os dois computadores controlam um ao outro: não há "dono" do teclado.
 - **Voltar:** a borda oposta — ou simplesmente **mexa no mouse ou no teclado do computador que está
   sendo usado**: ele retoma o controle na hora. Um esbarrão na mesa não conta; um clique, uma tecla
   ou um movimento de verdade, sim.
-- **De que lado fica o outro** se escolhe na tela inicial de qualquer um dos dois; o outro passa a
+- **De que lado fica o outro** se escolhe em Preferências, em qualquer um dos dois; o outro passa a
   mostrar o lado oposto sozinho, e conta isso na tela.
 - **Quem pode controlar** (Preferências): *Os dois* (o padrão), *Só este* (este controla o outro e
   nunca é controlado) ou *Só o outro*.
@@ -68,7 +68,9 @@ Na janela:
 
 - **Pausar** para de mandar entrada até **Retomar** — a conexão continua de pé. Segure o botão:
   o fundo enche e, cheio, ele age; um clique rápido não faz nada.
-- **Travar na borda** impede a travessia por acidente (num jogo em tela cheia, por exemplo); o
+- **Tráfego**, na tela inicial, diz se algo está atravessando agora — uma cópia, a pasta
+  compartilhada —, com a velocidade de cada sentido, ou "parado".
+- **Travar na borda** (Preferências) impede a travessia por acidente (num jogo em tela cheia, por exemplo); o
   atalho continua levando o controle.
 - **Ctrl+Alt+Del no outro** faz o mesmo que o atalho. Também se segura, como o Pausar.
 - **Bloquear juntos** (Preferências): bloquear uma máquina bloqueia a outra.
@@ -113,6 +115,10 @@ na barra lateral do Nautilus.
   duas**, **Só a mais recente** e **Só a de** o outro computador; a que sai vai para a lixeira.
 - **Apagou sem querer?** O que é apagado — ou descartado num conflito — fica 30 dias na **Lixeira**
   da pasta. Para recuperar, arraste de volta para a pasta.
+- **Copiar e colar com a pasta.** Copiar (Ctrl+C) um arquivo de dentro da pasta compartilhada e
+  colar no outro computador cola o arquivo da pasta de lá — nada atravessa pela cópia, porque ele já
+  está nos dois. E colar na pasta um arquivo que acabou de chegar pela cópia não o manda de novo: a
+  pasta acha o conteúdo nos dois computadores.
 - **Parar de compartilhar** (segure o botão) não apaga nada: a pasta vira uma pasta comum dos dois
   lados. No computador que recebeu, o que não tinha sido baixado sai — está inteiro no outro.
 

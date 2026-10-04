@@ -42,7 +42,10 @@ fn main() -> Result<(), slint::PlatformError> {
     // novo sozinha, e a janela diz o que está acontecendo e o que fazer. O simulado só entra
     // quando pedido de propósito. Cair nele sozinho mostrava dado de mentira a quem só precisava
     // saber que o serviço estava parado — e prendia a janela ali mesmo depois de ele voltar.
-    let servico: Rc<dyn Servico> = if pediu_simulado() {
+    let servico: Rc<dyn Servico> = if pediu_simulado() && pediu("--pareado") {
+        // A tela inicial de uma vez, sem passar pelo pareamento: para revisar a tela.
+        Rc::new(ServicoSimulado::conectado())
+    } else if pediu_simulado() {
         Rc::new(ServicoSimulado::new())
     } else {
         Rc::new(ServicoReal::local())

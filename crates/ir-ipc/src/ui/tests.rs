@@ -115,12 +115,16 @@ fn os_avisos_novos_vao_no_fim_e_nao_renumeram_os_antigos() {
     assert_eq!(numero(&Aviso::LerClipboard), 6);
     assert_eq!(numero(&Aviso::BordaAjustada(Borda::Esquerda)), 10);
     assert_eq!(numero(&chegando()), 11);
+    assert_eq!(numero(&Aviso::PastasMudaram(vec![])), 12);
+    assert_eq!(numero(&Aviso::RecadoDasPastas(String::new())), 13);
+    assert_eq!(numero(&Aviso::ArquivosDaPasta(vec![])), 14);
 }
 
 #[test]
 fn o_conteudo_do_clipboard_vai_so_ao_ajudante() {
     assert!(chegando().so_para_o_ajudante());
     assert!(Aviso::LerClipboard.so_para_o_ajudante());
+    assert!(Aviso::ArquivosDaPasta(vec![]).so_para_o_ajudante());
     assert!(!Aviso::BordaAjustada(Borda::Esquerda).so_para_o_ajudante());
 }
 

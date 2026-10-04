@@ -23,6 +23,7 @@ use crate::viva::{Ambiente, Repassar, Viva};
 use crate::{Saida, atalho};
 
 mod comandos;
+mod copia;
 
 /// Uma pasta que o outro computador ofereceu e espera resposta.
 #[derive(Debug, Clone)]
@@ -43,6 +44,8 @@ pub struct Pastas {
     diferenca_ns: i64,
     /// Para onde vão os pedidos de conteúdo do Windows, quando há réplica sob demanda.
     repassar: Option<Repassar>,
+    /// O que o outro computador copiou de uma pasta, já com os caminhos daqui, para o clipboard.
+    para_o_clipboard: Option<Vec<String>>,
 }
 
 impl std::fmt::Debug for Pastas {
@@ -75,6 +78,7 @@ impl Pastas {
             nome_do_par: String::new(),
             diferenca_ns: 0,
             repassar: None,
+            para_o_clipboard: None,
         }
     }
 
@@ -233,6 +237,7 @@ impl Pastas {
                     self.ofertas.insert(folder, Oferta { nome: name });
                 }
             }
+            FolderMessage::Copied { folder, paths } => self.copiado_la(folder, &paths),
             FolderMessage::Stop { folder } | FolderMessage::Decline { folder, .. } => {
                 self.ofertas.remove(&folder);
                 self.esquecer(folder);

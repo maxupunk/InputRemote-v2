@@ -345,6 +345,10 @@ impl Atendimento {
             DoAjudanteDePastas::Recado(frase) => {
                 let _ = self.avisos.send(Aviso::RecadoDasPastas(frase));
             }
+            // O outro computador copiou arquivos da pasta: os caminhos daqui vão ao clipboard.
+            DoAjudanteDePastas::PorNoClipboard(caminhos) => {
+                let _ = self.avisos.send(Aviso::ArquivosDaPasta(caminhos));
+            }
             _ => {}
         }
     }

@@ -23,6 +23,7 @@
 
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::{Context, Result, bail};
 use ir_crypto::{Identity, PublicKey};
@@ -68,11 +69,41 @@ impl FalhaDeEnvio {
     }
 }
 
+/// Quantos bytes o canal de dados moveu, nos dois sentidos, desde que foi criado.
+///
+/// Uma contagem só para todos os enlaces que a porta abrir: a tela quer saber se **algo** está
+/// atravessando — uma cópia, a pasta —, e não de qual enlace. Contado no quadro cifrado, que é o
+/// que a rede carrega.
+#[derive(Debug, Default)]
+pub struct Contador {
+    enviados: AtomicU64,
+    recebidos: AtomicU64,
+}
+
+impl Contador {
+    /// Os bytes que saíram.
+    #[must_use]
+    pub fn enviados(&self) -> u64 {
+        self.enviados.load(Ordering::Relaxed)
+    }
+
+    /// Os bytes que chegaram.
+    #[must_use]
+    pub fn recebidos(&self) -> u64 {
+        self.recebidos.load(Ordering::Relaxed)
+    }
+
+    fn somar(contagem: &AtomicU64, bytes: usize) {
+        contagem.fetch_add(u64::try_from(bytes).unwrap_or(u64::MAX), Ordering::Relaxed);
+    }
+}
+
 /// A metade que manda mensagens do canal 5.
 #[derive(Debug)]
 pub struct Remetente {
     saida: BulkSender<WriteHalf<TcpStream>>,
     proxima: u32,
+    contador: Arc<Contador>,
 }
 
 impl Remetente {
@@ -91,7 +122,9 @@ impl Remetente {
             .send(&bytes)
             .await
             .context("enviando o quadro")
-            .map_err(FalhaDeEnvio::Enlace)
+            .map_err(FalhaDeEnvio::Enlace)?;
+        Contador::somar(&self.contador.enviados, bytes.len());
+        Ok(())
     }
 
     /// Manda uma mensagem e força a saída, para quando o par está esperando por ela.
@@ -108,7 +141,9 @@ impl Remetente {
             .send_now(&bytes)
             .await
             .context("enviando o quadro")
-            .map_err(FalhaDeEnvio::Enlace)
+            .map_err(FalhaDeEnvio::Enlace)?;
+        Contador::somar(&self.contador.enviados, bytes.len());
+        Ok(())
     }
 
     /// Embrulha a mensagem num quadro do protocolo e o codifica para o portador TCP.
@@ -128,6 +163,7 @@ impl Remetente {
 #[derive(Debug)]
 pub struct Destinatario {
     entrada: BulkReceiver<ReadHalf<TcpStream>>,
+    contador: Arc<Contador>,
 }
 
 impl Destinatario {
@@ -139,6 +175,7 @@ impl Destinatario {
     /// contagens divergiram —, ou se chegar um quadro que não é do canal de dados.
     pub async fn receber(&mut self) -> Result<BulkMessage> {
         let bytes = self.entrada.recv().await.context("lendo o quadro")?;
+        Contador::somar(&self.contador.recebidos, bytes.len());
         let quadro = codec::decode(&bytes, Carrier::Tcp).context("decodificando o quadro")?;
         match quadro.message {
             Message::Bulk(mensagem) => Ok(mensagem),
@@ -172,6 +209,7 @@ const PRAZO_DO_HANDSHAKE: std::time::Duration = std::time::Duration::from_secs(1
 pub struct Porta {
     escuta: TcpListener,
     identidade: Arc<Identity>,
+    contador: Arc<Contador>,
 }
 
 impl Porta {
@@ -180,12 +218,21 @@ impl Porta {
     /// # Errors
     ///
     /// Se a porta não puder ser vinculada — quase sempre porque outra instância já a ocupa.
-    pub async fn abrir(porta: u16, identidade: Arc<Identity>) -> Result<Self> {
+    /// `contador` soma o que todo enlace aberto por esta porta move; quem o criou o lê.
+    pub async fn abrir(
+        porta: u16,
+        identidade: Arc<Identity>,
+        contador: Arc<Contador>,
+    ) -> Result<Self> {
         let endereco = SocketAddr::from(([0, 0, 0, 0], porta));
         let escuta = bulk::bind(endereco)
             .await
             .with_context(|| format!("vinculando o TCP de dados em {endereco}"))?;
-        Ok(Self { escuta, identidade })
+        Ok(Self {
+            escuta,
+            identidade,
+            contador,
+        })
     }
 
     /// Em que endereço esta porta está escutando.
@@ -217,7 +264,7 @@ impl Porta {
         .await
         .context("o handshake do canal de dados não terminou no prazo")?
         .context("handshake do canal de dados")?;
-        Ok(partir(enlace, esperado))
+        Ok(partir(enlace, esperado, &self.contador))
     }
 
     /// Disca para o par.
@@ -237,7 +284,7 @@ impl Porta {
         .await
         .context("o handshake do canal de dados não terminou no prazo")?
         .context("handshake do canal de dados")?;
-        Ok(partir(enlace, esperado))
+        Ok(partir(enlace, esperado, &self.contador))
     }
 }
 
@@ -251,11 +298,22 @@ pub fn ficar_com_o_proprio(local: PublicKey, par: PublicKey) -> bool {
 }
 
 /// Parte um enlace nas duas metades que o serviço usa.
-fn partir(enlace: bulk::BulkLink<TcpStream>, par: PublicKey) -> EnlaceDeDados {
+fn partir(
+    enlace: bulk::BulkLink<TcpStream>,
+    par: PublicKey,
+    contador: &Arc<Contador>,
+) -> EnlaceDeDados {
     let (entrada, saida) = enlace.split();
     EnlaceDeDados {
-        remetente: Remetente { saida, proxima: 0 },
-        destinatario: Destinatario { entrada },
+        remetente: Remetente {
+            saida,
+            proxima: 0,
+            contador: Arc::clone(contador),
+        },
+        destinatario: Destinatario {
+            entrada,
+            contador: Arc::clone(contador),
+        },
         par,
     }
 }

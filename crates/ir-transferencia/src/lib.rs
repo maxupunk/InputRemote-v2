@@ -147,6 +147,7 @@ pub fn iniciar(ajuste: Ajuste) -> Pedidos {
     let fila = Arc::new(fila::Fila::default());
     let faxineiro = faxina::Faxineiro::novo(ajuste.recebidos.clone(), faxina::Limites::default());
     let de_pe = Arc::new(AtomicBool::new(false));
+    let trafego = Arc::new(ir_transporte::dados::Contador::default());
     let avisos = ajuste.avisos.clone();
     let entrada = Entrada {
         fila: Arc::clone(&fila),
@@ -160,7 +161,7 @@ pub fn iniciar(ajuste: Ajuste) -> Pedidos {
         recepcoes: Arc::default(),
         desvio: desvio.clone(),
     };
-    let canal = (entrada, deposito, Arc::clone(&de_pe));
+    let canal = (entrada, deposito, Arc::clone(&de_pe), Arc::clone(&trafego));
     tokio::spawn(servir(ajuste, canal, mudancas));
     Pedidos {
         fila,
@@ -171,8 +172,17 @@ pub fn iniciar(ajuste: Ajuste) -> Pedidos {
         avisos,
         desvio,
         faixa: Arc::new(std::sync::Mutex::new(Some(faixa))),
+        trafego,
     }
 }
+
+/// O que a tarefa do canal recebe de quem a sobe.
+type Canal = (
+    Entrada,
+    recebendo::Deposito,
+    Arc<AtomicBool>,
+    Arc<ir_transporte::dados::Contador>,
+);
 
 /// Por onde os pedidos chegam à tarefa de envio.
 ///
@@ -193,11 +203,11 @@ impl Entrada {
 
 /// O laço de vida do canal de dados: tem enlace, usa; não tem, consegue um; o par mudou, recomeça.
 ///
-/// `canal`: por onde os pedidos chegam, para onde o que chega vai, e a marca de enlace de pé que
-/// quem pede consulta.
+/// `canal`: por onde os pedidos chegam, para onde o que chega vai, a marca de enlace de pé que
+/// quem pede consulta, e o contador do que o canal move.
 async fn servir(
     ajuste: Ajuste,
-    (mut entrada, deposito, de_pe): (Entrada, recebendo::Deposito, Arc<AtomicBool>),
+    (mut entrada, deposito, de_pe, trafego): Canal,
     mut destino: watch::Receiver<Destino>,
 ) {
     let faxineiro = &deposito.faxineiro;
@@ -215,7 +225,7 @@ async fn servir(
     {
         return;
     }
-    let Some(porta) = porta::abrir_a_porta(&ajuste, &mut entrada).await else {
+    let Some(porta) = porta::abrir_a_porta(&ajuste, &mut entrada, trafego).await else {
         return;
     };
     info!(porta = ajuste.porta, "canal de arquivos no ar");

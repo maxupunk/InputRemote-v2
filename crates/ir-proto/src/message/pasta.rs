@@ -316,6 +316,15 @@ pub enum FolderMessage {
         /// O desfecho.
         result: OpResult,
     },
+    /// A pessoa copiou (Ctrl+C) arquivos desta pasta. O outro computador põe no clipboard dele os
+    /// mesmos caminhos, na cópia dele da pasta: colar lá cola o que a pasta já tem, e o conteúdo não
+    /// atravessa pela cópia de arquivos — quando precisa atravessar, é pela pasta, uma vez só.
+    Copied {
+        /// A pasta.
+        folder: FolderId,
+        /// Os caminhos copiados, relativos à pasta, com `/`.
+        paths: Vec<String>,
+    },
 }
 
 impl FolderMessage {
@@ -345,7 +354,8 @@ impl FolderMessage {
             | Self::Delete { folder, .. }
             | Self::CreateDirectory { folder, .. }
             | Self::Rename { folder, .. }
-            | Self::Outcome { folder, .. } => Some(*folder),
+            | Self::Outcome { folder, .. }
+            | Self::Copied { folder, .. } => Some(*folder),
         }
     }
 }
