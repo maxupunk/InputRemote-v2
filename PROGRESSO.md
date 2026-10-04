@@ -567,6 +567,8 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] Ícone do atalho no menu Iniciar — o atalho anunciado do MSI não tinha ícone ([log 37](docs/logs/37-a-bandeja-e-a-rolagem-de-lado.md))
 - [x] Tela inicial mais leve: a borda em Preferências, e uma linha de tráfego que diz se algo está
       atravessando agora ([log 61](docs/logs/61-a-tela-inicial-mais-leve.md))
+- [x] "Copiar e colar" nas Preferências, ligado por padrão; desligado, nada vai e nada chega, e a
+      pasta compartilhada segue ([log 62](docs/logs/62-copiar-e-colar-nas-preferencias.md))
 - [ ] Fechar, matar ou não abrir não altera a sessão
 
 ## Etapa 10 — Qualidade e lançamento

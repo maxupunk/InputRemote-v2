@@ -69,9 +69,10 @@ impl Daemon {
                 Resposta::Feito
             }
             Pedido::BloquearJuntos(juntos) => {
-                let resposta = self.persistir_com(|config| config.bloquear_juntos = juntos);
-                self.avisar_estado();
-                resposta
+                self.definir_preferencia(|config| config.bloquear_juntos = juntos)
+            }
+            Pedido::CopiarEColar(ligado) => {
+                self.definir_preferencia(|config| config.copiar_e_colar = ligado)
             }
             Pedido::EsquecerPar { .. } => self.esquecer_par(),
             Pedido::FixarPortador(portador) => self.fixar_portador(portador),
@@ -103,6 +104,11 @@ impl Daemon {
 
     /// Os pedidos sobre o que atravessa: arquivos e clipboard.
     fn tratar_conteudo(&mut self, pedido: Pedido, leitor: ir_transferencia::Leitor) -> Resposta {
+        // Copiar e colar desligado: o que o ajudante de clipboard oferece não sai daqui. "Feito",
+        // e não falha — não deu errado; foi a escolha da pessoa, e o ajudante não deve insistir.
+        if copia_do_clipboard(&pedido) && !self.arquivos.copias().ligada() {
+            return Resposta::Feito;
+        }
         match pedido {
             Pedido::EnviarArquivos { caminhos } => self.enviar_arquivos(caminhos, leitor),
             // O mesmo gatilho da travessia, à mão. Quem lê o clipboard é o ajudante da sessão.
@@ -230,6 +236,15 @@ impl Daemon {
     /// se a gravação falha, nem o arquivo nem a memória mudam, e os dois nunca divergem — antes a
     /// memória mudava primeiro, e uma gravação que falhasse deixava o serviço usando um valor que o
     /// próximo reinício perderia.
+    /// Uma preferência que só se grava e vale: grava, aplica o que o serviço segura fora da
+    /// configuração (a chave de copiar e colar) e conta à janela.
+    fn definir_preferencia(&mut self, mudar: impl FnOnce(&mut Config)) -> Resposta {
+        let resposta = self.persistir_com(mudar);
+        self.arquivos.copias().ligar(self.config.copiar_e_colar);
+        self.avisar_estado();
+        resposta
+    }
+
     pub(super) fn persistir_com(&mut self, mudar: impl FnOnce(&mut Config)) -> Resposta {
         let mut nova = self.config.clone();
         mudar(&mut nova);
@@ -254,4 +269,15 @@ impl Daemon {
         mudar(&mut self.config);
         self.gravador.gravar(&self.config);
     }
+}
+
+/// Se o pedido é o clipboard indo ao outro computador — o que a chave de copiar e colar segura.
+const fn copia_do_clipboard(pedido: &Pedido) -> bool {
+    matches!(
+        pedido,
+        Pedido::EnviarArquivos { .. }
+            | Pedido::OferecerTexto(_)
+            | Pedido::SincronizarClipboard
+            | Pedido::Pasta(ir_ipc::pastas::ComandoDePasta::Copiado { .. })
+    )
 }

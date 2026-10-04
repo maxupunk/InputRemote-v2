@@ -30,6 +30,7 @@ fn todos_os_pedidos() -> Vec<Pedido> {
         Pedido::CtrlAltDel,
         Pedido::TravarBorda(true),
         Pedido::BloquearJuntos(false),
+        Pedido::CopiarEColar(false),
     ]
 }
 

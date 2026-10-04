@@ -33,6 +33,8 @@ pub(crate) struct Deposito {
     pub(crate) recepcoes: Arc<crate::retomada::Recepcoes>,
     /// Por onde as mensagens da pasta compartilhada saem desta leitura, sem passar pela cópia.
     pub(crate) desvio: crate::desvio::Desvio,
+    /// Copiar e colar: desligado, a cópia do outro computador é recusada antes de tocar o disco.
+    pub(crate) copias: crate::ChaveDaCopia,
 }
 
 /// O sentido de entrada: aplica o que chega e responde.
@@ -148,7 +150,13 @@ async fn abrir(
     let total = manifesto.2;
     // Calculado aqui só para a recusa, que não abre recepção; a aceita traz o dela.
     let nome = ir_files::publicacao::nome_da_entrega(&manifesto.1);
-    match Recepcao::abrir(&deposito.pasta, manifesto, deposito.cota, None).await {
+    // Copiar e colar desligado aqui é recusa com o motivo de sempre — "não permitido" —, e o outro
+    // computador diz isso a quem copiou, em vez de mandar os bytes à toa.
+    let cota = ir_files::Cota {
+        permitido: deposito.cota.permitido && deposito.copias.ligada(),
+        ..deposito.cota
+    };
+    match Recepcao::abrir(&deposito.pasta, manifesto, cota, None).await {
         Ok(Abertura::Aceita { recepcao, resposta }) => {
             info!(total, "recebendo arquivos");
             responder(remetente, resposta).await;

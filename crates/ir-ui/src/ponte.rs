@@ -63,6 +63,7 @@ pub fn estado_ui(estado: &Estado) -> EstadoUi {
         sobre_o_bloqueio: estado.sobre_a_tela_de_bloqueio().into(),
         borda_travada: estado.borda_travada,
         bloquear_juntos: estado.bloquear_juntos,
+        copiar_e_colar: estado.copiar_e_colar,
     }
 }
 

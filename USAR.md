@@ -87,6 +87,9 @@ Copie de um lado e cole do outro, com o Ctrl+C e o Ctrl+V de sempre. Atravessam:
 - **imagens** — uma captura de tela, uma figura copiada do navegador —, que chegam como imagem, e
   não como arquivo.
 
+Para desligar, **Copiar e colar** em Preferências: desligado, o que se copia num computador fica
+só nele, nos dois sentidos. A pasta compartilhada continua sincronizando.
+
 No Linux sem aviso de mudança de clipboard (o GNOME), o que foi copiado atravessa quando o ponteiro
 atravessa ([ADR-0011](docs/adr/0011-clipboard-na-travessia.md)). Os arquivos recebidos ficam na pasta
 de recebidos (Preferências mostra qual), que se limpa sozinha.

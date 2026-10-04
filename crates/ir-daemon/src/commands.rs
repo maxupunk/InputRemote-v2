@@ -44,6 +44,9 @@ impl Daemon {
                     bytes = texto.as_str().len(),
                     "texto de clipboard recebido do par"
                 );
+                if !self.arquivos.copias().ligada() {
+                    return debug!("copiar e colar desligado: o texto do par fica de fora");
+                }
                 if let Some(texto) = ir_ipc::TextoDoClipboard::new(texto.into_string()) {
                     let _ = self.avisos.send(ir_ipc::Aviso::TextoRecebido(texto));
                 }
@@ -66,7 +69,9 @@ impl Daemon {
         // O controle saiu desta máquina: o que está no clipboard daqui vai junto. É o
         // gatilho que funciona onde o sistema não avisa mudança de clipboard — o GNOME não
         // avisa (ADR-0011).
-        if let Notice::ControlMoved { remote: true } = notice {
+        if let Notice::ControlMoved { remote: true } = notice
+            && self.arquivos.copias().ligada()
+        {
             let _ = self.avisos.send(ir_ipc::Aviso::LerClipboard);
         }
         // O rádio do par forma a rota dupla quando os dois se conheceram pela rede.

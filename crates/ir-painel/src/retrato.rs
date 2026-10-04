@@ -91,6 +91,8 @@ pub struct Retrato<'a> {
     pub bloquear_juntos: bool,
     /// O que o canal de dados moveu.
     pub trafego: ir_ipc::Trafego,
+    /// Se copiar e colar está ligado.
+    pub copiar_e_colar: bool,
 }
 
 /// O estado, no vocabulário publicado da interface.
@@ -127,6 +129,7 @@ pub fn estado(r: &Retrato<'_>) -> Estado {
         // Ler o teclado daqui: no Windows é o agente que captura; no Linux, o serviço.
         captura_pronta: r.entrada.agente_pronto || r.entrada.captura_direto,
         trafego: r.trafego,
+        copiar_e_colar: r.copiar_e_colar,
     }
 }
 

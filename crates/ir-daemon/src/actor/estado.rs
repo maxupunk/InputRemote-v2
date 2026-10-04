@@ -116,6 +116,7 @@ impl Daemon {
             borda_travada: self.borda_travada,
             bloquear_juntos: self.config.bloquear_juntos,
             trafego: self.arquivos.trafego(),
+            copiar_e_colar: self.config.copiar_e_colar,
         }
     }
 }

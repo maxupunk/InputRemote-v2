@@ -218,6 +218,7 @@ impl Interno {
                     self.conectar();
                 }
             }
+            Pedido::CopiarEColar(ligado) => self.estado.copiar_e_colar = ligado,
             Pedido::PermitirTelaDeBloqueio { permitir, .. } => {
                 self.estado.bloqueio_permitido = permitir;
             }

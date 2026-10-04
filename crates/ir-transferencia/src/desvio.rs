@@ -53,6 +53,8 @@ pub struct Faixa {
     pub do_par: mpsc::Receiver<FolderMessage>,
     /// Como o canal está.
     pub estado: watch::Receiver<EstadoDaFaixa>,
+    /// Copiar e colar: o que o outro computador copiou de uma pasta só vai ao clipboard ligada.
+    pub copias: crate::ChaveDaCopia,
 }
 
 /// O lado da transferência: o que o canal precisa para desviar e despachar.
@@ -66,7 +68,7 @@ pub(crate) struct Desvio {
 
 impl Desvio {
     /// A faixa e o desvio, ligados. Sobe a tarefa que despacha o que o ajudante manda.
-    pub(crate) fn novo() -> (Self, Faixa) {
+    pub(crate) fn novo(copias: crate::ChaveDaCopia) -> (Self, Faixa) {
         let (chegada, do_par) = mpsc::channel(FILA_DE_CHEGADA);
         let (saida, para_despachar) = mpsc::channel(FILA_DE_SAIDA);
         let (estado, recebe_estado) = watch::channel(EstadoDaFaixa::default());
@@ -80,6 +82,7 @@ impl Desvio {
             para_o_par: saida,
             do_par,
             estado: recebe_estado,
+            copias,
         };
         (desvio, faixa)
     }
@@ -187,7 +190,7 @@ mod testes {
 
     #[tokio::test]
     async fn uma_mensagem_invalida_do_par_derruba_o_enlace() {
-        let (desvio, mut faixa) = Desvio::novo();
+        let (desvio, mut faixa) = Desvio::novo(crate::ChaveDaCopia::default());
         let ruim = FolderMessage::Delete {
             folder: ir_proto::message::FolderId([1; 16]),
             op: ir_proto::message::OpId(1),

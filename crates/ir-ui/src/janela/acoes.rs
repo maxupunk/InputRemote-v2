@@ -38,8 +38,21 @@ pub(super) fn ligar_configuracao(janela: &Janela, contexto: &Rc<Contexto>) {
     });
 }
 
+/// As chaves das Preferências que só ligam e desligam.
+fn ligar_preferencias(acoes: &Acoes<'_>, contexto: &Rc<Contexto>) {
+    let alvo = Rc::clone(contexto);
+    acoes.on_travar_borda(move |travar| alvo.enviar(Pedido::TravarBorda(travar)));
+
+    let alvo = Rc::clone(contexto);
+    acoes.on_bloquear_juntos(move |juntos| alvo.enviar(Pedido::BloquearJuntos(juntos)));
+
+    let alvo = Rc::clone(contexto);
+    acoes.on_copiar_e_colar(move |ligado| alvo.enviar(Pedido::CopiarEColar(ligado)));
+}
+
 pub(super) fn ligar_sessao(janela: &Janela, contexto: &Rc<Contexto>) {
     let acoes = janela.global::<Acoes>();
+    ligar_preferencias(&acoes, contexto);
 
     let alvo = Rc::clone(contexto);
     acoes.on_encerrar(move || alvo.enviar(Pedido::Encerrar));
@@ -55,12 +68,6 @@ pub(super) fn ligar_sessao(janela: &Janela, contexto: &Rc<Contexto>) {
 
     let alvo = Rc::clone(contexto);
     acoes.on_abrir_recebidos(move || alvo.abrir_recebidos());
-
-    let alvo = Rc::clone(contexto);
-    acoes.on_travar_borda(move |travar| alvo.enviar(Pedido::TravarBorda(travar)));
-
-    let alvo = Rc::clone(contexto);
-    acoes.on_bloquear_juntos(move |juntos| alvo.enviar(Pedido::BloquearJuntos(juntos)));
 
     let alvo = Rc::clone(contexto);
     acoes.on_esquecer_par(move || {

@@ -117,6 +117,44 @@ mod tests {
     }
 
     #[test]
+    fn copiar_e_colar_desligado_fica_gravado_e_o_clipboard_nao_sai() {
+        let mut bancada = Bancada::nova();
+        assert!(bancada.daemon.estado().copiar_e_colar);
+        let enviar = || ir_ipc::Pedido::EnviarArquivos {
+            caminhos: vec!["relatorio.pdf".to_owned()],
+        };
+        let leitor = || ir_transferencia::Leitor::Proprio;
+        // Ligado, o pedido chega à transferência — que, sem canal nesta bancada, diz por quê.
+        assert_eq!(
+            bancada.daemon.tratar(enviar(), leitor()),
+            ir_ipc::Resposta::Falha(ir_ipc::Falha::SemConexao)
+        );
+
+        let _ = bancada
+            .daemon
+            .tratar(ir_ipc::Pedido::CopiarEColar(false), leitor());
+        assert!(!bancada.daemon.estado().copiar_e_colar);
+        assert!(
+            !bancada.daemon.arquivos.copias().ligada(),
+            "a recepção também recusa"
+        );
+        let relida = crate::config::load_config(&bancada.dir).expect("relê");
+        assert!(!relida.copiar_e_colar);
+        // Desligado, não sai nada — e não é falha: foi a escolha da pessoa.
+        assert_eq!(
+            bancada.daemon.tratar(enviar(), leitor()),
+            ir_ipc::Resposta::Feito
+        );
+        let texto = ir_ipc::TextoDoClipboard::new("oi".to_owned()).expect("cabe");
+        assert_eq!(
+            bancada
+                .daemon
+                .tratar(ir_ipc::Pedido::OferecerTexto(texto), leitor()),
+            ir_ipc::Resposta::Feito
+        );
+    }
+
+    #[test]
     fn so_quem_tem_o_teclado_pede_ao_par_que_bloqueie() {
         let mut bancada = Bancada::nova();
         bancada.daemon.drive(Input::CarrierUp(Carrier::Udp));

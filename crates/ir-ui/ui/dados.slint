@@ -72,6 +72,8 @@ export struct EstadoUi {
     borda-travada: bool,
     /// Se o outro computador bloqueia junto quando este bloquear.
     bloquear-juntos: bool,
+    /// Se copiar e colar entre os dois está ligado neste computador.
+    copiar-e-colar: bool,
 }
 
 /// Em que ponto o pareamento está.
@@ -238,6 +240,8 @@ export global Acoes {
     callback travar-borda(bool);
     /// Bloquear, ou não, o outro computador junto com este.
     callback bloquear-juntos(bool);
+    /// Ligar, ou desligar, copiar e colar entre os dois.
+    callback copiar-e-colar(bool);
     /// Montar o diagnóstico e mostrá-lo para o usuário copiar.
     callback mostrar-diagnostico();
 

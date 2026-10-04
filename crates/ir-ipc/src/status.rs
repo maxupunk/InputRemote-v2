@@ -278,6 +278,14 @@ pub struct Estado {
     /// disto a taxa de agora, para a pessoa ver se algo está atravessando.
     #[serde(default)]
     pub trafego: Trafego,
+    /// Se copiar e colar está ligado neste computador (Preferências).
+    #[serde(default = "ligado")]
+    pub copiar_e_colar: bool,
+}
+
+/// O padrão do que nasce ligado.
+const fn ligado() -> bool {
+    true
 }
 
 /// Os bytes que o canal de dados moveu, nos dois sentidos. Contagens que só crescem: a taxa é a
@@ -337,6 +345,7 @@ impl Estado {
             bloquear_juntos: true,
             captura_pronta: false,
             trafego: Trafego::default(),
+            copiar_e_colar: true,
         }
     }
 }

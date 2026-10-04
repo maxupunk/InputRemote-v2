@@ -119,6 +119,26 @@ export component Preferencias inherits VerticalLayout {
         }
     }
 
+    if Dados.estado.tem-par: Cartao {
+        Grupo {
+            titulo: "COPIAR E COLAR";
+            nota: Dados.estado.copiar-e-colar
+                ? "O que você copia (Ctrl+C) num computador fica pronto para colar no outro: texto, "
+                    + "imagens e arquivos."
+                : "Copiar fica só em cada computador: nada do que se copia aqui vai para o outro, e "
+                    + "nada do que se copia lá chega aqui. A pasta compartilhada continua "
+                    + "sincronizando.";
+
+            Alternativas {
+                opcoes: ["Ligado", "Desligado"];
+                escolhida: Dados.estado.copiar-e-colar ? 0 : 1;
+                escolher(indice) => {
+                    Acoes.copiar-e-colar(indice == 0);
+                }
+            }
+        }
+    }
+
     Cartao {
         Grupo {
             titulo: "MEIO DE CONEXÃO";

@@ -86,3 +86,4 @@ quê. Um registro que se reescreve não é registro.
 | 59 | 2026-10-02 | [A pasta sob demanda nos dois sistemas, e as telas que resolvem o conflito](docs/logs/59-a-pasta-sob-demanda.md) |
 | 60 | 2026-10-03 | [A cópia e a pasta, sem o mesmo arquivo atravessar duas vezes; e o Nautilus que só via com F5](docs/logs/60-a-copia-e-a-pasta.md) |
 | 61 | 2026-10-03 | [A tela inicial mais leve: a borda vai para Preferências, e o tráfego aparece](docs/logs/61-a-tela-inicial-mais-leve.md) |
+| 62 | 2026-10-03 | [Copiar e colar, ligado ou desligado nas Preferências](docs/logs/62-copiar-e-colar-nas-preferencias.md) |

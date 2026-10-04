@@ -88,6 +88,10 @@ pub struct Config {
     /// computador que era controlado não pode ficar aberto para quem passar por ele.
     #[serde(default = "sim")]
     pub bloquear_juntos: bool,
+    /// Copiar e colar entre os dois computadores. Ligado por padrão; desligado, o que se copia
+    /// aqui não vai, e o que se copia lá não chega.
+    #[serde(default = "sim")]
+    pub copiar_e_colar: bool,
     /// Quando a borda foi escolhida na tela, em milissegundos desde 1970.
     ///
     /// Os dois computadores anunciam a borda um ao outro; se não forem opostas, vale a escolha mais
@@ -156,6 +160,7 @@ impl Default for Config {
             politica_de_atencao_anterior: None,
             portador_fixado: None,
             bloquear_juntos: true,
+            copiar_e_colar: true,
             borda_escolhida_em: None,
         }
     }

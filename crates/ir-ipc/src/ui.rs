@@ -169,6 +169,8 @@ pub enum Pedido {
     Pastas,
     /// Um pedido sobre as pastas compartilhadas, que o serviço repassa ao ajudante das pastas.
     Pasta(crate::pastas::ComandoDePasta),
+    /// Ligue, ou desligue, copiar e colar entre os dois computadores.
+    CopiarEColar(bool),
 }
 
 impl Pedido {
@@ -193,6 +195,7 @@ impl Pedido {
             | Self::CtrlAltDel
             | Self::TravarBorda(_)
             | Self::BloquearJuntos(_)
+            | Self::CopiarEColar(_)
             // Compartilhar uma pasta põe o conteúdo dela no outro computador: o mesmo portão de
             // mandar arquivo — o pareamento —, e pelo mesmo motivo.
             | Self::Pasta(_)

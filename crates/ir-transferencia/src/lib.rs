@@ -20,6 +20,7 @@
 
 #![forbid(unsafe_code)]
 
+mod chave;
 mod despejo;
 mod desvio;
 mod enlace;
@@ -46,6 +47,7 @@ use ir_crypto::{Identity, PublicKey};
 /// ([02, §2](../../../docs/02-arquitetura.md)).
 pub use ir_files::Cota;
 
+pub use chave::ChaveDaCopia;
 pub use desvio::{EstadoDaFaixa, Faixa};
 /// Com a autoridade de quem os arquivos são lidos, reexportada pelo mesmo motivo de [`Cota`].
 pub use ir_files::{Autorizacao, Leitor};
@@ -153,13 +155,15 @@ pub fn iniciar(ajuste: Ajuste) -> Pedidos {
         fila: Arc::clone(&fila),
         toques,
     };
-    let (desvio, faixa) = desvio::Desvio::novo();
+    let copias = ChaveDaCopia::default();
+    let (desvio, faixa) = desvio::Desvio::novo(copias.clone());
     let deposito = recebendo::Deposito {
         pasta: ajuste.recebidos.clone(),
         cota: ajuste.cota,
         faxineiro: Arc::clone(&faxineiro),
         recepcoes: Arc::default(),
         desvio: desvio.clone(),
+        copias: copias.clone(),
     };
     let canal = (entrada, deposito, Arc::clone(&de_pe), Arc::clone(&trafego));
     tokio::spawn(servir(ajuste, canal, mudancas));
@@ -173,6 +177,7 @@ pub fn iniciar(ajuste: Ajuste) -> Pedidos {
         desvio,
         faixa: Arc::new(std::sync::Mutex::new(Some(faixa))),
         trafego,
+        copias,
     }
 }
 

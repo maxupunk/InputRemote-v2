@@ -183,11 +183,15 @@ fn atender(partes: Partes<'_>) -> Fim {
     } = partes;
     // As pastas compartilhadas daqui: o serviço manda a lista na conexão e a cada mudança.
     let mut pastas = pasta::Pastas::default();
+    // Copiar e colar, das Preferências: quem decide é o serviço; aqui só se evita o trabalho de ler
+    // e preparar o que não vai sair — trazer uma pasta de rede para perto pode levar minutos.
+    let mut ligado = true;
     while let Ok(evento) = eventos.recv() {
         match evento {
-            Evento::Mudou | Evento::Aviso(Aviso::LerClipboard) => {
+            Evento::Mudou | Evento::Aviso(Aviso::LerClipboard) if ligado => {
                 oferecer(escrita, clip, eco, &pastas);
             }
+            Evento::Aviso(Aviso::EstadoMudou(estado)) => ligado = estado.copiar_e_colar,
             Evento::Aviso(Aviso::PastasMudaram(lista)) => pastas.atualizar(&lista),
             // O outro computador copiou da pasta: os mesmos arquivos daqui, no clipboard.
             Evento::Aviso(Aviso::ArquivosDaPasta(caminhos)) => {
@@ -206,7 +210,8 @@ fn atender(partes: Partes<'_>) -> Fim {
             Evento::Recusado => eco.oferta_falhou(),
             Evento::Caiu => return Fim::Caiu,
             Evento::Incompativel => return Fim::Incompativel,
-            Evento::Aviso(_) => {}
+            // Desligado, nem se lê o clipboard; e os avisos que não são daqui.
+            Evento::Mudou | Evento::Aviso(_) => {}
         }
     }
     Fim::Caiu

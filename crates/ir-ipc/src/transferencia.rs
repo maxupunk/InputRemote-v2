@@ -33,7 +33,7 @@ impl Sentido {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum Motivo {
-    /// O outro computador não aceita receber arquivos deste par.
+    /// O outro computador não aceita receber: copiar e colar está desligado lá.
     SemPermissao,
     /// Passa da cota configurada lá.
     AcimaDaCota,
@@ -58,7 +58,10 @@ impl Motivo {
     #[must_use]
     pub fn descricao(&self) -> String {
         match self {
-            Self::SemPermissao => "o outro computador não aceita arquivos deste par".to_owned(),
+            // Hoje a única recusa assim é a escolha da pessoa de lá: dizer onde ela muda.
+            Self::SemPermissao => {
+                "copiar e colar está desligado no outro computador (Preferências)".to_owned()
+            }
             Self::AcimaDaCota => "passa do limite configurado no outro computador".to_owned(),
             Self::SemEspaco => "não há espaço em disco no outro computador".to_owned(),
             Self::CaminhoInseguro => "um dos caminhos não é seguro para o destino".to_owned(),

@@ -23,6 +23,8 @@ pub(super) fn conectar(endereco: &str, eventos: &Sender<Evento>) -> Result<Box<d
     // As pastas compartilhadas, para a cópia de dentro delas não levar bytes; depois, a cada
     // mudança, vêm pelo aviso.
     pedir(escrita.as_mut(), &Pedido::Pastas)?;
+    // Se copiar e colar está ligado; depois, a cada mudança, vem no aviso do estado.
+    pedir(escrita.as_mut(), &Pedido::Estado)?;
     let eventos = eventos.clone();
     thread::spawn(move || ler_avisos(leitura, &eventos));
     Ok(escrita)
@@ -64,6 +66,12 @@ fn ler_avisos(mut leitura: Box<dyn Read + Send>, eventos: &Sender<Evento>) {
                     );
                 }
                 if eventos.send(Evento::Recusado).is_err() {
+                    return;
+                }
+            }
+            ParaInterface::Resposta(Resposta::Estado(estado)) => {
+                let aviso = ir_ipc::Aviso::EstadoMudou(estado);
+                if eventos.send(Evento::Aviso(aviso)).is_err() {
                     return;
                 }
             }

@@ -78,8 +78,10 @@ pub fn iniciar_pastas(faixa: Faixa, avisos: broadcast::Sender<Aviso>) -> Result<
         para_o_par,
         do_par,
         estado,
+        copias,
     } = faixa;
-    tokio::spawn(aceitar(escuta, pastas.clone(), para_o_par.clone(), avisos));
+    let avisar = Avisar { avisos, copias };
+    tokio::spawn(aceitar(escuta, pastas.clone(), para_o_par.clone(), avisar));
     tokio::spawn(do_par_aos_ajudantes(pastas.clone(), do_par, para_o_par));
     tokio::spawn(contar_o_enlace(pastas.clone(), estado));
     Ok(pastas)
@@ -244,7 +246,7 @@ async fn aceitar(
     mut escuta: Escuta,
     pastas: Pastas,
     para_o_par: mpsc::Sender<MensagemDoPar>,
-    avisos: broadcast::Sender<Aviso>,
+    avisar: Avisar,
 ) {
     loop {
         match escuta.aceitar().await {
@@ -253,7 +255,7 @@ async fn aceitar(
                 let atendimento = Atendimento {
                     pastas: pastas.clone(),
                     para_o_par: para_o_par.clone(),
-                    avisos: avisos.clone(),
+                    avisar: avisar.clone(),
                 };
                 tokio::spawn(atendimento.atender(conexao, quem));
             }
@@ -274,7 +276,15 @@ async fn aceitar(
 struct Atendimento {
     pastas: Pastas,
     para_o_par: mpsc::Sender<MensagemDoPar>,
+    avisar: Avisar,
+}
+
+/// Para onde vão os avisos do canal das pastas, e a chave de copiar e colar que decide se o que o
+/// outro computador copiou de uma pasta chega ao clipboard daqui.
+#[derive(Clone)]
+struct Avisar {
     avisos: broadcast::Sender<Aviso>,
+    copias: ir_transferencia::ChaveDaCopia,
 }
 
 impl Atendimento {
@@ -317,7 +327,10 @@ impl Atendimento {
             }
         }
         self.pastas.desligar(id);
-        let _ = self.avisos.send(Aviso::PastasMudaram(self.pastas.resumo()));
+        let _ = self
+            .avisar
+            .avisos
+            .send(Aviso::PastasMudaram(self.pastas.resumo()));
         info!("ajudante das pastas desconectado");
     }
 
@@ -340,14 +353,17 @@ impl Atendimento {
             }
             DoAjudanteDePastas::Resumo(resumo) => {
                 self.pastas.guardar_resumo(id, resumo);
-                let _ = self.avisos.send(Aviso::PastasMudaram(self.pastas.resumo()));
+                let _ = self
+                    .avisar
+                    .avisos
+                    .send(Aviso::PastasMudaram(self.pastas.resumo()));
             }
             DoAjudanteDePastas::Recado(frase) => {
-                let _ = self.avisos.send(Aviso::RecadoDasPastas(frase));
+                let _ = self.avisar.avisos.send(Aviso::RecadoDasPastas(frase));
             }
             // O outro computador copiou arquivos da pasta: os caminhos daqui vão ao clipboard.
-            DoAjudanteDePastas::PorNoClipboard(caminhos) => {
-                let _ = self.avisos.send(Aviso::ArquivosDaPasta(caminhos));
+            DoAjudanteDePastas::PorNoClipboard(caminhos) if self.avisar.copias.ligada() => {
+                let _ = self.avisar.avisos.send(Aviso::ArquivosDaPasta(caminhos));
             }
             _ => {}
         }

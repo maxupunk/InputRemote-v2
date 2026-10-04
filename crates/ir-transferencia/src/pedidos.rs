@@ -35,6 +35,8 @@ pub struct Pedidos {
     pub(crate) faixa: Arc<std::sync::Mutex<Option<crate::Faixa>>>,
     /// O que o canal moveu, de cópias e pastas.
     pub(crate) trafego: Arc<ir_transporte::dados::Contador>,
+    /// Copiar e colar, das Preferências.
+    pub(crate) copias: crate::ChaveDaCopia,
 }
 
 impl Pedidos {
@@ -58,7 +60,14 @@ impl Pedidos {
             desvio: crate::desvio::Desvio::solto(),
             faixa: Arc::default(),
             trafego: Arc::default(),
+            copias: crate::ChaveDaCopia::default(),
         }
+    }
+
+    /// A chave de copiar e colar, que o serviço liga e desliga pelas Preferências.
+    #[must_use]
+    pub fn copias(&self) -> &crate::ChaveDaCopia {
+        &self.copias
     }
 
     /// Quanto o canal de dados moveu até agora, nos dois sentidos.

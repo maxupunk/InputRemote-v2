@@ -20,7 +20,7 @@ pub(crate) fn abrir(
     avisos: &tokio::sync::broadcast::Sender<ir_ipc::Aviso>,
     descoberta: &ir_transporte::Descoberta,
 ) -> ir_transferencia::Pedidos {
-    ir_transferencia::iniciar(ir_transferencia::Ajuste {
+    let pedidos = ir_transferencia::iniciar(ir_transferencia::Ajuste {
         porta: cfg.port,
         recebidos: cfg.pasta_de_recebidos(dir),
         cota: ir_transferencia::Cota::default(),
@@ -28,7 +28,9 @@ pub(crate) fn abrir(
         destino: destino(cfg),
         localizar: ir_transferencia::da_descoberta(descoberta),
         avisos: avisos.clone(),
-    })
+    });
+    pedidos.copias().ligar(cfg.copiar_e_colar);
+    pedidos
 }
 
 /// O arquivo que guarda a versão que o par negociou na última sessão, com a chave dele.
