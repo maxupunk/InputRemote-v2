@@ -24,6 +24,12 @@ allow = [
 ]
 confidence-threshold = 0.9
 
+# O ícone na bandeja do Linux (`ksni`, no `ir-recado`) é de domínio público (Unlicense): mais
+# permissiva que MIT, só não está na lista acima. Uma exceção por crate, e não para todos.
+[[licenses.exceptions]]
+crate = "ksni"
+allow = ["Unlicense"]
+
 [bans]
 # Duas versões da mesma biblioteca dobram a superfície a auditar e o tamanho do binário.
 multiple-versions = "warn"

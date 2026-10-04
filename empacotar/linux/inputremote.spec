@@ -54,6 +54,10 @@ Requires:       coreutils
 # comeco, o fim, e o motivo quando ela nao atravessa. Sem isso copiar e colar era mudo, e colar do
 # outro lado trazia a copia anterior sem nenhum sinal de que aquilo era um resto.
 Requires:       libnotify
+# O icone na barra superior do GNOME, que gira enquanto algo atravessa: e a extensao AppIndicator
+# que mostra icones de programas ali. Recomendada, e nao exigida: no KDE eles aparecem sem ela, e o
+# Fedora a instala desligada -- as Preferencias oferecem ligar com um clique (docs/logs/65).
+Recommends:     gnome-shell-extension-appindicator
 
 # O seletor de pasta de "Compartilhar uma pasta": o `zenity`, que fala com o portal do ambiente
 # grafico. A janela o chama numa thread; sem ele, compartilhar so por "Criar pasta" (ADR-0015).

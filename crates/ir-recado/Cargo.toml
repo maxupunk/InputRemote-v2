@@ -11,10 +11,17 @@ repository.workspace = true
 [dependencies]
 # Só o vocabulário: a cópia de arquivos (`Transferencia`), que é o recado mais comum.
 ir-ipc.workspace = true
+# Os quadros do ícone da bandeja são PNG embutidos, nos dois sistemas.
+png.workspace = true
 
-# No Linux, o recado é o `notify-send`; o registro conta quando ele falta.
 [target.'cfg(target_os = "linux")'.dependencies]
+# O registro conta quando o `notify-send` ou o barramento faltam.
 tracing.workspace = true
+# O barramento da sessão: o andamento no dock e o "mostrar na pasta". O mesmo `zbus` que o Slint já
+# traz no Linux, com o mesmo motor (`async-io`), e a API bloqueante, que é a do ajudante.
+zbus = { version = "5", default-features = false, features = ["async-io", "blocking-api"] }
+# O ícone na bandeja (`StatusNotifierItem`, com o menu `dbusmenu`), sobre o mesmo `zbus`.
+ksni = { version = "0.3", default-features = false, features = ["async-io", "blocking"] }
 
 [target.'cfg(windows)'.dependencies]
 # A central de notificações do Windows, com barra de andamento (`src/central.rs`).
@@ -25,7 +32,6 @@ windows-registry = "0.6"
 windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
 # Os quadros do ícone da bandeja, prontos para o ícone que a interface põe lá.
 tray-icon = { version = "0.25", default-features = false }
-png.workspace = true
 
 [lints]
 workspace = true

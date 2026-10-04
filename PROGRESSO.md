@@ -574,6 +574,9 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] "Copiar e colar" vale para os dois computadores (protocolo 9), e o aviso de recusa fala do
       ponto de vista de quem lê; notificação nativa nos dois sistemas e ícone da bandeja com
       estados ([log 64](docs/logs/64-copiar-e-colar-nos-dois.md))
+- [x] No Linux: o andamento no ícone do dock, o ícone na bandeja (`StatusNotifierItem`) com os
+      mesmos estados do Windows, ligar a extensão do GNOME pelas Preferências, e a miniatura e o
+      "mostrar na pasta" na notificação, que no Linux aparece só no fim ([log 65](docs/logs/65-o-linux-que-conta.md))
 - [ ] Fechar, matar ou não abrir não altera a sessão
 
 ## Etapa 10 — Qualidade e lançamento

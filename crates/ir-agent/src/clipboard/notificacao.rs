@@ -4,57 +4,61 @@
 //! a janela costuma estar fechada — quem copia está no Nautilus. O lugar certo do recado ali é a
 //! notificação do sistema, e quem sempre está de pé na sessão é este ajudante.
 //!
-//! O que dizer e quando é o mesmo dos dois sistemas, e mora em [`ir_recado`]: aqui só se liga
-//! o ritmo das cópias ao mostrador do Linux.
+//! O que dizer é o mesmo dos dois sistemas, e mora em [`ir_recado`]. No Linux, a cópia em curso é
+//! contada só pelo ícone da bandeja e pelo do dock ([`super::vitrine`]), que não tiram a pessoa do
+//! que ela está fazendo; a notificação aparece uma vez, no fim. Um recado de andamento que se
+//! substituía a cada passo piscava na tela e chamava a atenção para algo que não pede nada.
 
-use std::time::{Duration, Instant};
-
+use ir_ipc::Aviso;
 use ir_ipc::transferencia::Transferencia;
-use ir_recado::{Recado, Ritmo};
+use ir_recado::Recado;
 
-/// De quanto em quanto tempo o andamento vai para a tela.
-///
-/// Dois segundos: o bastante para ver o número mudar, e pouco para o banner não virar estroboscópio.
-const INTERVALO: Duration = Duration::from_secs(2);
+use super::vitrine::Vitrine;
 
 /// Conta ao usuário as cópias e o que mais acontece sem a janela aberta.
 #[derive(Debug)]
 pub(crate) struct Notificador {
-    ritmo: Ritmo,
-    #[cfg(target_os = "linux")]
-    mostrador: ir_recado::linux::NotifySend,
-}
-
-impl Default for Notificador {
-    fn default() -> Self {
-        Self {
-            ritmo: Ritmo::novo(INTERVALO),
-            #[cfg(target_os = "linux")]
-            mostrador: ir_recado::linux::NotifySend::default(),
-        }
-    }
+    vitrine: Vitrine,
 }
 
 impl Notificador {
-    /// Conta esta cópia, se for hora.
-    pub(crate) fn contar(&mut self, copia: &Transferencia) {
-        if let Some(vez) = self.ritmo.vez(copia, Instant::now()) {
-            self.mostrar(&Recado::da_copia(copia), !vez.primeira);
+    /// Pronto para contar; no Linux, com o ícone na bandeja e o andamento no dock.
+    pub(crate) fn abrir() -> Self {
+        Self {
+            vitrine: Vitrine::abrir(),
         }
     }
 
-    /// Conta um recado avulso.
-    pub(crate) fn avisar(&mut self, recado: &Recado) {
-        self.mostrar(recado, false);
+    /// O que um aviso do serviço muda no que a pessoa vê.
+    pub(crate) fn aviso(&mut self, aviso: &Aviso) {
+        match aviso {
+            Aviso::Transferencia(copia) => self.contar(copia),
+            // O ícone fica cinza sem o outro computador, e gira enquanto uma pasta sincroniza.
+            Aviso::EstadoMudou(estado) => self.vitrine.estado(estado),
+            Aviso::PastasMudaram(lista) => self.vitrine.pastas(lista),
+            // O outro computador mudou copiar e colar, e este acompanhou: quem está aqui precisa
+            // saber por que o Ctrl+C parou (ou voltou) sem ter mexido em nada.
+            Aviso::CopiarEColarAjustado { ligado, par } => {
+                Self::mostrar(&Recado::copiar_e_colar_ajustado(*ligado, par));
+            }
+            _ => {}
+        }
+    }
+
+    /// Conta esta cópia: o ícone acompanha cada passo; a notificação, só o fim.
+    fn contar(&mut self, copia: &Transferencia) {
+        self.vitrine.copia(copia);
+        if copia.terminou() {
+            Self::mostrar(&Recado::da_copia(copia));
+        }
     }
 
     #[cfg(target_os = "linux")]
-    fn mostrar(&mut self, recado: &Recado, substituir: bool) {
-        self.mostrador.mostrar(recado, substituir);
+    fn mostrar(recado: &Recado) {
+        ir_recado::linux::avisar(recado);
     }
 
     /// Fora do Linux quem conta é a interface, com a notificação nativa.
     #[cfg(not(target_os = "linux"))]
-    #[allow(clippy::unused_self)]
-    const fn mostrar(&mut self, _recado: &Recado, _substituir: bool) {}
+    const fn mostrar(_recado: &Recado) {}
 }

@@ -106,6 +106,18 @@ Windows, o ícone ao lado do relógio também conta:
 Passar o mouse sobre ele mostra o que está acontecendo, em palavras. As notificações respeitam o
 "não perturbe"; para desligá-las, **Configurações do Windows › Notificações › InputRemote**.
 
+**No Linux** o GNOME não desenha barra na notificação, então a notificação aparece só no fim (chegou,
+ou não atravessou), e o andamento fica em dois lugares que não interrompem:
+
+- **no ícone do InputRemote no dock** (Dash to Dock, Ubuntu Dock, KDE), uma barra enquanto a cópia
+  anda;
+- **no ícone da barra superior**, o mesmo do Windows: gira, ✓, !, cinza. O menu dele diz, no alto, o
+  que está acontecendo. O GNOME só mostra esse ícone com a extensão AppIndicator; se ela estiver
+  desligada, **Preferências › Ícone na barra superior › Ligar**.
+
+Uma imagem que chega aparece em miniatura na notificação, e **Abrir a pasta** abre o gerenciador de
+arquivos com ela já selecionada.
+
 No Linux sem aviso de mudança de clipboard (o GNOME), o que foi copiado atravessa quando o ponteiro
 atravessa ([ADR-0011](docs/adr/0011-clipboard-na-travessia.md)). Os arquivos recebidos ficam na pasta
 de recebidos (Preferências mostra qual), que se limpa sozinha.

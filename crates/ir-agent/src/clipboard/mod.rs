@@ -41,7 +41,6 @@ use anyhow::{Context, Result};
 use ir_clip::{Clipboard, Conteudo, Eco};
 use ir_ipc::transferencia::{Fase, Sentido, Transferencia};
 use ir_ipc::{Aviso, Pedido, TextoDoClipboard};
-use ir_recado::Recado;
 use tracing::{debug, info, warn};
 
 pub(crate) mod atualizacao;
@@ -51,6 +50,7 @@ mod notificacao;
 mod pasta;
 mod rede;
 mod servico;
+mod vitrine;
 
 /// Quanto esperar para tentar o serviço de novo.
 ///
@@ -124,7 +124,7 @@ pub(crate) fn servir() -> Result<()> {
     }
 
     let mut eco = Eco::nova();
-    let mut notificador = notificacao::Notificador::default();
+    let mut notificador = notificacao::Notificador::abrir();
     let endereco = ir_ipc::endereco::do_controle();
     loop {
         match servico::conectar(&endereco, &eventos) {
@@ -188,26 +188,22 @@ fn atender(partes: Partes<'_>) -> Fim {
     // e preparar o que não vai sair — trazer uma pasta de rede para perto pode levar minutos.
     let mut ligado = true;
     while let Ok(evento) = eventos.recv() {
+        // O que a pessoa vê fora da janela é do notificador; daqui para baixo, só o clipboard.
+        if let Evento::Aviso(aviso) = &evento {
+            notificador.aviso(aviso);
+        }
         match evento {
             Evento::Mudou | Evento::Aviso(Aviso::LerClipboard) if ligado => {
                 oferecer(escrita, clip, eco, &pastas);
             }
             Evento::Aviso(Aviso::EstadoMudou(estado)) => ligado = estado.copiar_e_colar,
-            // O outro computador mudou copiar e colar, e este acompanhou: quem está aqui precisa
-            // saber por que o Ctrl+C parou (ou voltou) sem ter mexido em nada.
-            Evento::Aviso(Aviso::CopiarEColarAjustado { ligado, par }) => {
-                notificador.avisar(&Recado::copiar_e_colar_ajustado(ligado, &par));
-            }
             Evento::Aviso(Aviso::PastasMudaram(lista)) => pastas.atualizar(&lista),
             // O outro computador copiou da pasta: os mesmos arquivos daqui, no clipboard.
             Evento::Aviso(Aviso::ArquivosDaPasta(caminhos)) => {
                 let caminhos = caminhos.into_iter().map(PathBuf::from).collect();
                 publicar(&Conteudo::Arquivos(caminhos), clip, eco);
             }
-            Evento::Aviso(Aviso::Transferencia(transferencia)) => {
-                notificador.contar(&transferencia);
-                reagir(&transferencia, clip, eco);
-            }
+            Evento::Aviso(Aviso::Transferencia(transferencia)) => reagir(&transferencia, clip, eco),
             Evento::Aviso(Aviso::TextoRecebido(texto)) => {
                 publicar(&Conteudo::texto(texto.as_str()), clip, eco);
             }

@@ -149,6 +149,12 @@ fn xml(recado: &Recado) -> String {
             )
         },
     );
+    let miniatura = recado.imagem().map_or_else(String::new, |imagem| {
+        format!(
+            r#"<image src="{}"/>"#,
+            atributo(&uri_de_arquivo(Path::new(imagem)))
+        )
+    });
     // Só o que deu errado faz som: o resto é retorno, e não interrupção.
     let som = if recado.tom == Tom::Problema {
         ""
@@ -156,7 +162,7 @@ fn xml(recado: &Recado) -> String {
         r#"<audio silent="true"/>"#
     };
     format!(
-        r#"<toast{abrir}><visual><binding template="ToastGeneric"><text>{{titulo}}</text><text>{{corpo}}</text></binding></visual>{botao}{som}</toast>"#
+        r#"<toast{abrir}><visual><binding template="ToastGeneric"><text>{{titulo}}</text><text>{{corpo}}</text>{miniatura}</binding></visual>{botao}{som}</toast>"#
     )
 }
 
@@ -218,6 +224,7 @@ mod tests {
             tom,
             andamento,
             pasta: pasta.map(str::to_owned),
+            recebido: pasta.map(|p| format!("{p}\\foto.jpg")),
         }
     }
 
@@ -244,6 +251,10 @@ mod tests {
             "{xml}"
         );
         assert!(xml.contains("Abrir a pasta"), "{xml}");
+        assert!(
+            xml.contains("<image src=\"file:///"),
+            "a foto que chegou, em miniatura: {xml}"
+        );
     }
 
     #[test]

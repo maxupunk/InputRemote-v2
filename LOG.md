@@ -89,3 +89,4 @@ quê. Um registro que se reescreve não é registro.
 | 62 | 2026-10-03 | [Copiar e colar, ligado ou desligado nas Preferências](docs/logs/62-copiar-e-colar-nas-preferencias.md) |
 | 63 | 2026-10-03 | [O cartão da pasta, mais baixo, e esvaziar a lixeira](docs/logs/63-o-cartao-da-pasta-e-a-lixeira.md) |
 | 64 | 2026-10-04 | [Copiar e colar vale para os dois; o recado nativo e o ícone que conta](docs/logs/64-copiar-e-colar-nos-dois.md) |
+| 65 | 2026-10-04 | [O Linux que conta: a bandeja, o dock e a notificação que mostra o que chegou](docs/logs/65-o-linux-que-conta.md) |

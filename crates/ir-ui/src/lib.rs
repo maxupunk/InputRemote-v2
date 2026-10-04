@@ -49,6 +49,8 @@ pub mod conector;
 pub mod conexao;
 pub mod copia;
 pub(crate) mod escolher_pasta;
+#[cfg(any(target_os = "linux", test))]
+pub(crate) mod gnome;
 pub mod historico;
 pub mod janela;
 pub mod ponte;

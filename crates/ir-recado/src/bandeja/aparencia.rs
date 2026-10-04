@@ -47,7 +47,8 @@ pub struct Retrato {
     pub atravessando: bool,
     /// Como terminou, ou se anda, a última cópia, se houve alguma.
     pub copia: Option<Tom>,
-    /// Se a janela está aberta na tela: aberta, a pessoa vê o cartão da cópia.
+    /// Se a pessoa já viu o que houve: no Windows, a janela aberta, com o cartão da cópia; no
+    /// Linux, onde a janela é outro processo, um clique no ícone ou no menu dele.
     pub janela_visivel: bool,
 }
 

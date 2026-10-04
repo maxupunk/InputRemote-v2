@@ -8,8 +8,8 @@
 //! **O que dizer** e **quando** moram aqui, uma vez só, para os dois sistemas dizerem o mesmo:
 //! [`Recado`] e [`Ritmo`]. **Como mostrar** é de cada um:
 //!
-//! - no Linux, `linux::NotifySend` (o `notify-send`), usado pelo ajudante de clipboard, pelas pastas
-//!   e pela janela;
+//! - no Linux, `linux::avisar` (o `notify-send`, só o fim: o andamento é da bandeja e do dock),
+//!   usado pelo ajudante de clipboard, pelas pastas e pela janela;
 //! - no Windows, `central::Notificacoes` (a central de notificações), usada pela interface, que mora
 //!   na bandeja.
 //!
@@ -41,6 +41,8 @@ mod ritmo;
 
 pub use ritmo::{Ritmo, Vez};
 
+use std::path::Path;
+
 use ir_ipc::transferencia::{Fase, Sentido, Transferencia};
 
 /// O tom do recado: muda o ícone de estado, o som e a urgência, conforme o sistema.
@@ -56,6 +58,20 @@ pub enum Tom {
     Informacao,
 }
 
+impl Tom {
+    /// O tom de uma cópia: anda, deu certo, ou não atravessou. O mesmo para o recado e o ícone.
+    #[must_use]
+    pub const fn da_copia(copia: &Transferencia) -> Self {
+        if copia.falhou() {
+            Self::Problema
+        } else if copia.terminou() {
+            Self::Feito
+        } else {
+            Self::Andamento
+        }
+    }
+}
+
 /// Um recado pronto para a central de notificações.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Recado {
@@ -69,32 +85,49 @@ pub struct Recado {
     pub andamento: Option<f32>,
     /// Uma pasta deste computador para o botão "Abrir a pasta": onde o que chegou ficou.
     pub pasta: Option<String>,
+    /// O que chegou, com o caminho inteiro: a miniatura de uma imagem, e o gerenciador de arquivos
+    /// abrindo a pasta com ele já selecionado.
+    pub recebido: Option<String>,
 }
 
 impl Recado {
     /// O recado de uma cópia de arquivos, em qualquer fase.
     #[must_use]
     pub fn da_copia(copia: &Transferencia) -> Self {
-        let tom = if copia.falhou() {
-            Tom::Problema
-        } else if copia.terminou() {
-            Tom::Feito
-        } else {
-            Tom::Andamento
-        };
-        let pasta = match (&copia.fase, copia.sentido) {
-            (Fase::Concluida { destino }, Sentido::Recebendo) => std::path::Path::new(destino)
-                .parent()
-                .map(|pasta| pasta.to_string_lossy().into_owned()),
+        let tom = Tom::da_copia(copia);
+        let recebido = match (&copia.fase, copia.sentido) {
+            (Fase::Concluida { destino }, Sentido::Recebendo) => Some(destino.clone()),
             _ => None,
         };
+        let pasta = recebido.as_deref().and_then(|destino| {
+            Path::new(destino)
+                .parent()
+                .map(|pasta| pasta.to_string_lossy().into_owned())
+        });
         Self {
             titulo: copia.titulo().to_owned(),
             corpo: copia.detalhe(),
             tom,
             andamento: copia.em_curso().then(|| copia.progresso()),
             pasta,
+            recebido,
         }
+    }
+
+    /// O que chegou, se é uma imagem: o recado a mostra em miniatura, e quem copiou uma captura de
+    /// tela reconhece na hora o que chegou.
+    #[must_use]
+    pub fn imagem(&self) -> Option<&str> {
+        let caminho = self.recebido.as_deref()?;
+        let extensao = Path::new(caminho)
+            .extension()?
+            .to_str()?
+            .to_ascii_lowercase();
+        matches!(
+            extensao.as_str(),
+            "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp"
+        )
+        .then_some(caminho)
     }
 
     /// O outro computador quer compartilhar uma pasta com este.
@@ -151,6 +184,7 @@ impl Recado {
             tom: Tom::Informacao,
             andamento: None,
             pasta: None,
+            recebido: None,
         }
     }
 }
@@ -198,6 +232,8 @@ mod tests {
         let chegou = Recado::da_copia(&copia(Sentido::Recebendo, fase.clone()));
         assert_eq!(chegou.tom, Tom::Feito);
         assert_eq!(chegou.pasta.as_deref(), Some("recebidos"));
+        assert_eq!(chegou.recebido.as_deref(), destino.to_str());
+        assert_eq!(chegou.imagem(), None, "uma pasta não é imagem");
         let foi = Recado::da_copia(&copia(Sentido::Enviando, fase));
         assert_eq!(foi.pasta, None, "o que foi está lá, e não aqui");
     }
@@ -227,5 +263,14 @@ mod tests {
             Recado::oferta_de_pasta("", "Fotos").titulo,
             "O outro computador quer compartilhar a pasta \"Fotos\""
         );
+    }
+
+    #[test]
+    fn a_imagem_que_chegou_vai_em_miniatura() {
+        let fase = Fase::Concluida {
+            destino: "/home/ana/Recebidos/Captura.PNG".to_owned(),
+        };
+        let chegou = Recado::da_copia(&copia(Sentido::Recebendo, fase));
+        assert_eq!(chegou.imagem(), Some("/home/ana/Recebidos/Captura.PNG"));
     }
 }

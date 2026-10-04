@@ -191,6 +191,10 @@ export global Dados {
     /// Se há o que limpar — o botão fica apagado quando a pasta já está vazia.
     in property <bool> recebidos-tem-o-que-limpar: false;
 
+    /// O ícone na barra superior do GNOME (`src/gnome.rs`): 0 nada a fazer, 1 a extensão está
+    /// instalada e desligada, 2 ela não está instalada.
+    in property <int> bandeja-do-gnome: 0;
+
     /// As pastas compartilhadas e as ofertas, na ordem da tela.
     in property <[PastaUi]> pastas;
     /// Uma linha sobre todas, para a tela inicial, ou vazio.
@@ -242,6 +246,8 @@ export global Acoes {
     callback bloquear-juntos(bool);
     /// Ligar, ou desligar, copiar e colar entre os dois.
     callback copiar-e-colar(bool);
+    /// Ligar a extensão do GNOME que mostra o ícone na barra superior.
+    callback ligar-bandeja-do-gnome();
     /// Montar o diagnóstico e mostrá-lo para o usuário copiar.
     callback mostrar-diagnostico();
 

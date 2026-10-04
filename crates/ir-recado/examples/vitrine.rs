@@ -1,18 +1,20 @@
-//! Mostra, de verdade, o que a pessoa vê de uma cópia sem abrir a janela: a notificação do sistema
-//! com a barra andando e o ícone da bandeja girando; depois o fim que deu certo, e um que não deu.
+//! Mostra, de verdade, o que a pessoa vê de uma cópia sem abrir a janela: a notificação do sistema,
+//! o ícone da bandeja girando e — no Linux — a barra no ícone do dock; depois o fim que deu certo,
+//! e um que não deu.
 //!
 //! ```text
 //! cargo run -p ir-recado --example vitrine
 //! ```
 //!
-//! No Windows, a central de notificações e a bandeja; no Linux, o `notify-send`. Serve para olhar a
-//! aparência depois de mudar texto, ritmo ou quadros, sem montar duas máquinas.
+//! Serve para olhar a aparência depois de mudar texto, ritmo ou quadros, sem montar duas máquinas.
+//! No Linux, rode dentro da sessão gráfica (precisa do barramento da sessão).
 
 #![allow(clippy::print_stdout)]
 
 use std::time::{Duration, Instant};
 
 use ir_ipc::transferencia::{Fase, Motivo, Sentido, Transferencia};
+use ir_recado::bandeja::aparencia::Retrato;
 use ir_recado::{Recado, Ritmo, Tom};
 
 fn copia(fase: Fase, feitos: u64) -> Transferencia {
@@ -25,27 +27,28 @@ fn copia(fase: Fase, feitos: u64) -> Transferencia {
     }
 }
 
-/// A cópia inteira: anda por quatro segundos, chega; depois uma que não atravessa.
+/// A cópia inteira: anda por oito segundos, chega; depois uma que não atravessa.
 fn roteiro() -> Vec<(Duration, Transferencia)> {
     let mut passos = vec![(Duration::ZERO, copia(Fase::Anunciada, 0))];
     for i in 1..=20u64 {
         passos.push((
-            Duration::from_millis(200),
+            Duration::from_millis(400),
             copia(Fase::Andando, i * 2_621_440),
         ));
     }
-    let pasta = std::env::temp_dir().join("relatorio-anual.pdf");
+    let chegou = std::env::temp_dir().join("relatorio-anual.pdf");
+    let _ = std::fs::write(&chegou, b"vitrine");
     passos.push((
-        Duration::from_millis(200),
+        Duration::from_millis(400),
         copia(
             Fase::Concluida {
-                destino: pasta.to_string_lossy().into_owned(),
+                destino: chegou.to_string_lossy().into_owned(),
             },
             52_428_800,
         ),
     ));
     passos.push((
-        Duration::from_secs(5),
+        Duration::from_secs(8),
         copia(Fase::Parada(Motivo::SemPermissao), 0),
     ));
     passos
@@ -56,49 +59,68 @@ fn main() {
     let mut ritmo = Ritmo::novo(Duration::from_secs(1));
     for (espera, passo) in roteiro() {
         mostrador.esperar(espera);
+        mostrador.copia(&passo);
         if let Some(vez) = ritmo.vez(&passo, Instant::now()) {
             let recado = Recado::da_copia(&passo);
             println!("{:?}: {} — {}", recado.tom, recado.titulo, recado.corpo);
             mostrador.mostrar(&recado, &passo, vez.primeira);
         }
-        mostrador.tom = Some(Recado::da_copia(&passo).tom);
     }
-    mostrador.esperar(Duration::from_secs(6));
+    mostrador.esperar(Duration::from_secs(10));
 }
 
 /// Quem mostra, em cada sistema.
 struct Mostrador {
-    tom: Option<Tom>,
+    retrato: Retrato,
     #[cfg(windows)]
     central: Option<ir_recado::central::Notificacoes>,
     #[cfg(windows)]
-    bandeja: Option<Bandeja>,
+    bandeja: Option<(tray_icon::TrayIcon, ir_recado::bandeja::icones::Icones)>,
+    #[cfg(windows)]
+    vitrine: ir_recado::bandeja::Vitrine,
     #[cfg(target_os = "linux")]
-    notify_send: ir_recado::linux::NotifySend,
-}
-
-#[cfg(windows)]
-struct Bandeja {
-    icone: tray_icon::TrayIcon,
-    icones: ir_recado::bandeja::icones::Icones,
-    selo: ir_recado::bandeja::aparencia::Selo,
-    batida: usize,
+    bandeja: Option<ir_recado::linux::bandeja::Bandeja>,
+    #[cfg(target_os = "linux")]
+    doca: Option<ir_recado::linux::doca::Doca>,
 }
 
 impl Mostrador {
     fn novo() -> Self {
         Self {
-            tom: None,
+            retrato: Retrato {
+                parado: false,
+                atravessando: false,
+                copia: None,
+                janela_visivel: false,
+            },
             #[cfg(windows)]
             central: ir_recado::central::Notificacoes::abrir(),
             #[cfg(windows)]
-            bandeja: Bandeja::nova(),
+            bandeja: bandeja_do_windows(),
+            #[cfg(windows)]
+            vitrine: ir_recado::bandeja::Vitrine::default(),
             #[cfg(target_os = "linux")]
-            notify_send: ir_recado::linux::NotifySend::default(),
+            bandeja: ir_recado::linux::bandeja::Bandeja::abrir(|| println!("clicou no ícone")),
+            #[cfg(target_os = "linux")]
+            doca: ir_recado::linux::doca::Doca::abrir(),
         }
     }
 
-    #[cfg_attr(not(windows), allow(unused_variables))]
+    /// A cópia andou: o ícone e o dock acompanham, a cada passo.
+    fn copia(&mut self, copia: &Transferencia) {
+        self.retrato.copia = Some(Tom::da_copia(copia));
+        #[cfg(target_os = "linux")]
+        {
+            if let Some(doca) = &mut self.doca {
+                doca.andamento(copia.em_curso().then(|| copia.progresso()));
+            }
+            if let Some(bandeja) = &self.bandeja {
+                bandeja.retratar(self.retrato, &copia.detalhe());
+            }
+        }
+    }
+
+    #[cfg_attr(not(windows), allow(unused_variables, clippy::unused_self))]
     fn mostrar(&mut self, recado: &Recado, copia: &Transferencia, primeira: bool) {
         #[cfg(windows)]
         if let Some(central) = &mut self.central {
@@ -115,18 +137,23 @@ impl Mostrador {
                 }
             );
         }
+        // No Linux, só o fim: o andamento é da bandeja e do dock.
         #[cfg(target_os = "linux")]
-        self.notify_send.mostrar(recado, !primeira);
+        ir_recado::linux::avisar(recado);
     }
 
-    /// Espera, girando o ícone da bandeja a cada décimo de segundo. Fora do Windows, só espera.
+    /// Espera; no Windows, girando o ícone da bandeja a cada décimo de segundo. No Linux quem gira
+    /// é a própria bandeja.
     #[cfg_attr(not(windows), allow(clippy::unused_self))]
     fn esperar(&mut self, quanto: Duration) {
         let fim = Instant::now() + quanto;
         while Instant::now() < fim {
             #[cfg(windows)]
-            if let Some(bandeja) = &mut self.bandeja {
-                bandeja.batida(self.tom);
+            if let Some((icone, icones)) = &self.bandeja
+                && let Some(quadro) = self.vitrine.passo(&self.retrato, Instant::now()).quadro
+                && let Some(quadro) = icones.quadro(quadro)
+            {
+                let _ = icone.set_icon(Some(quadro));
             }
             std::thread::sleep(Duration::from_millis(100));
         }
@@ -134,34 +161,12 @@ impl Mostrador {
 }
 
 #[cfg(windows)]
-impl Bandeja {
-    fn nova() -> Option<Self> {
-        let icones = ir_recado::bandeja::icones::Icones::da_bandeja()?;
-        let primeiro = icones.quadro(ir_recado::bandeja::aparencia::Aparencia::Normal, 0)?;
-        let icone = tray_icon::TrayIconBuilder::new()
-            .with_icon(primeiro)
-            .with_tooltip("InputRemote — vitrine")
-            .build()
-            .ok()?;
-        Some(Self {
-            icone,
-            icones,
-            selo: ir_recado::bandeja::aparencia::Selo::default(),
-            batida: 0,
-        })
-    }
-
-    fn batida(&mut self, tom: Option<Tom>) {
-        let retrato = ir_recado::bandeja::aparencia::Retrato {
-            parado: false,
-            atravessando: false,
-            copia: tom,
-            janela_visivel: false,
-        };
-        let aparencia = self.selo.aparencia(&retrato, Instant::now());
-        self.batida += 1;
-        if let Some(quadro) = self.icones.quadro(aparencia, self.batida) {
-            let _ = self.icone.set_icon(Some(quadro));
-        }
-    }
+fn bandeja_do_windows() -> Option<(tray_icon::TrayIcon, ir_recado::bandeja::icones::Icones)> {
+    let icones = ir_recado::bandeja::icones::Icones::da_bandeja()?;
+    let icone = tray_icon::TrayIconBuilder::new()
+        .with_icon(icones.quadro(0)?)
+        .with_tooltip("InputRemote — vitrine")
+        .build()
+        .ok()?;
+    Some((icone, icones))
 }

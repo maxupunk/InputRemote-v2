@@ -140,6 +140,32 @@ export component Preferencias inherits VerticalLayout {
         }
     }
 
+    // Só no GNOME, e só quando falta algo: com o ícone já aparecendo, o cartão não existe.
+    if Dados.bandeja-do-gnome != 0: Cartao {
+        Grupo {
+            titulo: "ÍCONE NA BARRA SUPERIOR";
+            nota: Dados.bandeja-do-gnome == 1
+                ? "O GNOME esconde os ícones de programas. Ligando a extensão AppIndicator, que já "
+                    + "está instalada, o InputRemote mostra ali se algo está atravessando, e o "
+                    + "andamento das cópias."
+                : "O GNOME esconde os ícones de programas. Para o InputRemote mostrar ali se algo "
+                    + "está atravessando, instale o pacote gnome-shell-extension-appindicator, "
+                    + "saia e entre de novo na sessão, e volte aqui.";
+
+            if Dados.bandeja-do-gnome == 1: HorizontalLayout {
+                alignment: start;
+
+                Botao {
+                    texto: "Ligar";
+                    primario: true;
+                    acionado => {
+                        Acoes.ligar-bandeja-do-gnome();
+                    }
+                }
+            }
+        }
+    }
+
     Cartao {
         Grupo {
             titulo: "MEIO DE CONEXÃO";

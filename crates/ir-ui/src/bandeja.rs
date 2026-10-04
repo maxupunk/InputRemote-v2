@@ -145,9 +145,7 @@ impl Bandeja {
         let mut vitrine = Vitrine {
             icone: icone.clone(),
             icones: ir_recado::bandeja::icones::Icones::da_bandeja(),
-            selo: ir_recado::bandeja::aparencia::Selo::default(),
-            batida: 0,
-            quadro: None,
+            decisao: ir_recado::bandeja::Vitrine::default(),
             dica: None,
         };
         let batida = slint::Timer::default();
@@ -182,12 +180,9 @@ struct Vitrine {
     icone: tray_icon::TrayIcon,
     /// Os quadros; sem eles, o ícone fica o de sempre e só a dica muda.
     icones: Option<ir_recado::bandeja::icones::Icones>,
-    selo: ir_recado::bandeja::aparencia::Selo,
-    /// As batidas desde o começo, que fazem o arco girar.
-    batida: usize,
-    /// O último quadro posto, para não repor o mesmo a cada batida.
-    quadro: Option<(ir_recado::bandeja::aparencia::Aparencia, usize)>,
-    /// A última dica e o estado do menu, pelo mesmo motivo.
+    /// O que acontece vira quadro: a mesma decisão do Linux.
+    decisao: ir_recado::bandeja::Vitrine,
+    /// A última dica e o estado do menu, para não repor os mesmos a cada batida.
     dica: Option<(String, bool, bool)>,
 }
 
@@ -209,23 +204,13 @@ impl Vitrine {
                 .then(|| crate::copia::tom(copia.estado)),
             janela_visivel: janela.window().is_visible(),
         };
-        let aparencia = self.selo.aparencia(&retrato, std::time::Instant::now());
-
-        self.batida = self.batida.wrapping_add(1);
-        let passo = if aparencia == Aparencia::Trabalhando {
-            self.batida
-        } else {
-            0
-        };
-        if self.quadro != Some((aparencia, passo % 8)) {
-            if let Some(quadro) = self
-                .icones
-                .as_ref()
-                .and_then(|i| i.quadro(aparencia, passo))
-            {
-                let _ = self.icone.set_icon(Some(quadro));
-            }
-            self.quadro = Some((aparencia, passo % 8));
+        let passo = self.decisao.passo(&retrato, std::time::Instant::now());
+        let aparencia = passo.aparencia;
+        if let Some(quadro) = passo
+            .quadro
+            .and_then(|q| self.icones.as_ref().and_then(|i| i.quadro(q)))
+        {
+            let _ = self.icone.set_icon(Some(quadro));
         }
 
         // A dica responde "está funcionando?" sem abrir a janela; com uma cópia andando, ou uma que

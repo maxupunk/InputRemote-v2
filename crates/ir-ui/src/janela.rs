@@ -265,7 +265,12 @@ fn seis_vazios() -> ModelRc<SharedString> {
 /// escolhida, e antes disso ela falha com "no Slint platform was initialized" — que foi como este
 /// defeito apareceu, no registro do próprio programa. O `app_id` é lido quando a janela é mostrada,
 /// então aqui ainda é cedo o bastante.
-fn identificar_as_janelas() {
+///
+/// No GNOME, também o cartão que liga o ícone na barra superior (`gnome`).
+#[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
+fn integrar_com_a_mesa(janela: &Janela) {
+    #[cfg(target_os = "linux")]
+    crate::gnome::ligar_a_tela(janela);
     if let Err(erro) = slint::set_xdg_app_id("inputremote") {
         // No Windows e no macOS não há `app_id`, e a recusa é esperada; no Linux ela custa o ícone.
         if cfg!(target_os = "linux") {
@@ -286,7 +291,7 @@ pub fn abrir(
     marca: crate::bandeja::Marca,
 ) -> Result<(), slint::PlatformError> {
     let janela = Janela::new()?;
-    identificar_as_janelas();
+    integrar_com_a_mesa(&janela);
     let situacao = servico.situacao();
     let contexto = Rc::new(Contexto {
         janela: janela.as_weak(),
