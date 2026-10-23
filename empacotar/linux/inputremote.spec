@@ -45,8 +45,11 @@ BuildRequires:  desktop-file-utils
 # icone generico, que e o mesmo que nao ter icone.
 Requires:       hicolor-icon-theme
 
-# O clipboard do Wayland, lido e escrito pelo ajudante da sessao. `timeout` vem do coreutils, que
-# toda instalacao tem; o prazo e o que impede um compositor mudo de travar o ajudante (ADR-0011).
+# O clipboard, lido e escrito pelo ajudante da sessao. No GNOME pelo portal (ADR-0017): o
+# wl-clipboard sem data-control enchia o dock de icones e a tela de "InputRemote esta pronto". Nos
+# outros (KDE, Sway) pelo wl-clipboard, com `timeout` do coreutils, que toda instalacao tem; o prazo
+# e o que impede um compositor mudo de travar o ajudante (ADR-0011).
+Requires:       xdg-desktop-portal
 Requires:       wl-clipboard
 Requires:       coreutils
 

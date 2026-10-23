@@ -230,6 +230,11 @@ Formatos canônicos do protocolo: texto UTF-8 com LF, imagem PNG, arquivos por m
 O GNOME não expõe `wlr-data-control`; ali o caminho é o portal. A matriz do que está
 disponível é medida em tempo de execução e mostrada no diagnóstico — nunca presumida.
 
+> **No GNOME, desde o [ADR-0017](adr/0017-clipboard-do-gnome-pelo-portal.md):** o portal, e não o
+> `wl-clipboard`, que ali enchia o dock de ícones e a tela de "InputRemote está pronto". A sessão
+> `RemoteDesktop` é aprovada uma vez num diálogo e lembrada pelo `restore_token`; o aviso de mudança
+> (`SelectionOwnerChanged`) faz a cópia sair na hora, e não só na travessia.
+
 Quando não há sessão de usuário (greeter), não há clipboard. A interface diz isso.
 
 ## 7. Unidade `systemd`

@@ -378,7 +378,8 @@ fn vigiar_em_thread(eventos: Sender<Evento>) {
         let mut vigia = match ir_clip::vigiar() {
             Ok(vigia) => vigia,
             Err(erro) => {
-                // O caso do GNOME, e não um defeito: a travessia é o gatilho aí.
+                // Um compositor sem `data-control` fora do GNOME (no GNOME avisa o portal), e não
+                // um defeito: a travessia é o gatilho aí.
                 info!(%erro, "sem aviso de mudança; o clipboard sincroniza na travessia");
                 return;
             }

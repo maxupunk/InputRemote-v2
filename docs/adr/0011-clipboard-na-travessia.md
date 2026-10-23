@@ -3,6 +3,11 @@
 **Status:** aceito · **Data:** 2026-09-18 · **Altera:** [05, §6](../05-windows.md) e
 [02, §1.2](../02-arquitetura.md), onde "o clipboard pertence ao agente"
 
+> **Revisto pelo [ADR-0017](0017-clipboard-do-gnome-pelo-portal.md) (2026-10-23):** no GNOME o
+> ajudante usa o portal `org.freedesktop.portal.Clipboard`, com o diálogo de consentimento que este
+> ADR recusou. O `wl-clipboard` sem `data-control` enchia o dock de ícones. Com o portal o GNOME
+> avisa a mudança, e a travessia passa a ser o segundo gatilho ali também. O resto deste ADR vale.
+
 Duas decisões que nasceram juntas, de três fatos medidos na bancada.
 
 ## Os fatos

@@ -18,6 +18,11 @@ png.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
 
+# O clipboard do GNOME pelo portal (`src/linux/portal`): o mesmo `zbus` do `ir-recado` e do Slint,
+# com o mesmo motor (`async-io`) e a API bloqueante, que é a do ajudante.
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = { version = "5", default-features = false, features = ["async-io", "blocking-api"] }
+
 # `AddClipboardFormatListener` e os formatos do Win32. WinRT não serve: o clipboard pertence ao
 # agente do desktop `Default`, e as APIs `Windows.ApplicationModel.DataTransfer` dependem de
 # infraestrutura por usuário (docs/05-windows.md §6).

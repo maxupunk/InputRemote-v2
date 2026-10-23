@@ -41,6 +41,7 @@ Uma decisão só muda por um ADR novo que substitua o anterior — não por edi�
 | [0014](adr/0014-controle-simetrico.md) | Controle simétrico: quem mexe, manda |
 | [0015](adr/0015-pastas-compartilhadas.md) | Pastas compartilhadas: origem, réplica e o ajudante que grava |
 | [0016](adr/0016-dependencias-da-pasta-compartilhada.md) | As dependências da pasta compartilhada |
+| [0017](adr/0017-clipboard-do-gnome-pelo-portal.md) | No GNOME, o clipboard vai pelo portal, e não pelo `wl-clipboard` |
 
 ## Registro do que foi feito
 

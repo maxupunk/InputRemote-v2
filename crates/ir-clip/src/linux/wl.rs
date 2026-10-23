@@ -1,15 +1,19 @@
-//! O backend do Linux: `wl-clipboard`, sobre o que foi **medido** no GNOME 50 da bancada.
+//! O backend `wl-clipboard`: o dos compositores que expõem `data-control` — KDE, Sway.
 //!
-//! | Operação | GNOME 50 | Como |
-//! |---|---|---|
-//! | publicar texto, imagem PNG ou lista de arquivos | funciona | `wl-copy`, que fica vivo como dono da seleção |
-//! | ler | funciona | `wl-paste`, com prazo |
-//! | ser avisado de mudança | **não existe** | `wl-paste --watch` exige `data-control`, e o GNOME não o expõe |
+//! **No GNOME ele não serve**, e o motivo foi medido ([ADR-0017](../../../../docs/adr/0017-clipboard-do-gnome-pelo-portal.md)):
+//! sem `data-control`, o `wl-copy` e o `wl-paste` abrem uma superfície própria para ganhar foco, e
+//! o GNOME responde a cada uma com "InputRemote está pronto" e um ícone a mais no dock — que fica,
+//! porque o `wl-copy` fica vivo. Lá quem atende é o [portal](super::portal).
 //!
-//! A terceira linha é o motivo do [ADR-0011](../../../docs/adr/0011-clipboard-na-travessia.md): sem
-//! aviso, o clipboard é lido quando o controle sai desta máquina. O aviso ainda é tentado — KDE e
-//! Sway expõem `data-control` —, e a ausência é **descoberta na hora**, nunca presumida
-//! ([06, §6](../../../docs/06-linux.md)).
+//! | Operação | Como |
+//! |---|---|
+//! | publicar texto, imagem PNG ou lista de arquivos | `wl-copy`, que fica vivo como dono da seleção |
+//! | ler | `wl-paste`, com prazo |
+//! | ser avisado de mudança | `wl-paste --watch`, que exige `data-control` |
+//!
+//! O aviso é tentado e a ausência é **descoberta na hora**, nunca presumida
+//! ([06, §6](../../../../docs/06-linux.md)); sem ele, o clipboard é lido quando o controle sai desta
+//! máquina ([ADR-0011](../../../../docs/adr/0011-clipboard-na-travessia.md)).
 //!
 //! # Por que `wl-clipboard` e não o protocolo direto
 //!
@@ -50,7 +54,7 @@ const PRAZO_VENCIDO: i32 = 124;
 
 /// O clipboard da sessão Wayland.
 #[derive(Debug, Default)]
-pub struct ClipboardDoWayland {
+pub(super) struct ClipboardDoWayland {
     /// Os `wl-copy` lançados. Só o último é dono da seleção; os outros já saíram ou vão sair.
     donos: Vec<Child>,
 }
@@ -177,7 +181,7 @@ fn ausente_ou_falha(erro: &std::io::Error) -> ClipError {
 /// # Errors
 ///
 /// [`ClipError::Indisponivel`] fora de uma sessão Wayland — um *greeter*, um console, um SSH.
-pub fn abrir() -> Result<Box<dyn Clipboard>> {
+pub(super) fn abrir() -> Result<Box<dyn Clipboard>> {
     if std::env::var_os("WAYLAND_DISPLAY").is_none() {
         return Err(ClipError::Indisponivel(
             "não há sessão Wayland neste processo",
@@ -215,8 +219,8 @@ impl Drop for VigiaDoWayland {
 /// # Errors
 ///
 /// [`ClipError::Indisponivel`] onde não há `data-control` — o GNOME, medido. Não é defeito: aí a
-/// sincronização acontece na travessia ([ADR-0011](../../../docs/adr/0011-clipboard-na-travessia.md)).
-pub fn vigiar() -> Result<Box<dyn Vigia>> {
+/// sincronização acontece na travessia ([ADR-0011](../../../../docs/adr/0011-clipboard-na-travessia.md)).
+pub(super) fn vigiar() -> Result<Box<dyn Vigia>> {
     if std::env::var_os("WAYLAND_DISPLAY").is_none() {
         return Err(ClipError::Indisponivel(
             "não há sessão Wayland neste processo",

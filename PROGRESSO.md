@@ -525,6 +525,11 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       ([log 56](docs/logs/56-o-ajudante-que-sobreviveu.md))
 - [ ] `[H]` Colar antes de chegar, de ponta a ponta: pasta copiada no Linux, colada no Explorer antes
       do fim, com os dois pacotes novos instalados ([log 56](docs/logs/56-o-ajudante-que-sobreviveu.md))
+- [~] No GNOME, o clipboard pelo portal, e não pelo `wl-clipboard`: sem "InputRemote está pronto" e
+      sem ícones no dock, e com aviso de mudança. A autorização é lembrada (pede-se o teclado, para o
+      GNOME guardá-la), e a tela bloqueada é esperada, para não gastá-la. No notebook, os `wl-copy`
+      foram de 7 para 0. Falta aprovar o diálogo diante dele e copiar e colar nos dois sentidos
+      ([ADR-0017](docs/adr/0017-clipboard-do-gnome-pelo-portal.md), [log 66](docs/logs/66-o-clipboard-do-gnome-pelo-portal.md))
 
 ## Etapa 9 — Interface
 
