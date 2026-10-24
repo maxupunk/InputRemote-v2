@@ -374,24 +374,13 @@ fn restrict(path: &Path) -> Result<()> {
 /// Grava a chave pública de um par em hexadecimal.
 #[must_use]
 pub fn encode_key(key: &PublicKey) -> String {
-    ir_proto::ids::Hex(&key.0).to_string()
+    key.hex()
 }
 
 /// Lê uma chave pública de 64 hexadecimais.
 #[must_use]
 pub fn decode_key(text: &str) -> Option<PublicKey> {
-    if text.len() != 64 {
-        return None;
-    }
-    let mut bytes = [0u8; 32];
-    for (slot, pair) in bytes.iter_mut().zip(text.as_bytes().chunks_exact(2)) {
-        let hi = (pair.first().copied()?) as char;
-        let lo = (pair.get(1).copied()?) as char;
-        let hi = u8::try_from(hi.to_digit(16)?).ok()?;
-        let lo = u8::try_from(lo.to_digit(16)?).ok()?;
-        *slot = (hi << 4) | lo;
-    }
-    Some(PublicKey(bytes))
+    PublicKey::de_hex(text)
 }
 
 #[cfg(test)]

@@ -151,6 +151,11 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // e também o que mantém a licença do Slint contida num binário só
     // (`docs/adr/0007-ui-slint-processo-separado.md`).
     ("ir-ui", &["ir-ipc", "ir-recado", "ir-ui-servico"]),
+    // O núcleo do aplicativo Android: a conversa do painel, a descoberta de sempre e o cofre.
+    (
+        "ir-monitor-android",
+        &["ir-proto", "ir-crypto", "ir-monitor", "ir-net"],
+    ),
     // O serviço visto pela janela: o contrato e o simulado. Só o vocabulário, como a janela.
     ("ir-ui-servico", &["ir-ipc"]),
     // O recado fora da janela: a notificação do sistema e o ícone da bandeja. Só o vocabulário.

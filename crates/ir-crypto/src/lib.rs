@@ -42,7 +42,7 @@ pub mod turno;
 
 pub use error::{CryptoError, Result};
 pub use handshake::Handshake;
-pub use identity::{Fingerprint, Identity, PublicKey, SecretBytes};
+pub use identity::{Fingerprint, Identity, PublicKey, SecretBytes, bytes_de_hex};
 pub use replay::ReplayWindow;
 pub use sas::codes_match;
 pub use transport::{Opener, Sealer, Transport};

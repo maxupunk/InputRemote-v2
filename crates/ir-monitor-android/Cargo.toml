@@ -1,0 +1,35 @@
+[package]
+name = "ir-monitor-android"
+description = "O núcleo do painel no Android: descoberta, conversa cifrada e cofre, exposto ao Kotlin por JNI."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+# `cdylib` é a biblioteca que o aplicativo carrega; `rlib` deixa o exemplo de linha de comando e os
+# testes usarem o mesmo código no computador.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ir-proto.workspace = true
+ir-crypto.workspace = true
+ir-monitor.workspace = true
+# Só a descoberta de sempre (UDP 52524): a pergunta, a resposta e os destinos de cada sub-rede.
+ir-net.workspace = true
+tokio = { workspace = true, features = ["rt", "time", "net"] }
+serde.workspace = true
+serde_json = "1"
+thiserror.workspace = true
+# A ponte com o Kotlin. A mesma versão que o Slint já traz para o workspace.
+jni = "0.22"
+
+[dev-dependencies]
+# O monitor do serviço, de verdade, para o teste de ponta a ponta.
+ir-monitor-rede.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "sync"] }
+
+[lints]
+workspace = true

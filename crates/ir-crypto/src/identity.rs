@@ -48,6 +48,38 @@ impl PublicKey {
         }
         ir_proto::ids::MachineId(bytes)
     }
+
+    /// A chave em 64 dígitos hexadecimais, como a configuração e o cofre do painel a gravam.
+    #[must_use]
+    pub fn hex(&self) -> String {
+        ir_proto::ids::Hex(&self.0).to_string()
+    }
+
+    /// A chave de volta dos 64 dígitos; `None` para qualquer outra coisa.
+    #[must_use]
+    pub fn de_hex(texto: &str) -> Option<Self> {
+        bytes_de_hex(texto).map(Self)
+    }
+}
+
+/// 32 bytes de 64 dígitos hexadecimais — uma chave pública ou o segredo gravado.
+///
+/// Um lugar só: a configuração do serviço e o cofre do painel liam cada um à sua maneira.
+#[must_use]
+pub fn bytes_de_hex(texto: &str) -> Option<[u8; 32]> {
+    if texto.len() != 64 {
+        return None;
+    }
+    let mut bytes = [0u8; 32];
+    for (byte, par) in bytes.iter_mut().zip(texto.as_bytes().chunks_exact(2)) {
+        let digito = |posicao: usize| {
+            par.get(posicao)
+                .and_then(|c| char::from(*c).to_digit(16))
+                .and_then(|d| u8::try_from(d).ok())
+        };
+        *byte = (digito(0)? << 4) | digito(1)?;
+    }
+    Some(bytes)
 }
 
 /// A impressão digital legível de uma chave pública: 5 grupos de 4 caracteres.
@@ -200,6 +232,15 @@ impl SecretBytes {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_chave_vai_ao_hexadecimal_e_volta() {
+        let chave = Identity::generate().public();
+        assert_eq!(PublicKey::de_hex(&chave.hex()), Some(chave));
+        assert!(PublicKey::de_hex("zz").is_none());
+        assert!(PublicKey::de_hex(&"g".repeat(64)).is_none());
+        assert!(bytes_de_hex(&"0".repeat(63)).is_none());
+    }
 
     #[test]
     fn a_saved_secret_round_trips_to_the_same_public() {

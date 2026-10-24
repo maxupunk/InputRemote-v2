@@ -36,6 +36,7 @@ members = [
     "crates/ir-monitor",
     "crates/ir-monitor-rede",
     "crates/ir-vigilancia",
+    "crates/ir-monitor-android",
     "xtask",
 ]
 
@@ -133,6 +134,13 @@ lto = "thin"
 codegen-units = 1
 strip = "symbols"
 panic = "abort"
+
+# A biblioteca do painel no Android (`ir-monitor-android`). O mesmo `release`, menos o `abort`: a
+# JVM é o processo, e um pânico que abortasse derrubaria o aplicativo em vez de virar a exceção que
+# `jni::EnvUnowned::with_env` entrega ao Kotlin.
+[profile.android]
+inherits = "release"
+panic = "unwind"
 
 [profile.dev]
 # O caminho quente é medido em release; dev só precisa compilar rápido.

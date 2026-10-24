@@ -2896,6 +2896,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ir-monitor-android"
+version = "0.1.0-dev"
+dependencies = [
+ "ir-crypto",
+ "ir-monitor",
+ "ir-monitor-rede",
+ "ir-net",
+ "ir-proto",
+ "jni",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+]
+
+[[package]]
 name = "ir-monitor-rede"
 version = "0.1.0-dev"
 dependencies = [
