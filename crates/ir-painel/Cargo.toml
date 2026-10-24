@@ -12,6 +12,7 @@ repository.workspace = true
 ir-proto.workspace = true
 ir-session.workspace = true
 ir-ipc.workspace = true
+tracing.workspace = true
 
 [lints]
 workspace = true

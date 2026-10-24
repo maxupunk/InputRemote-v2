@@ -12,6 +12,14 @@ use super::Daemon;
 use crate::config::decode_key;
 
 impl Daemon {
+    /// Registra, enquanto a rota for dupla, qual portador chega primeiro — o dado que diz se ela
+    /// paga o que custa.
+    pub(super) fn registrar_placar(&self) {
+        if self.session.route().is_some_and(ir_session::Route::is_dual) {
+            tracing::info!(rota = %self.session.route_report(self.now()), "rota dupla");
+        }
+    }
+
     /// O estado corrente, no vocabulário publicado da interface.
     pub(crate) fn estado(&self) -> Estado {
         let pasta = self

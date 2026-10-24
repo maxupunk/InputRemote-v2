@@ -2824,6 +2824,7 @@ dependencies = [
  "ir-session",
  "ir-transferencia",
  "ir-transporte",
+ "ir-vigilancia",
  "libc",
  "rand 0.8.8",
  "serde",
@@ -2935,6 +2936,7 @@ dependencies = [
  "ir-ipc",
  "ir-proto",
  "ir-session",
+ "tracing",
 ]
 
 [[package]]
@@ -3082,6 +3084,22 @@ dependencies = [
  "tray-icon",
  "windows-sys 0.61.2",
  "winresource",
+]
+
+[[package]]
+name = "ir-vigilancia"
+version = "0.1.0-dev"
+dependencies = [
+ "ir-configuracao",
+ "ir-crypto",
+ "ir-ipc",
+ "ir-monitor",
+ "ir-monitor-rede",
+ "ir-proto",
+ "ir-session",
+ "ir-telemetria",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

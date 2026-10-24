@@ -30,7 +30,7 @@ mod escuta;
 mod pastas;
 mod quadros;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use ir_ipc::{Aviso, ComandoDoAgente, FatoDoAgente, Resposta};
 use tokio::sync::broadcast;
 use tokio::sync::mpsc::UnboundedSender;
@@ -112,4 +112,55 @@ pub fn iniciar_agente(
     let escuta = escuta::Escuta::abrir(&endereco_do_agente(), escuta::Acesso::Restrito)?;
     tokio::spawn(agente::servir(escuta, fatos, comandos.clone()));
     Ok(comandos)
+}
+
+/// Os dois canais de IPC do serviço, já no ar.
+///
+/// Dois transportes distintos, de propósito: a interface **não** pode pedir injeção de entrada
+/// ([04, §5](../../../docs/04-seguranca.md)), e vocabulários que não se misturam são o que torna
+/// essa garantia estrutural em vez de combinada.
+#[derive(Debug)]
+pub struct Canais {
+    /// Por onde o serviço avisa as interfaces conectadas.
+    pub avisos: broadcast::Sender<ir_ipc::Aviso>,
+    /// Quantos ajudantes de clipboard estão ligados.
+    pub ajudantes: Ajudantes,
+    /// Por onde o serviço manda comandos ao agente.
+    pub agente: broadcast::Sender<ir_ipc::ComandoDoAgente>,
+    /// Os pedidos da interface, com o caminho da resposta.
+    pub pedidos: tokio::sync::mpsc::UnboundedReceiver<PedidoRecebido>,
+    /// Os fatos do agente.
+    pub fatos: tokio::sync::mpsc::UnboundedReceiver<ir_ipc::FatoDoAgente>,
+}
+
+/// Sobe os dois canais antes do ator, para os emissores já existirem quando ele nascer.
+///
+/// O canal do agente sobe mesmo no Linux, onde nenhum agente conecta: manter o receptor de
+/// fatos vivo é o que impede o laço do ator de girar recebendo `None` sem parar.
+///
+/// # Errors
+///
+/// Os de subir cada canal: o endereço ocupado por outra instância do serviço, em geral.
+pub fn abrir() -> Result<Canais> {
+    let (pedido_tx, pedidos) = tokio::sync::mpsc::unbounded_channel();
+    let ajudantes = Ajudantes::default();
+    let avisos =
+        iniciar_controle(pedido_tx, ajudantes.clone()).context("subindo o canal de controle")?;
+    // O ajudante de clipboard roda como o usuário; no Windows, quem garante que ele exista é o
+    // serviço (`zelador`). No Linux, o `systemd` do usuário.
+    #[cfg(windows)]
+    ir_sessao::zelar_pelo_clipboard(ajudantes.clone());
+    tracing::info!(endereco = %endereco_de_controle(), "canal de controle no ar");
+
+    let (fato_tx, fatos) = tokio::sync::mpsc::unbounded_channel();
+    let agente = iniciar_agente(fato_tx).context("subindo o canal do agente")?;
+    tracing::info!(endereco = %endereco_do_agente(), "canal do agente no ar");
+
+    Ok(Canais {
+        avisos,
+        ajudantes,
+        agente,
+        pedidos,
+        fatos,
+    })
 }

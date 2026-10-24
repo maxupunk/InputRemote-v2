@@ -79,6 +79,8 @@ impl Daemon {
             Pedido::DefinirBorda(borda) => self.trocar_borda(borda.no_protocolo()),
             Pedido::DefinirPolitica(p) => self.definir_politica(ir_painel::policy_de(p)),
             Pedido::Diagnostico => Resposta::Diagnostico(self.diagnostico()),
+            Pedido::Paineis => Resposta::Paineis(self.painel.resumo(&self.config)),
+            Pedido::Painel(c) => self.painel.comando(c, &mut self.config, &self.gravador),
             // Arquivos e clipboard são o outro assunto desta conexão, e ficam juntos.
             outro => self.tratar_conteudo(outro, leitor),
         }

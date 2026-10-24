@@ -21,9 +21,11 @@
 )]
 
 mod gravador;
+pub mod paineis;
 mod politica;
 
 pub use gravador::Gravador;
+pub use paineis::PainelPareado;
 pub use politica::{
     edge_do_texto, edge_para_texto, politica_do_texto, politica_na_subida, politica_sustentada,
     portador_do_texto, texto_da_politica, texto_do_portador,
@@ -105,6 +107,9 @@ pub struct Config {
     /// Sem horário — o padrão, ou um arquivo de antes disto —, um desligado vence um ligado.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub copiar_e_colar_escolhido_em: Option<u64>,
+    /// Os painéis no Android pareados com este computador ([`paineis`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub paineis: Vec<PainelPareado>,
 }
 
 /// O padrão das opções que nascem ligadas.
@@ -169,6 +174,7 @@ impl Default for Config {
             copiar_e_colar: true,
             borda_escolhida_em: None,
             copiar_e_colar_escolhido_em: None,
+            paineis: Vec::new(),
         }
     }
 }

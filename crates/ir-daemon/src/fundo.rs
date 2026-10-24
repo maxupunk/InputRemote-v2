@@ -67,6 +67,21 @@ pub(crate) fn repassar_radio_tardio(
     repassar(tardio, de_fundo.clone(), actor::DeFundo::Radio);
 }
 
+/// O painel no Android, com o que acontece fora do laço — avisos do monitor, a amostra de cada
+/// segundo — voltando ao ator como mais um resultado de fundo.
+pub(crate) fn vigilancia(
+    identidade: &ir_crypto::Identity,
+    avisos: &tokio::sync::broadcast::Sender<ir_ipc::Aviso>,
+    de_fundo: &mpsc::UnboundedSender<actor::DeFundo>,
+) -> ir_vigilancia::Vigilancia {
+    let de_fundo = de_fundo.clone();
+    let nome = ir_transporte::nome_da_maquina();
+    let avisos = avisos.clone();
+    ir_vigilancia::Vigilancia::nova(&nome, identidade.clone(), avisos, move |evento| {
+        de_fundo.send(actor::DeFundo::Painel(evento)).is_ok()
+    })
+}
+
 /// Vigia se a tela desta máquina está bloqueada, ou no login, pelo `logind` (Linux), e leva ao ator.
 #[cfg(target_os = "linux")]
 pub(crate) fn vigiar_a_tela(de_fundo: &mpsc::UnboundedSender<actor::DeFundo>) {

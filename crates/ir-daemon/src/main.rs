@@ -102,7 +102,7 @@ async fn subir_e_rodar(
     let (capturer, injector, capture_rx, captura) = build_io();
     let identidade = identidade_local(&identity);
 
-    let canais = abrir_canais()?;
+    let canais = ipc::abrir()?;
     let (de_fundo, de_fundo_rx) = tokio::sync::mpsc::unbounded_channel();
     fundo::repassar_radio_tardio(abertos.radio_tardio, &de_fundo);
     fundo::repassar_sistema(sistema, &de_fundo);
@@ -111,6 +111,7 @@ async fn subir_e_rodar(
     let arquivos = arquivos::abrir(&cfg, &dir, &identity, &canais.avisos, &abertos.descoberta);
     let pastas = arquivos::abrir_pastas(&arquivos, &canais.avisos, (&cfg, &dir));
 
+    let painel = fundo::vigilancia(&identity, &canais.avisos, &de_fundo);
     let mut daemon = Daemon::new(Parts {
         session: actor::nova_sessao(politica, edge, identidade.clone(), &cfg),
         rede: abertos.rede,
@@ -134,6 +135,7 @@ async fn subir_e_rodar(
         arquivos,
         ajudantes: canais.ajudantes,
         pastas,
+        painel,
     });
 
     dar_partida(&mut daemon, screen);
@@ -189,47 +191,6 @@ fn dar_partida(daemon: &mut Daemon, screen: (u32, u32)) {
     daemon.connect_if_possible();
     // O agente nasce junto com o serviço; o laço periódico só cuida de ressubi-lo se ele cair.
     daemon.garantir_agente_agora();
-}
-
-/// Os dois canais de IPC do serviço, já no ar.
-///
-/// Dois transportes distintos, de propósito: a interface **não** pode pedir injeção de entrada
-/// ([04, §5](../../../docs/04-seguranca.md)), e vocabulários que não se misturam são o que torna
-/// essa garantia estrutural em vez de combinada.
-struct Canais {
-    avisos: tokio::sync::broadcast::Sender<ir_ipc::Aviso>,
-    ajudantes: ipc::Ajudantes,
-    agente: tokio::sync::broadcast::Sender<ir_ipc::ComandoDoAgente>,
-    pedidos: mpsc::UnboundedReceiver<ipc::PedidoRecebido>,
-    fatos: mpsc::UnboundedReceiver<ir_ipc::FatoDoAgente>,
-}
-
-/// Sobe os dois canais antes do ator, para os emissores já existirem quando ele nascer.
-///
-/// O canal do agente sobe mesmo no Linux, onde nenhum agente conecta: manter o receptor de
-/// fatos vivo é o que impede o laço do ator de girar recebendo `None` sem parar.
-fn abrir_canais() -> Result<Canais> {
-    let (pedido_tx, pedidos) = mpsc::unbounded_channel();
-    let ajudantes = ipc::Ajudantes::default();
-    let avisos = ipc::iniciar_controle(pedido_tx, ajudantes.clone())
-        .context("subindo o canal de controle")?;
-    // O ajudante de clipboard roda como o usuário; no Windows, quem garante que ele exista é o
-    // serviço (`zelador`). No Linux, o `systemd` do usuário.
-    #[cfg(windows)]
-    ir_sessao::zelar_pelo_clipboard(ajudantes.clone());
-    info!(endereco = %ipc::endereco_de_controle(), "canal de controle no ar");
-
-    let (fato_tx, fatos) = mpsc::unbounded_channel();
-    let agente = ipc::iniciar_agente(fato_tx).context("subindo o canal do agente")?;
-    info!(endereco = %ipc::endereco_do_agente(), "canal do agente no ar");
-
-    Ok(Canais {
-        avisos,
-        ajudantes,
-        agente,
-        pedidos,
-        fatos,
-    })
 }
 
 /// Captura (servidor) ou injeção (cliente), montadas conforme o papel.

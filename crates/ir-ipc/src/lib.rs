@@ -54,11 +54,13 @@
 )]
 
 pub mod agent;
+pub mod aviso;
 pub mod chegada;
 pub mod cliente;
 pub mod codec;
 pub mod endereco;
 pub mod falha;
+pub mod paineis;
 pub mod pastas;
 pub mod status;
 pub mod texto;
@@ -70,6 +72,7 @@ pub use agent::{ComandoDoAgente, FatoDoAgente};
 pub use chegada::{Chegando, ItemChegando};
 pub use codec::{ErroDeCodec, MAX_MENSAGEM, PREFIXO};
 pub use falha::Falha;
+pub use paineis::{AvisoDoPainel, ComandoDePainel, ResumoDoPainel};
 pub use pastas::{
     ComandoDePasta, DoAjudanteDePastas, EscolhaDeConflito, IdDePasta, PapelDaPasta,
     ParaOAjudanteDePastas, ResumoDePasta, SituacaoDaPasta,

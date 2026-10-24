@@ -41,6 +41,8 @@ tracing.workspace = true
 ir-servico.workspace = true
 # O que a janela vê: o retrato do serviço traduzido no estado publicado.
 ir-painel.workspace = true
+# O painel no Android: quando coletar, o que pedir ao par, o pareamento e a lista.
+ir-vigilancia.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 toml.workspace = true

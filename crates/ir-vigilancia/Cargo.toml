@@ -1,0 +1,24 @@
+[package]
+name = "ir-vigilancia"
+description = "O painel no Android visto pelo serviço: quando coletar, o que pedir ao par, o pareamento e a lista."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ir-proto.workspace = true
+ir-crypto.workspace = true
+ir-session.workspace = true
+ir-ipc.workspace = true
+ir-configuracao.workspace = true
+ir-monitor.workspace = true
+ir-monitor-rede.workspace = true
+ir-telemetria.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

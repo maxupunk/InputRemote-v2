@@ -170,6 +170,12 @@ impl Bancada {
             pastas: None,
             radio_proprio: None,
             de_fundo,
+            painel: ir_vigilancia::Vigilancia::nova(
+                "bancada",
+                ir_crypto::Identity::generate(),
+                tokio::sync::broadcast::channel(4).0,
+                |_| false,
+            ),
         });
         Self {
             daemon,

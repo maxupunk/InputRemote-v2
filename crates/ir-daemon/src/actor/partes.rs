@@ -64,6 +64,8 @@ pub(crate) enum DeFundo {
     /// (Windows, [`super::protegido`]).
     #[cfg_attr(not(windows), allow(dead_code))]
     PoliticaDeAtencao(Option<u32>),
+    /// Um aviso do monitor do painel, ou a amostra de uso deste segundo ([`super::painel`]).
+    Painel(ir_vigilancia::Evento),
 }
 
 /// O que o ator precisa para nascer.
@@ -119,6 +121,8 @@ pub(crate) struct Parts {
     pub(crate) radio_proprio: Option<ir_proto::ids::RadioAddress>,
     /// Por onde as tarefas de fundo devolvem o resultado ao ator.
     pub(crate) de_fundo: UnboundedSender<DeFundo>,
+    /// O painel no Android.
+    pub(crate) painel: ir_vigilancia::Vigilancia,
 }
 
 impl Daemon {
@@ -128,7 +132,14 @@ impl Daemon {
     /// o portador.
     #[must_use]
     pub(crate) fn new(parts: Parts) -> Self {
-        let mut daemon = Self {
+        let mut daemon = Self::montar(parts);
+        daemon.alimentar_sessao_nova();
+        daemon
+    }
+
+    /// O valor do ator, campo a campo, sem tocar na sessão.
+    fn montar(parts: Parts) -> Self {
+        Self {
             alcance: super::alcance::da_configuracao(&parts.config),
             peer: parts.config.endereco_do_par().and_then(Endereco::ler),
             #[cfg(windows)]
@@ -182,10 +193,9 @@ impl Daemon {
             descoberta: parts.descoberta,
             ajudantes: parts.ajudantes,
             pastas: parts.pastas,
+            painel: parts.painel,
             ultimo_arranjo: None,
-        };
-        daemon.alimentar_sessao_nova();
-        daemon
+        }
     }
 
     /// O que toda sessão nova precisa saber ao nascer: o portador fixado, as telas, a borda travada,

@@ -16,7 +16,6 @@ use ir_proto::screens::{Edge, ScreenLayout};
 use ir_session::{CommandBatch, Input, LocalIdentity, Phase, Session, Timestamp};
 use tokio::sync::broadcast;
 use tokio::sync::mpsc::UnboundedReceiver;
-use tracing::info;
 
 use crate::config::Config;
 use ir_transporte::{Endereco, Transporte};
@@ -32,6 +31,7 @@ mod energia;
 mod enlace;
 mod entrada_local;
 mod estado;
+mod painel;
 mod parada;
 mod pareamento;
 mod partes;
@@ -166,6 +166,8 @@ pub(crate) struct Daemon {
     pub(crate) ajudantes: crate::ipc::Ajudantes,
     /// Os ajudantes das pastas compartilhadas, quando o canal deles subiu.
     pub(crate) pastas: Option<crate::ipc::Pastas>,
+    /// O painel no Android ([`painel`]).
+    pub(crate) painel: ir_vigilancia::Vigilancia,
 }
 
 /// A cada quantas batidas de 5 ms se tenta reconectar. 600 × 5 ms = 3 s.
@@ -228,6 +230,7 @@ impl Daemon {
             self.informar_par_as_pastas();
             self.renovar_supressao();
             self.renovar_conducao();
+            self.bater_painel();
         }
         if self.ticks.is_multiple_of(PLACAR_TICKS) {
             self.registrar_placar();
@@ -247,14 +250,7 @@ impl Daemon {
             DeFundo::Sistema(evento) => self.on_sistema(evento),
             DeFundo::TelaProtegida(protegida) => self.on_tela_protegida(protegida),
             DeFundo::PoliticaDeAtencao(anterior) => self.on_politica_de_atencao(anterior),
-        }
-    }
-
-    /// Registra, enquanto a rota for dupla, qual portador chega primeiro — o dado que diz se ela
-    /// paga o que custa.
-    fn registrar_placar(&self) {
-        if self.session.route().is_some_and(ir_session::Route::is_dual) {
-            info!(rota = %self.session.route_report(self.now()), "rota dupla");
+            DeFundo::Painel(evento) => self.on_painel(evento),
         }
     }
 

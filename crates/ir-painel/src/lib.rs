@@ -11,10 +11,12 @@
 
 mod diagnostico;
 mod medidas;
+mod registro;
 mod retrato;
 mod traducao;
 
 pub use diagnostico::{Extras, relatorio};
 pub use medidas::{JANELA, Voltas, motivo_da_queda};
+pub use registro::registrar;
 pub use retrato::{Entrada, ParGravado, Retrato, estado, nivel};
 pub use traducao::{economia_na_tela, link_state, policy_de, politica_de};
