@@ -1,0 +1,21 @@
+[package]
+name = "ir-monitor-rede"
+description = "O serviço atendendo o painel no Android: a porta TCP, a janela de pareamento e o quadro a cada segundo."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ir-crypto.workspace = true
+ir-monitor.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-util", "time"] }
+
+[lints]
+workspace = true
