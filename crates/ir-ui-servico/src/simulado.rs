@@ -20,6 +20,7 @@ use ir_ipc::{Autoridade, Aviso, Candidato, Falha, Pedido, Resposta};
 
 use crate::servico::{Servico, Situacao};
 
+mod painel;
 mod relatorio;
 use relatorio::diagnostico;
 
@@ -47,6 +48,7 @@ struct Interno {
     fila: Vec<Aviso>,
     candidatos: Vec<Candidato>,
     escolhido: Option<Candidato>,
+    painel: painel::PainelSimulado,
 }
 
 /// Um serviço simulado, com uma máquina de estados que se comporta como a de verdade.
@@ -82,6 +84,7 @@ impl ServicoSimulado {
                 fila: Vec::new(),
                 candidatos: Vec::new(),
                 escolhido: None,
+                painel: painel::PainelSimulado::novo(),
             }),
         }
     }
@@ -114,6 +117,7 @@ impl Interno {
 
     fn avancar(&mut self) {
         self.tique = self.tique.saturating_add(1);
+        self.painel.avancar(&mut self.fila);
         // Na demonstração o canal de dados anda em rajadas — uns dez segundos movendo, dez parado —,
         // para a linha de tráfego da tela inicial mostrar os dois jeitos.
         if self.estado.enlace.conectado() && (self.tique / 50).is_multiple_of(2) {
@@ -280,6 +284,11 @@ impl Servico for ServicoSimulado {
             Pedido::Estado | Pedido::Acompanhar => Resposta::Estado(interno.estado.clone()),
             Pedido::Diagnostico => Resposta::Diagnostico(diagnostico(&interno.estado)),
             Pedido::Pastas => Resposta::Pastas(pastas_de_demonstracao()),
+            Pedido::Paineis => Resposta::Paineis(interno.painel.lista()),
+            Pedido::Painel(comando) => {
+                let Interno { painel, fila, .. } = &mut *interno;
+                painel.comando(comando, fila)
+            }
             Pedido::Encerrar => {
                 interno.encerrar();
                 // Pausar é pausar: o simulado não reconecta sozinho, como o serviço de verdade.

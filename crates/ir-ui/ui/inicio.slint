@@ -10,12 +10,14 @@ import { Dados, Acoes, Saude } from "dados.slint";
 import { Cartao, Botao, BotaoDeSegurar, Selo, Dado, Faixa, Ponto } from "componentes.slint";
 import { CartaoDeCopia, ListaDeCopias } from "copia.slint";
 import { CartaoDePastas } from "pastas.slint";
+import { CartaoDoPainel } from "paineis.slint";
 
 /// A tela inicial.
 export component Inicio inherits VerticalLayout {
     callback ir-para-pareamento();
     callback ir-para-preferencias();
     callback ir-para-pastas();
+    callback ir-para-paineis();
 
     /// Se a lista das últimas cópias está aberta. Fechada por padrão.
     in-out property <bool> mostrar-recentes: false;
@@ -223,6 +225,13 @@ export component Inicio inherits VerticalLayout {
     if Dados.estado.tem-par: CartaoDePastas {
         abrir => {
             root.ir-para-pastas();
+        }
+    }
+
+    // O painel no celular: vale com ou sem par — sozinho, o aparelho mostra este computador.
+    CartaoDoPainel {
+        abrir => {
+            root.ir-para-paineis();
         }
     }
 

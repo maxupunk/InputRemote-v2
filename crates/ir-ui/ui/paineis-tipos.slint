@@ -1,0 +1,25 @@
+// Os tipos do painel no Android na tela, num arquivo próprio: `dados.slint` os usa, e
+// `paineis.slint` usa `dados.slint` — com eles em qualquer um dos dois, um importaria o outro.
+
+/// Um aparelho pareado, como a lista o mostra.
+export struct PainelUi {
+    /// O nome que o aparelho disse.
+    nome: string,
+    /// Se está conectado agora.
+    conectado: bool,
+}
+
+/// Em que ponto o pareamento de um aparelho está.
+export enum EtapaDoPainel {
+    /// Nada em curso: a tela mostra como começar.
+    parado,
+    /// A janela de pareamento está aberta, esperando o aparelho chegar — ou, depois de "São
+    /// iguais", esperando ele conferir também.
+    esperando,
+    /// Os dois códigos estão na tela; falta comparar.
+    comparando,
+    /// Deu certo.
+    concluido,
+    /// Não deu: recusado, prazo, ou o aparelho saiu.
+    falhou,
+}

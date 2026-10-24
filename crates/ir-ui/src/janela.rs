@@ -10,6 +10,7 @@
 
 mod acoes;
 mod copias;
+mod paineis;
 mod pareamento;
 mod pastas;
 
@@ -60,6 +61,8 @@ struct Contexto {
     atrasos: RefCell<crate::historico::Atrasos>,
     /// As pastas compartilhadas na tela, e o seletor de pasta aberto.
     pastas: pastas::EstadoDasPastas,
+    /// Os aparelhos com o painel, na ordem da tela.
+    paineis: paineis::ListaDePaineis,
 }
 
 impl Contexto {
@@ -94,6 +97,13 @@ impl Contexto {
             dados.set_trafego(trafego.clone().into());
             dados.set_trafego_ativo(ativo);
         });
+    }
+
+    /// Tudo o que a janela pede ao serviço de uma vez: ao abrir e ao reconectar.
+    fn recarregar(&self) {
+        self.sincronizar();
+        self.buscar_pastas();
+        self.buscar_paineis();
     }
 
     fn sincronizar(&self) {
@@ -153,8 +163,7 @@ impl Contexto {
         }
         self.mostrar_situacao(agora);
         if agora == Situacao::Conectado {
-            self.sincronizar();
-            self.buscar_pastas();
+            self.recarregar();
         }
     }
 
@@ -194,6 +203,7 @@ impl Contexto {
             }
             Aviso::Transferencia(transferencia) => self.mostrar_copia(&transferencia),
             Aviso::PastasMudaram(lista) => self.mostrar_pastas(lista),
+            Aviso::Painel(aviso) => self.aviso_do_painel(aviso),
             Aviso::RecadoDasPastas(frase) => self.recado_das_pastas(&frase),
             Aviso::PareamentoFalhou(falha) => self.falha_no_pareamento(falha),
             Aviso::Falhou(falha) => self.recado(Some(falha)),
@@ -308,6 +318,7 @@ pub fn abrir(
         conectado_antes: Cell::new(false),
         atrasos: RefCell::default(),
         pastas: pastas::EstadoDasPastas::default(),
+        paineis: paineis::ListaDePaineis::default(),
     });
 
     {
@@ -326,8 +337,8 @@ pub fn abrir(
     pareamento::ligar(&janela, &contexto);
     acoes::ligar_sessao(&janela, &contexto);
     pastas::ligar(&janela, &contexto);
-    contexto.sincronizar();
-    contexto.buscar_pastas();
+    paineis::ligar(&janela, &contexto);
+    contexto.recarregar();
 
     // A mesma batida recolhe os avisos e mantém a ligação: é consultando o serviço que a
     // interface percebe uma queda e tenta de novo, sem thread nem temporizador a mais.

@@ -18,12 +18,14 @@ import { Pareamento } from "pareamento.slint";
 import { Preferencias } from "preferencias.slint";
 import { SemServico } from "ativacao.slint";
 import { Pastas } from "pastas.slint";
+import { Paineis } from "paineis.slint";
 
 // O Rust só enxerga o que o arquivo de entrada exporta. Sem esta linha, `Dados` e `Acoes`
 // existem no Slint e não existem na ponte — que é o único jeito de a janela receber dados.
 export { Dados, Acoes, EstadoUi, EtapaDoPareamento } from "dados.slint";
 export { CopiaUi, ItemDeCopia } from "copia.slint";
 export { PastaUi, ConflitoUi } from "pastas-tipos.slint";
+export { PainelUi, EtapaDoPainel } from "paineis-tipos.slint";
 // A janelinha do canto, que o Rust cria e posiciona quando uma cópia começa.
 
 component Voltar inherits Rectangle {
@@ -61,7 +63,7 @@ export component Janela inherits Window {
     background: Tema.fundo;
     default-font-size: Tema.fonte-corpo;
 
-    // 0 inicial, 1 pareamento, 2 preferências.
+    // 0 inicial, 1 pareamento, 2 preferências, 3 pastas, 4 painel no celular.
     property <int> tela: 0;
 
     /// Volta à tela inicial. O serviço a chama quando o estado muda por fora — por exemplo
@@ -74,6 +76,12 @@ export component Janela inherits Window {
     /// pediu: é o outro computador pedindo o pareamento, e a comparação precisa estar na frente.
     public function mostrar-pareamento() {
         root.tela = 1;
+    }
+
+    /// Vai para a tela do painel no celular. O serviço a chama quando um aparelho chega ao código:
+    /// a comparação precisa estar na frente.
+    public function mostrar-paineis() {
+        root.tela = 4;
     }
 
     VerticalLayout {
@@ -97,7 +105,8 @@ export component Janela inherits Window {
                     text: root.tela == 0 || Dados.desconectado
                         ? "InputRemote"
                         : (root.tela == 1 ? "Parear computador"
-                            : (root.tela == 3 ? "Pastas compartilhadas" : "Preferências"));
+                            : (root.tela == 3 ? "Pastas compartilhadas"
+                                : (root.tela == 4 ? "Painel no celular" : "Preferências")));
                     vertical-alignment: center;
                     font-size: Tema.fonte-titulo;
                     font-weight: 600;
@@ -192,6 +201,9 @@ export component Janela inherits Window {
                     ir-para-pastas => {
                         root.tela = 3;
                     }
+                    ir-para-paineis => {
+                        root.tela = 4;
+                    }
                 }
 
                 if !Dados.desconectado && root.tela == 1: Pareamento {
@@ -203,6 +215,8 @@ export component Janela inherits Window {
                 if !Dados.desconectado && root.tela == 2: Preferencias { }
 
                 if !Dados.desconectado && root.tela == 3: Pastas { }
+
+                if !Dados.desconectado && root.tela == 4: Paineis { }
             }
         }
     }

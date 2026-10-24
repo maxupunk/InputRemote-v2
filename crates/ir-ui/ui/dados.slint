@@ -10,6 +10,7 @@
 import { Tema } from "tema.slint";
 import { CopiaUi, ItemDeCopia } from "copia.slint";
 import { PastaUi } from "pastas-tipos.slint";
+import { PainelUi, EtapaDoPainel } from "paineis-tipos.slint";
 
 /// O estado observável, na forma em que a tela o desenha.
 export struct EstadoUi {
@@ -201,6 +202,14 @@ export global Dados {
     in property <string> pastas-resumo;
     /// Quantas ofertas esperam resposta: o cartão da tela inicial chama para elas.
     in property <int> pastas-ofertas;
+    /// Os aparelhos com o painel pareados, na ordem da tela.
+    in property <[PainelUi]> paineis;
+    /// Uma linha sobre eles, para a tela inicial.
+    in property <string> paineis-resumo: "Veja o uso deste computador num tablet ou celular.";
+    /// Em que ponto está o pareamento de um aparelho.
+    in property <EtapaDoPainel> painel-etapa: EtapaDoPainel.parado;
+    /// Os seis dígitos do pareamento do aparelho, um por posição.
+    in property <[string]> painel-digitos: ["", "", "", "", "", ""];
 }
 
 export global Acoes {
@@ -264,6 +273,14 @@ export global Acoes {
     callback compartilhar-pasta();
     /// Criar uma pasta nova, já compartilhada, com este nome.
     callback criar-pasta(string);
+    /// Abrir a espera de um aparelho novo com o painel.
+    callback parear-painel();
+    /// Responder se o código do aparelho confere.
+    callback confirmar-painel(bool);
+    /// Desistir do pareamento do aparelho.
+    callback cancelar-painel();
+    /// Esquecer o aparelho desta posição da lista.
+    callback esquecer-painel(int);
     /// Aceitar a oferta desta posição da lista.
     callback aceitar-pasta(int);
     /// Recusar a oferta desta posição.

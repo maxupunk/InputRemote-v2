@@ -72,7 +72,7 @@ pub use agent::{ComandoDoAgente, FatoDoAgente};
 pub use chegada::{Chegando, ItemChegando};
 pub use codec::{ErroDeCodec, MAX_MENSAGEM, PREFIXO};
 pub use falha::Falha;
-pub use paineis::{AvisoDoPainel, ComandoDePainel, ResumoDoPainel};
+pub use paineis::{AvisoDoPainel, ComandoDePainel, ResumoDoPainel, resumo_dos_paineis};
 pub use pastas::{
     ComandoDePasta, DoAjudanteDePastas, EscolhaDeConflito, IdDePasta, PapelDaPasta,
     ParaOAjudanteDePastas, ResumoDePasta, SituacaoDaPasta,

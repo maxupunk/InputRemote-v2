@@ -40,3 +40,51 @@ pub enum AvisoDoPainel {
     /// A lista mudou — um painel novo, esquecido, que ligou, desligou ou disse o nome.
     Lista(Vec<ResumoDoPainel>),
 }
+
+/// Uma linha sobre os aparelhos, para o cartão da tela inicial.
+#[must_use]
+pub fn resumo_dos_paineis(paineis: &[ResumoDoPainel]) -> String {
+    let ligados = paineis.iter().filter(|p| p.conectado).count();
+    let primeiro = paineis.first().map_or("", |p| p.nome.as_str());
+    match (paineis.len(), ligados) {
+        (0, _) => "Veja o uso deste computador num tablet ou celular.".to_owned(),
+        (1, 1) => format!("{primeiro} está mostrando este computador agora."),
+        (1, _) => format!("{primeiro} pareado, desconectado agora."),
+        (total, 0) => format!("{total} aparelhos pareados, nenhum conectado agora."),
+        (total, ligados) => format!("{total} aparelhos pareados, {ligados} conectado(s) agora."),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn painel(nome: &str, conectado: bool) -> ResumoDoPainel {
+        ResumoDoPainel {
+            id: nome.to_owned(),
+            nome: nome.to_owned(),
+            conectado,
+        }
+    }
+
+    #[test]
+    fn o_resumo_diz_quem_esta_olhando() {
+        assert!(resumo_dos_paineis(&[]).contains("tablet ou celular"));
+        assert_eq!(
+            resumo_dos_paineis(&[painel("Tablet", true)]),
+            "Tablet está mostrando este computador agora."
+        );
+        assert_eq!(
+            resumo_dos_paineis(&[painel("Tablet", false)]),
+            "Tablet pareado, desconectado agora."
+        );
+        assert_eq!(
+            resumo_dos_paineis(&[painel("a", false), painel("b", true)]),
+            "2 aparelhos pareados, 1 conectado(s) agora."
+        );
+        assert_eq!(
+            resumo_dos_paineis(&[painel("a", false), painel("b", false)]),
+            "2 aparelhos pareados, nenhum conectado agora."
+        );
+    }
+}

@@ -1,0 +1,282 @@
+// O painel no Android: o cartão da tela inicial e a tela dos aparelhos.
+//
+// Parear um aparelho é o mesmo gesto de parear um computador — os seis dígitos comparados nas duas
+// telas —, e a tela diz por quê. O que muda é o que o aparelho pode: só ver o uso deste computador
+// e do outro. Ele não digita, não copia e não recebe arquivo; a tela também diz isso, porque é o que
+// deixa a pessoa parear sem medo.
+
+import { Tema } from "tema.slint";
+import { Dados, Acoes } from "dados.slint";
+import { EtapaDoPainel, PainelUi } from "paineis-tipos.slint";
+import { Cartao, Botao, BotaoConfirmado, Faixa, Ponto, Secao } from "componentes.slint";
+import { Digito } from "pareamento.slint";
+
+/// O cartão da tela inicial: uma linha sobre os aparelhos, e o caminho para a tela deles.
+export component CartaoDoPainel inherits Cartao {
+    callback abrir();
+
+    HorizontalLayout {
+        spacing: Tema.e2;
+
+        VerticalLayout {
+            spacing: Tema.e1;
+            horizontal-stretch: 1;
+
+            Secao { text: "Painel no celular"; }
+
+            Text {
+                text: Dados.paineis-resumo;
+                font-size: Tema.fonte-nota;
+                color: Tema.texto-fraco;
+                wrap: word-wrap;
+            }
+        }
+
+        Botao {
+            texto: "Abrir";
+            y: (parent.height - self.height) / 2;
+            acionado => {
+                root.abrir();
+            }
+        }
+    }
+}
+
+/// Um aparelho na lista: nome, se está ligado, e o esquecer de dois cliques.
+component LinhaDePainel inherits Cartao {
+    in property <PainelUi> painel;
+    in property <int> posicao;
+
+    compacto: true;
+
+    HorizontalLayout {
+        spacing: Tema.e2;
+
+        Ponto {
+            cor: root.painel.conectado ? Tema.bom : Tema.texto-fraco;
+            y: (parent.height - self.height) / 2;
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+
+            Text {
+                text: root.painel.nome;
+                font-size: Tema.fonte-corpo;
+                font-weight: 600;
+                color: Tema.texto;
+            }
+
+            Text {
+                text: root.painel.conectado ? "Conectado agora" : "Desconectado";
+                font-size: Tema.fonte-nota;
+                color: Tema.texto-fraco;
+            }
+        }
+
+        BotaoConfirmado {
+            compacto: true;
+            texto-normal: "Esquecer";
+            texto-de-confirmacao: "Esquecer mesmo?";
+            y: (parent.height - self.height) / 2;
+            confirmado => {
+                Acoes.esquecer-painel(root.posicao);
+            }
+        }
+    }
+}
+
+/// Os seis dígitos, três e três, como no pareamento de um computador.
+component CodigoDoPainel inherits HorizontalLayout {
+    alignment: center;
+    spacing: Tema.e2;
+
+    for digito[indice] in Dados.painel-digitos: HorizontalLayout {
+        padding-left: indice == 3 ? Tema.e3 : 0px;
+
+        Digito {
+            valor: digito;
+        }
+    }
+}
+
+/// O pareamento de um aparelho, etapa por etapa.
+component PareamentoDoPainel inherits Cartao {
+    if Dados.painel-etapa == EtapaDoPainel.parado: VerticalLayout {
+        spacing: Tema.e3;
+
+        Text {
+            text: "Veja o uso deste computador num tablet ou celular";
+            font-size: Tema.fonte-destaque;
+            color: Tema.texto;
+            wrap: word-wrap;
+        }
+
+        Text {
+            text: "1. Instale o InputRemote Painel no Android.\n"
+                + "2. Deixe o aparelho na mesma rede Wi-Fi deste computador.\n"
+                + "3. Toque em \"Parear\" lá e em \"Parear aparelho\" aqui.";
+            font-size: Tema.fonte-corpo;
+            color: Tema.texto;
+            wrap: word-wrap;
+        }
+
+        Text {
+            text: "O aparelho só vê o uso — processador, memória, temperaturas e a latência entre "
+                + "os computadores. Ele não digita, não copia e não recebe arquivo.";
+            font-size: Tema.fonte-nota;
+            color: Tema.texto-fraco;
+            wrap: word-wrap;
+        }
+
+        HorizontalLayout {
+            alignment: start;
+
+            Botao {
+                texto: "Parear aparelho";
+                primario: true;
+                acionado => {
+                    Acoes.parear-painel();
+                }
+            }
+        }
+    }
+
+    if Dados.painel-etapa == EtapaDoPainel.esperando: VerticalLayout {
+        spacing: Tema.e3;
+
+        Text {
+            text: Dados.painel-digitos[0] == ""
+                ? "Esperando o aparelho…"
+                : "Aguardando o aparelho conferir…";
+            font-size: Tema.fonte-destaque;
+            color: Tema.texto;
+        }
+
+        Text {
+            text: Dados.painel-digitos[0] == ""
+                ? "Toque em \"Parear\" no aparelho e escolha este computador. A espera dura 3 minutos."
+                : "Falta tocar em \"São iguais\" no aparelho.";
+            font-size: Tema.fonte-corpo;
+            color: Tema.texto-fraco;
+            wrap: word-wrap;
+        }
+
+        HorizontalLayout {
+            alignment: start;
+
+            Botao {
+                texto: "Cancelar";
+                acionado => {
+                    Acoes.cancelar-painel();
+                }
+            }
+        }
+    }
+
+    if Dados.painel-etapa == EtapaDoPainel.comparando: VerticalLayout {
+        spacing: Tema.e3;
+
+        Text {
+            text: "Estes seis dígitos aparecem iguais no aparelho?";
+            font-size: Tema.fonte-destaque;
+            color: Tema.texto;
+            wrap: word-wrap;
+        }
+
+        CodigoDoPainel { }
+
+        Text {
+            text: "Se forem diferentes, alguém pode estar no meio da conexão — e aí não é para parear.";
+            font-size: Tema.fonte-nota;
+            color: Tema.texto-fraco;
+            wrap: word-wrap;
+        }
+
+        HorizontalLayout {
+            spacing: Tema.e2;
+
+            Botao {
+                texto: "São iguais";
+                primario: true;
+                acionado => {
+                    Acoes.confirmar-painel(true);
+                }
+            }
+
+            Botao {
+                texto: "São diferentes";
+                perigo: true;
+                acionado => {
+                    Acoes.confirmar-painel(false);
+                }
+            }
+        }
+    }
+
+    if Dados.painel-etapa == EtapaDoPainel.concluido: VerticalLayout {
+        spacing: Tema.e3;
+
+        Text {
+            text: "Aparelho pareado. O painel já mostra este computador.";
+            font-size: Tema.fonte-destaque;
+            color: Tema.bom;
+            wrap: word-wrap;
+        }
+
+        HorizontalLayout {
+            alignment: start;
+
+            Botao {
+                texto: "Parear outro";
+                acionado => {
+                    Acoes.parear-painel();
+                }
+            }
+        }
+    }
+
+    if Dados.painel-etapa == EtapaDoPainel.falhou: VerticalLayout {
+        spacing: Tema.e3;
+
+        Faixa {
+            texto: "O pareamento não terminou: o código foi recusado, a espera acabou, ou o "
+                + "aparelho saiu da rede. Nada foi gravado.";
+            cor: Tema.ruim;
+            cor-de-fundo: Tema.ruim-suave;
+        }
+
+        HorizontalLayout {
+            alignment: start;
+
+            Botao {
+                texto: "Tentar de novo";
+                primario: true;
+                acionado => {
+                    Acoes.parear-painel();
+                }
+            }
+        }
+    }
+}
+
+/// A tela dos aparelhos.
+export component Paineis inherits VerticalLayout {
+    spacing: Tema.e4;
+
+    PareamentoDoPainel { }
+
+    if Dados.paineis.length > 0: VerticalLayout {
+        spacing: Tema.e2;
+
+        Secao { text: "Aparelhos pareados"; }
+
+        for painel[posicao] in Dados.paineis: LinhaDePainel {
+            painel: painel;
+            posicao: posicao;
+        }
+    }
+
+    Rectangle { }
+}

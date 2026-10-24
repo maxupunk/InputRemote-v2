@@ -11,7 +11,8 @@ import { LineEdit } from "std-widgets.slint";
 
 import { Cartao, Botao, Faixa, Secao } from "componentes.slint";
 
-component Digito inherits Rectangle {
+/// Um dígito do código, grande e numa caixa. O painel no Android usa o mesmo (`paineis.slint`).
+export component Digito inherits Rectangle {
     in property <string> valor;
 
     width: 46px;
