@@ -56,6 +56,11 @@ linhas, oito a menos que antes.**
 - **11 testes de JVM** no aplicativo: leitura do JSON, histórico, e o `Controlador` com uma fonte de
   mentira (procurar, ligar, parear, recusado, religar sozinho).
 
+- **Num tablet de verdade** (M8_4G, Android 13, arm64, 800×1280), pela Wi-Fi da casa, contra a
+  bancada: a descoberta achou o PC; o código **638 311** apareceu nas duas pontas; o painel em pé
+  com os dados ao vivo, o menu ⋮ e o escurecer usados à mão; fechar o aplicativo à força e abrir de
+  novo voltou ao painel **sem código** (um código só na sessão inteira, duas assinaturas).
+
 ## O que deu errado no caminho
 
 - **A recusa do código não chegava ao outro lado.** `Conversa::confirmar(false)` devolvia erro e

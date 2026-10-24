@@ -222,7 +222,7 @@ A lista honesta, do [log 45](docs/logs/45-a-varredura-implementada.md):
 - imagens no clipboard entre as duas máquinas (a conversão e o clipboard do Windows foram provados
   aqui; o Wayland e a travessia, não);
 - a suspensão e a volta das duas máquinas com a conexão de pé;
-- o painel no celular com o serviço **instalado** e um aparelho de verdade: foi provado no emulador,
+- o painel no celular com o serviço **instalado**: foi provado num tablet de verdade e no emulador,
   contra a bancada ([log 68](docs/logs/68-o-painel-no-android.md));
 - nas pastas compartilhadas, o Word de verdade salvando dentro de uma pasta sob demanda (o
   LibreOffice foi provado; [log 59](docs/logs/59-a-pasta-sob-demanda.md)). O resto foi provado entre

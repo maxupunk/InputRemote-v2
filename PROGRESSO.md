@@ -641,6 +641,8 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] O aplicativo Android: núcleo em Rust por JNI, Compose, protetor de tela; no emulador de
       tablet contra a bancada — descoberta, código igual nas duas telas, em pé e deitado, volta
       sem código ([log 68](docs/logs/68-o-painel-no-android.md))
+- [x] `[H]` Um tablet de verdade (Android 13, arm64) pela Wi-Fi, contra a bancada: parear, o painel
+      ao vivo, voltar sem código depois de fechar à força ([log 68](docs/logs/68-o-painel-no-android.md))
 - [ ] `[H]` Bancada com o serviço **instalado** nos dois computadores e um aparelho de verdade: o
       par da versão 11 respondendo, as duas rotas medidas, o par antigo pedindo atualização
 - [ ] `[H]` O orçamento de [12, §3.4](docs/12-painel-android.md): CPU e memória do serviço com um
