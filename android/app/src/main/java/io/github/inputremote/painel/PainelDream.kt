@@ -16,6 +16,7 @@ import io.github.inputremote.painel.ui.Controlador
 import io.github.inputremote.painel.ui.Preferencias
 import io.github.inputremote.painel.ui.fonteNativa
 import io.github.inputremote.painel.ui.telas.Acoes
+import io.github.inputremote.painel.ui.telas.Aparelho
 import io.github.inputremote.painel.ui.telas.Painel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
@@ -47,17 +48,21 @@ class PainelDream : DreamService(), LifecycleOwner, SavedStateRegistryOwner {
         super.onAttachedToWindow()
         isInteractive = false
         isFullscreen = true
-        isScreenBright = !Preferencias(this).escurecer.value
+        val preferencias = Preferencias(this)
+        isScreenBright = !preferencias.escurecer.value
         val escopo = MainScope().also { escopo = it }
         val controlador = Controlador(fonteNativa(this), escopo).also { controlador = it }
         val nada = {}
-        val acoes = Acoes(
-            procurar = nada,
-            parear = {},
-            confirmar = {},
-            esquecer = nada,
+        val acoes = Acoes(procurar = nada, parear = {}, confirmar = {}, esquecer = nada)
+        // Os mesmos cards que a pessoa arrumou no aplicativo; aqui só para olhar.
+        val aparelho = Aparelho(
+            arranjo = preferencias.arranjo.value,
+            editarArranjo = {},
             escurecido = !isScreenBright,
             alternarEscurecer = nada,
+            sempreDeitado = preferencias.sempreDeitado.value,
+            alternarDeitado = nada,
+            editavel = false,
         )
         setContentView(
             ComposeView(this).apply {
@@ -65,7 +70,7 @@ class PainelDream : DreamService(), LifecycleOwner, SavedStateRegistryOwner {
                 setViewTreeSavedStateRegistryOwner(this@PainelDream)
                 setContent {
                     val tela by controlador.tela.collectAsStateWithLifecycle()
-                    Painel(tela, acoes)
+                    Painel(tela, acoes, aparelho)
                 }
             },
         )

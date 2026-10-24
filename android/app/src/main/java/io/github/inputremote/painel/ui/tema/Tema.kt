@@ -6,7 +6,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 import io.github.inputremote.painel.dados.Nivel
 
 /**
@@ -65,5 +64,3 @@ fun TemaDoPainel(conteudo: @Composable () -> Unit) {
     MaterialTheme(colorScheme = esquema, content = conteudo)
 }
 
-/** O tamanho do número principal de um bloco. */
-val tamanhoDoValor = 26.sp

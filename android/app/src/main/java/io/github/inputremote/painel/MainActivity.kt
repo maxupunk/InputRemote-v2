@@ -1,5 +1,6 @@
 package io.github.inputremote.painel
 
+import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -14,6 +15,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.inputremote.painel.ui.PainelViewModel
 import io.github.inputremote.painel.ui.telas.Acoes
+import io.github.inputremote.painel.ui.telas.Aparelho
 import io.github.inputremote.painel.ui.telas.Painel
 
 /**
@@ -36,7 +38,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             val tela by controlador.tela.collectAsStateWithLifecycle()
             val escuro by preferencias.escurecer.collectAsStateWithLifecycle()
+            val deitado by preferencias.sempreDeitado.collectAsStateWithLifecycle()
+            val arranjo by preferencias.arranjo.collectAsStateWithLifecycle()
             LaunchedEffect(escuro) { aplicarBrilho(escuro) }
+            LaunchedEffect(deitado) { aplicarOrientacao(deitado) }
             Painel(
                 tela,
                 Acoes(
@@ -44,8 +49,14 @@ class MainActivity : ComponentActivity() {
                     parear = controlador::parear,
                     confirmar = controlador::confirmar,
                     esquecer = controlador::esquecer,
+                ),
+                Aparelho(
+                    arranjo = arranjo,
+                    editarArranjo = preferencias::editarArranjo,
                     escurecido = escuro,
                     alternarEscurecer = preferencias::alternarEscurecer,
+                    sempreDeitado = deitado,
+                    alternarDeitado = preferencias::alternarDeitado,
                 ),
             )
         }
@@ -72,6 +83,18 @@ class MainActivity : ComponentActivity() {
     private fun aplicarBrilho(escuro: Boolean) {
         window.attributes = window.attributes.apply {
             screenBrightness = if (escuro) BRILHO_BAIXO else WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        }
+    }
+
+    /**
+     * Deitado nos dois sentidos (o carregador pode estar de qualquer lado); ou livre, girando com o
+     * aparelho.
+     */
+    private fun aplicarOrientacao(deitado: Boolean) {
+        requestedOrientation = if (deitado) {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
     }
 

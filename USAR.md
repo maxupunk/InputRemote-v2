@@ -170,7 +170,10 @@ está atrasando. Ele só olha: não digita, não copia e não recebe arquivo.
    aparelhos, digite o IP do computador.
 4. Os dois mostram o mesmo código de seis dígitos: **São iguais** nos dois.
 
-Das próximas vezes o aplicativo abre direto no painel, e acha o computador mesmo com outro IP. Para
+Das próximas vezes o aplicativo abre direto no painel, e acha o computador mesmo com outro IP. O
+painel fica deitado, com o processador e a memória grandes no topo de cada computador. Para arrumar
+os cards, **⋮ → Editar painel**: ◀ ▶ mudam a ordem, ★ destaca, ✕ tira, e **Adicionar card** põe de
+volta o que foi tirado. Para
 o painel aparecer sozinho ao carregar, escolha **InputRemote Painel** em *Configurações → Tela →
 Protetor de tela* do Android. O menu ⋮ escurece a tela, pareia outro computador ou esquece este; na
 janela do computador, **Esquecer** desliga o aparelho na hora.

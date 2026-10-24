@@ -155,12 +155,25 @@ nucleo/     FonteNativa e Leitura (JSON) sobre Nativo (JNI)
 
 ### 5.2. Layout
 
-- **Deitado**: um computador por coluna, a faixa "Entre os computadores" embaixo; o que não cabe
-  no cartão rola dentro dele.
-- **Em pé**: a faixa no topo, os cartões empilhados com rolagem.
-- **Um componente para toda métrica**: rótulo, valor em dígitos de largura fixa, detalhe, barra,
-  mini-gráfico, e o nível **escrito** ("atenção", "crítico") ao lado da cor.
-- **Borda do cartão** na cor do pior nível dele; "—" quando a máquina não sabe ler.
+Pensado **deitado** — é como um tablet fica ao lado do monitor —, e travado deitado por padrão
+("Sempre deitado" no menu ⋮; desligado, gira com o aparelho). No tablet de 8" (853 × 533 dp
+deitado) tudo cabe sem rolar ([log 69](logs/69-o-painel-deitado-e-os-cards.md)):
+
+- **um computador por coluna**; em cada uma, **o processador e a memória primeiro, grandes e lado a
+  lado** — número de 36 sp, barra grossa e o último minuto em gráfico;
+- **o resto em linhas compactas**: valor e detalhe lado a lado, barra fina, sem gráfico. O valor
+  nunca é cortado; quem encolhe, com reticências, é o detalhe;
+- **a faixa "Entre os computadores"** numa linha fina embaixo. Em pé, a faixa vai para o topo e os
+  computadores se empilham.
+
+**Os cards são da pessoa** (`dados/Arranjo.kt`): no menu ⋮, **Editar painel** põe em cada card
+◀ ▶ (mudar a ordem), ★ (destaque ou compacto) e ✕ (tirar), e no topo **Adicionar card** (só
+oferece o que existe nesta máquina), **Restaurar padrão** e **Concluir**. Vale para os dois
+computadores, e fica guardado no aparelho. O arranjo só conhece a `chave` de cada métrica, então uma
+métrica nova de uma versão futura entra no fim sozinha, e uma que a pessoa tirou continua tirada.
+
+- **Cores por nível**, com o nível **escrito** ("atenção", "crítico") ao lado da cor; a borda do
+  cartão na cor do pior nível dele; "—" quando a máquina não sabe ler.
 - Limites da v1 (`ir_monitor::nivel`): CPU 75/90 %, memória e disco 80/90 %, temperatura 75/85 °C,
   latência 20/50 ms, bateria fora da tomada 20/10 %.
 

@@ -31,7 +31,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.inputremote.painel.dados.Bloco
@@ -40,58 +42,86 @@ import io.github.inputremote.painel.ui.tema.Cores
 import io.github.inputremote.painel.ui.tema.cor
 import io.github.inputremote.painel.ui.tema.numeros
 import io.github.inputremote.painel.ui.tema.rotulo
-import io.github.inputremote.painel.ui.tema.tamanhoDoValor
 import kotlinx.coroutines.delay
 
 /**
- * Um número na tela. Todo bloco é desenhado por este componente, qualquer que seja a métrica: o
+ * Um número na tela. Todo card é desenhado por este componente, qualquer que seja a métrica: o
  * texto, a barra e o nível já vêm prontos do núcleo.
+ *
+ * Dois tamanhos, com o mesmo cabeçalho e a mesma barra: o **destaque**, para o que se olha primeiro
+ * — número grande e o último minuto em gráfico —, e o **compacto**, uma linha densa com o valor e o
+ * detalhe lado a lado, para caber o resto na mesma tela deitada.
  */
 @Composable
-fun BlocoDeMetrica(bloco: Bloco, serie: List<Float>, modifier: Modifier = Modifier) {
+fun BlocoDeMetrica(bloco: Bloco, serie: List<Float>, destaque: Boolean, modifier: Modifier = Modifier) {
     val cor = bloco.nivel.cor()
     val descricao = listOfNotNull(bloco.rotulo, bloco.valor, bloco.detalhe, bloco.nivel.rotulo().ifEmpty { null })
         .joinToString(", ")
+    val respiro = if (destaque) 14.dp else 10.dp
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
             .background(Cores.fundo)
-            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .padding(horizontal = respiro, vertical = if (destaque) 11.dp else 6.dp)
             .semantics(mergeDescendants = true) { contentDescription = descricao },
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(if (destaque) 4.dp else 2.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(bloco.rotulo, color = Cores.textoFraco, fontSize = 13.sp, modifier = Modifier.weight(1f))
+            Text(bloco.rotulo, color = Cores.textoFraco, fontSize = 13.sp, maxLines = 1, modifier = Modifier.weight(1f))
             val alerta = bloco.nivel.rotulo()
             if (alerta.isNotEmpty()) Text(alerta, color = cor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         }
-        Text(
-            bloco.valor,
-            style = numeros,
-            fontSize = tamanhoDoValor,
-            color = if (bloco.nivel == Nivel.SEM_DADO) Cores.textoFraco else Cores.texto,
-            maxLines = 1,
-        )
-        bloco.detalhe?.let { Text(it, color = Cores.textoFraco, fontSize = 12.sp, style = numeros, maxLines = 1) }
-        bloco.fracao?.let { Barra(it, cor) }
-        if (serie.size > 1) MiniGrafico(serie, cor, Modifier.fillMaxWidth().height(28.dp))
+        if (destaque) {
+            Valor(bloco, 36.sp)
+            bloco.detalhe?.let { Detalhe(it) }
+            bloco.fracao?.let { Barra(it, cor, 6.dp) }
+            if (serie.size > 1) MiniGrafico(serie, cor, Modifier.fillMaxWidth().height(30.dp))
+        } else {
+            // O valor nunca é cortado: quem encolhe, com reticências, é o detalhe.
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Valor(bloco, 20.sp)
+                bloco.detalhe?.let { Detalhe(it, Modifier.weight(1f, fill = false)) }
+            }
+            bloco.fracao?.let { Barra(it, cor, 3.dp) }
+        }
     }
 }
 
-/** Uma barra fina de 0 a 1. */
 @Composable
-fun Barra(fracao: Float, cor: Color) {
+private fun Valor(bloco: Bloco, tamanho: TextUnit, modifier: Modifier = Modifier) = Text(
+    bloco.valor,
+    style = numeros,
+    fontSize = tamanho,
+    color = if (bloco.nivel == Nivel.SEM_DADO) Cores.textoFraco else Cores.texto,
+    maxLines = 1,
+    modifier = modifier,
+)
+
+@Composable
+private fun Detalhe(texto: String, modifier: Modifier = Modifier) = Text(
+    texto,
+    color = Cores.textoFraco,
+    fontSize = 12.sp,
+    style = numeros,
+    maxLines = 1,
+    overflow = TextOverflow.Ellipsis,
+    modifier = modifier.padding(bottom = 2.dp),
+)
+
+/** Uma barra de 0 a 1. */
+@Composable
+fun Barra(fracao: Float, cor: Color, altura: Dp = 4.dp) {
     Box(
         Modifier
             .fillMaxWidth()
-            .height(4.dp)
-            .clip(RoundedCornerShape(2.dp))
+            .height(altura)
+            .clip(RoundedCornerShape(altura / 2))
             .background(Cores.borda),
     ) {
         Box(
             Modifier
                 .fillMaxWidth(fracao.coerceIn(0f, 1f))
-                .height(4.dp)
+                .height(altura)
                 .background(cor),
         )
     }
