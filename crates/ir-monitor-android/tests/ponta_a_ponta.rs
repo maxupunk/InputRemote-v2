@@ -1,5 +1,6 @@
 //! O núcleo do aplicativo contra o monitor do serviço, os dois de verdade, no *loopback*: parear
-//! conferindo o código, receber o quadro, e voltar sem código pela chave gravada.
+//! conferindo o código, receber o quadro, voltar sem código pela chave gravada e, dito o interesse,
+//! receber os detalhes junto do quadro.
 
 #![allow(
     clippy::expect_used,
@@ -12,7 +13,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use ir_crypto::Identity;
-use ir_monitor::{Maquina, Quadro, Situacao};
+use ir_monitor::{Copia, Detalhes, FaseDaCopia, Interesse, Maquina, Quadro, Situacao};
 use ir_monitor_android::Ligacao;
 use ir_monitor_android::cliente::{Comando, Destino, Evento};
 use ir_monitor_android::cofre::Cofre;
@@ -138,7 +139,7 @@ async fn parear_receber_o_quadro_e_voltar_sem_codigo() {
     let (tx, mut avisos) = mpsc::unbounded_channel();
     let monitor = Monitor::iniciar_na_porta(Identity::generate(), "DESKTOP", Vec::new(), tx, porta);
     monitor.comandar(NoMonitor::AbrirPareamento);
-    monitor.publicar(quadro());
+    monitor.publicar(quadro(), Detalhes::default());
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let chave = parear(&pasta, porta, &monitor, &mut avisos).await;
@@ -158,4 +159,34 @@ async fn parear_receber_o_quadro_e_voltar_sem_codigo() {
         });
         esperar(&volta, |e| matches!(e, Evento::Quadro(_)).then_some(()));
     });
+
+    // O interesse dito depois de aberta: os quadros seguintes trazem a cópia.
+    volta.comandar(Comando::Interesse(Interesse {
+        processos: vec!["docker".to_owned()],
+        lista: None,
+    }));
+    let detalhes = Detalhes {
+        copia: Some(Copia {
+            enviando: true,
+            nome: "fotos".to_owned(),
+            feitos: 1,
+            total: 2,
+            por_segundo: None,
+            fase: FaseDaCopia::Andando,
+        }),
+        processos: vec![None],
+    };
+    let veio = tokio::task::block_in_place(|| {
+        let fim = Instant::now() + PRAZO;
+        while Instant::now() < fim {
+            monitor.publicar(quadro(), detalhes.clone());
+            if let Some(Evento::Quadro(vista)) = volta.proximo(Duration::from_millis(100))
+                && vista.copia.is_some()
+            {
+                return true;
+            }
+        }
+        false
+    });
+    assert!(veio, "os detalhes não chegaram à vista");
 }

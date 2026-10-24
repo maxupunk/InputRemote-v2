@@ -10,8 +10,8 @@ use tokio::net::TcpStream;
 use tokio::sync::{mpsc, watch};
 use tokio::time::Instant;
 
-use crate::ASSINATURA_EXPIRA;
 use crate::central::DaConexao;
+use crate::{ASSINATURA_EXPIRA, Publicacao};
 
 /// Até quando esperar o aperto de mão terminar. A conexão TCP já está de pé: o que se espera é
 /// processamento e um trecho de Wi-Fi.
@@ -30,7 +30,7 @@ pub(crate) struct Ligacao {
     pub(crate) nome: Arc<str>,
     pub(crate) central: mpsc::UnboundedSender<DaConexao>,
     pub(crate) decisoes: mpsc::UnboundedReceiver<bool>,
-    pub(crate) quadros: watch::Receiver<Option<Arc<Vec<u8>>>>,
+    pub(crate) quadros: watch::Receiver<Option<Arc<Publicacao>>>,
 }
 
 /// O estado da conexão, além da conversa.
@@ -42,6 +42,8 @@ struct Estado {
     prazo: Instant,
     ultimo_sinal: Instant,
     assinada_ate: Option<Instant>,
+    /// Se o painel quer os detalhes: só um aplicativo da versão 2 ou mais diz.
+    quer_detalhes: bool,
     /// A chave do painel, depois da abertura.
     par: Option<ir_crypto::PublicKey>,
 }
@@ -58,6 +60,7 @@ pub(crate) async fn atender(socket: TcpStream, conversa: Conversa, ligacao: Liga
         prazo: agora + PRAZO_DO_APERTO,
         ultimo_sinal: agora,
         assinada_ate: None,
+        quer_detalhes: false,
         par: None,
     };
     if let Err(falha) = estado.laco().await {
@@ -163,6 +166,13 @@ impl Estado {
                     self.mandar_quadro().await?;
                 }
             }
+            DoPainel::Interesse(interesse) => {
+                self.quer_detalhes = true;
+                self.contar(DaConexao::Interesse(self.ligacao.id, interesse));
+                // A tela que acabou de pedir — a lista aberta agora — vê algo já, e não daqui a
+                // um segundo.
+                self.mandar_quadro().await?;
+            }
         }
         Ok(())
     }
@@ -171,11 +181,14 @@ impl Estado {
         if self.assinada_ate.is_none() || !self.conversa.aberta() {
             return Ok(());
         }
-        let Some(quadro) = self.ligacao.quadros.borrow_and_update().clone() else {
+        let Some(publicacao) = self.ligacao.quadros.borrow_and_update().clone() else {
             return Ok(());
         };
-        let cifrado = self.conversa.enviar(&quadro)?;
-        self.socket.write_all(&cifrado).await?;
+        let detalhes = publicacao.detalhes.as_ref().filter(|_| self.quer_detalhes);
+        for bytes in std::iter::once(&publicacao.quadro).chain(detalhes) {
+            let cifrado = self.conversa.enviar(bytes)?;
+            self.socket.write_all(&cifrado).await?;
+        }
         Ok(())
     }
 

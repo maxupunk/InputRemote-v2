@@ -1,7 +1,10 @@
 //! As fontes do Windows.
 
+mod processos;
 mod sistema;
 mod termica;
+
+pub(crate) use processos::ListaDoSistema;
 
 use crate::fonte::{Agendada, cadencia};
 

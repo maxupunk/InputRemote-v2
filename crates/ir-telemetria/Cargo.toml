@@ -1,6 +1,6 @@
 [package]
 name = "ir-telemetria"
-description = "A amostra de uso desta máquina para o painel: processador, memória, disco, rede, bateria e temperaturas."
+description = "A amostra de uso desta máquina para o painel: processador, memória, disco, rede, bateria, temperaturas e processos."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,6 +10,8 @@ repository.workspace = true
 
 [dependencies]
 ir-proto.workspace = true
+# Os processos no formato que vai ao painel e ao par (`Processos`, `InteresseEmProcessos`).
+ir-monitor.workspace = true
 tracing.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -21,6 +23,8 @@ libc = "0.2"
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_System_Threading",
+    "Win32_System_WindowsProgramming",
+    "Wdk_System_SystemInformation",
     "Win32_System_SystemInformation",
     "Win32_System_Power",
     "Win32_Storage_FileSystem",

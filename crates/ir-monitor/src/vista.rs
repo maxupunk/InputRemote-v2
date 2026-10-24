@@ -9,8 +9,14 @@
 use ir_proto::message::{Battery, Occupancy, Sensor, Temperature, Traffic, UsageSample};
 use serde::Serialize;
 
+use crate::detalhes::Detalhes;
 use crate::mensagem::{Enlace, Maquina, Quadro, Rota, Situacao};
 use crate::nivel::{self, Nivel};
+use crate::processos::Processos;
+
+mod detalhes;
+
+pub use detalhes::{CHAVE_DA_COPIA, LinhaDeProcesso, PREFIXO_DE_PROCESSO, chave_do_processo};
 
 /// O que o painel desenha.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -19,6 +25,8 @@ pub struct Vista {
     pub maquinas: Vec<VistaDaMaquina>,
     /// A faixa do enlace, embaixo dos cartões, quando há sessão entre os computadores.
     pub enlace: Option<VistaDoEnlace>,
+    /// A cópia de arquivos entre os computadores, em curso ou que acabou há pouco.
+    pub copia: Option<Bloco>,
 }
 
 /// O cartão de um computador.
@@ -31,8 +39,10 @@ pub struct VistaDaMaquina {
     pub aviso: Option<String>,
     /// O nível do cartão: o pior entre os blocos, para a borda do cartão.
     pub nivel: Nivel,
-    /// Os blocos, na ordem de desenhar.
+    /// Os blocos, na ordem de desenhar — inclusive os dos processos vigiados.
     pub blocos: Vec<Bloco>,
+    /// A lista de processos, quando foi pedida e chegou.
+    pub processos: Option<Vec<LinhaDeProcesso>>,
 }
 
 /// A faixa do enlace entre os computadores.
@@ -67,17 +77,34 @@ pub struct Bloco {
 pub const SEM_DADO: &str = "—";
 
 impl Vista {
-    /// A vista de um quadro.
+    /// A vista de um quadro, sem detalhes.
     #[must_use]
     pub fn do_quadro(quadro: &Quadro) -> Self {
+        Self::montar(quadro, None)
+    }
+
+    /// A vista de um quadro com os detalhes deste segundo: a cópia e os processos.
+    #[must_use]
+    pub fn montar(quadro: &Quadro, detalhes: Option<&Detalhes>) -> Self {
+        let processos = |posicao: usize| {
+            detalhes
+                .and_then(|d| d.processos.get(posicao))
+                .and_then(Option::as_ref)
+        };
         Self {
-            maquinas: quadro.maquinas.iter().map(maquina).collect(),
+            maquinas: quadro
+                .maquinas
+                .iter()
+                .enumerate()
+                .map(|(posicao, m)| maquina(m, processos(posicao)))
+                .collect(),
             enlace: quadro.enlace.as_ref().map(enlace),
+            copia: detalhes.and_then(|d| d.copia.as_ref()).map(detalhes::copia),
         }
     }
 }
 
-fn maquina(maquina: &Maquina) -> VistaDaMaquina {
+fn maquina(maquina: &Maquina, processos: Option<&Processos>) -> VistaDaMaquina {
     let (aviso, blocos) = match &maquina.situacao {
         Situacao::Amostra(amostra) => (None, blocos(amostra)),
         Situacao::Aguardando => (Some("Aguardando os dados…"), Vec::new()),
@@ -87,11 +114,23 @@ fn maquina(maquina: &Maquina) -> VistaDaMaquina {
         ),
         Situacao::Desconectado => (Some("Desconectado."), Vec::new()),
     };
+    let mut blocos = blocos;
+    if aviso.is_none() {
+        blocos.extend(
+            processos
+                .iter()
+                .flat_map(|p| p.vigiados.iter())
+                .map(detalhes::vigiado),
+        );
+    }
     VistaDaMaquina {
         nome: maquina.nome.clone(),
         aviso: aviso.map(str::to_owned),
         nivel: pior(&blocos),
         blocos,
+        processos: processos
+            .filter(|p| !p.lista.is_empty())
+            .map(|p| p.lista.iter().map(detalhes::linha).collect()),
     }
 }
 

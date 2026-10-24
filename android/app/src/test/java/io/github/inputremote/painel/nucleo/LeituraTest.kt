@@ -60,4 +60,23 @@ class LeituraTest {
         assertEquals("10.0.0.2", achados.single().endereco)
         assertTrue(Leitura.pareados("[]").isEmpty())
     }
+
+    @Test
+    fun aListaDeProcessosEACopia() {
+        val texto = """
+            {"tipo":"quadro","vista":{"maquinas":[{"nome":"PC","aviso":null,"nivel":"normal","blocos":[],
+            "processos":[{"chave":"proc:docker","nome":"docker","instancias":3,"cpu":"1,5 %",
+            "memoria":"2,0 GB","cpu_permille":15,"memoria_kib":2097152,"nivel":"normal"}]},
+            {"nome":"nb","aviso":null,"nivel":"normal","blocos":[],"processos":null}],
+            "enlace":null,"copia":{"chave":"copia","rotulo":"Cópia · enviando","valor":"40 %",
+            "detalhe":"fotos","fracao":0.4,"nivel":"normal","serie":2.0}}}
+        """.trimIndent()
+        val vista = (Leitura.evento(texto) as EventoDoNucleo.Quadro).vista
+        val docker = vista.maquinas[0].processos!!.single()
+        assertEquals("proc:docker", docker.chave)
+        assertEquals(3, docker.instancias)
+        assertEquals(2_097_152L, docker.memoriaKib)
+        assertNull("sem lista pedida, nula", vista.maquinas[1].processos)
+        assertEquals("40 %", vista.copia!!.valor)
+    }
 }

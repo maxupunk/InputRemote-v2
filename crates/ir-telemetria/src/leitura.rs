@@ -73,6 +73,24 @@ pub fn proc_net_dev(texto: &str) -> Option<(u64, u64)> {
     soma
 }
 
+/// Um `/proc/<pid>/stat`: o nome, o tempo de processador (`utime + stime`, em *ticks*, a mesma
+/// unidade de `/proc/stat`) e a memória residente em páginas.
+///
+/// O nome vem entre parênteses e pode ter espaço e parêntese dentro (`(Web Content)`): os números
+/// começam depois do **último** `)`.
+#[must_use]
+pub fn proc_pid_stat(texto: &str) -> Option<(&str, u64, u64)> {
+    let abre = texto.find('(')?;
+    let fecha = texto.rfind(')')?;
+    let nome = texto.get(abre + 1..fecha)?;
+    // Depois do nome, o campo 3 do `man 5 proc` é o primeiro: `utime` é o 14, `stime` o 15 e
+    // `rss` o 24.
+    let campos: Vec<&str> = texto.get(fecha + 1..)?.split_whitespace().collect();
+    let numero = |campo: usize| campos.get(campo - 3)?.parse::<u64>().ok();
+    let tempo = numero(14)?.saturating_add(numero(15)?);
+    Some((nome, tempo, numero(24)?))
+}
+
 fn interface_virtual(nome: &str) -> bool {
     const PREFIXOS: [&str; 8] = [
         "lo",

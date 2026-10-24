@@ -76,6 +76,10 @@ impl Vigilancia {
                 self.assinantes = quantos;
                 self.ajustar_vigia();
             }
+            DoMonitor::Interesse(interesse) => {
+                self.dos_paineis = interesse;
+                self.ajustar_vigia();
+            }
             DoMonitor::Conectados(chaves) => {
                 self.conectados = chaves;
                 self.avisar_lista(config);

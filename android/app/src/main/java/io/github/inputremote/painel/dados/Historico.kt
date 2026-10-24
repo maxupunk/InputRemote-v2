@@ -16,6 +16,7 @@ class Historico(private val tamanho: Int = PONTOS) {
             for (bloco in maquina.blocos) anotar(chave(maquina.nome, bloco.chave), bloco.serie)
         }
         vista.enlace?.rotas?.forEach { anotar(chave(ENLACE, it.chave), it.serie) }
+        vista.copia?.let { anotar(chave(ENLACE, it.chave), it.serie) }
         return series.mapValues { it.value.toList() }
     }
 

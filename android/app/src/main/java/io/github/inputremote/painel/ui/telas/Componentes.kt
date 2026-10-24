@@ -51,9 +51,17 @@ import kotlinx.coroutines.delay
  * Dois tamanhos, com o mesmo cabeçalho e a mesma barra: o **destaque**, para o que se olha primeiro
  * — número grande e o último minuto em gráfico —, e o **compacto**, uma linha densa com o valor e o
  * detalhe lado a lado, para caber o resto na mesma tela deitada.
+ *
+ * Com [informar], o card ganha o "i" no canto, que abre o que há por trás do número.
  */
 @Composable
-fun BlocoDeMetrica(bloco: Bloco, serie: List<Float>, destaque: Boolean, modifier: Modifier = Modifier) {
+fun BlocoDeMetrica(
+    bloco: Bloco,
+    serie: List<Float>,
+    destaque: Boolean,
+    modifier: Modifier = Modifier,
+    informar: (() -> Unit)? = null,
+) {
     val cor = bloco.nivel.cor()
     val descricao = listOfNotNull(bloco.rotulo, bloco.valor, bloco.detalhe, bloco.nivel.rotulo().ifEmpty { null })
         .joinToString(", ")
@@ -70,6 +78,7 @@ fun BlocoDeMetrica(bloco: Bloco, serie: List<Float>, destaque: Boolean, modifier
             Text(bloco.rotulo, color = Cores.textoFraco, fontSize = 13.sp, maxLines = 1, modifier = Modifier.weight(1f))
             val alerta = bloco.nivel.rotulo()
             if (alerta.isNotEmpty()) Text(alerta, color = cor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            informar?.let { BotaoDeInformacao("Processos por trás de ${bloco.rotulo}", it) }
         }
         if (destaque) {
             Valor(bloco, 36.sp)

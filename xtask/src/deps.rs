@@ -84,8 +84,9 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ),
     // A economia de energia do Wi-Fi: ler e desligar. Não conhece nada do produto.
     ("ir-energia", &["ir-processo"]),
-    // A amostra de uso para o painel: lê o sistema e escreve no formato do protocolo, e só.
-    ("ir-telemetria", &["ir-proto"]),
+    // A amostra de uso para o painel: lê o sistema e escreve no formato do protocolo e no dos
+    // processos do painel, e só.
+    ("ir-telemetria", &["ir-proto", "ir-monitor"]),
     // O enlace com o painel no Android, sem E/S: as duas pontas o usam, o serviço e o aplicativo.
     ("ir-monitor", &["ir-proto", "ir-crypto"]),
     // O serviço atendendo o painel: a porta, as conexões e a janela de pareamento.

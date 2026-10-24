@@ -16,8 +16,10 @@ computadores ([04, §3](../04-seguranca.md)), mas num vocabulário que não tem 
 ver, e numa porta própria.
 
 1. **Um computador agrega.** O painel pareia com um computador só, que lhe entrega o próprio uso e o
-   do par. O pedido ao par vai pela sessão que já existe: `Control::WatchUsage` e `Control::Usage`,
-   **protocolo 11**, só para um par que negociou a 11.
+   do par. O pedido ao par vai pela sessão que já existe, num recado opaco para ela,
+   `Control::Panel`, **protocolo 11**, só para um par que negociou a 11. (Nasceu como
+   `WatchUsage` e `Usage`; virou o recado opaco para os processos não pedirem uma versão nova —
+   [log 70](../logs/70-processos-e-copia-no-painel.md).)
 2. **Porta 52527/TCP, aberta só quando há a quem atender** — um painel pareado, ou a janela de
    pareamento aberta por três minutos. A regra de firewall do Windows é por programa e já a cobre; o
    serviço do firewalld ganhou a porta.

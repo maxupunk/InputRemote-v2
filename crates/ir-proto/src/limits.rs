@@ -118,6 +118,12 @@ pub const MAX_FOLDER_ENTRIES: usize = 100_000;
 /// 2026-10-24 ([12](../../../docs/12-painel-android.md)).
 pub const MAX_TEMPERATURES: usize = 8;
 
+/// Máximo de bytes num recado do painel entre os computadores (`Control::Panel`).
+///
+/// Origem: o teto do RFCOMM (512) menos o envelope do quadro, com folga. Quem monta o recado
+/// (`ir_monitor::entre_pcs`) o mantém abaixo disto; a sessão não manda um maior.
+pub const MAX_PANEL_MESSAGE: usize = 440;
+
 // As relações entre estes números são invariantes, não comportamento — então são conferidas
 // em tempo de compilação, e não por teste. Um limite incoerente deixa de compilar, o que é
 // estritamente melhor que falhar num teste que alguém pode marcar como ignorado.

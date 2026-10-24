@@ -173,7 +173,13 @@ está atrasando. Ele só olha: não digita, não copia e não recebe arquivo.
 Das próximas vezes o aplicativo abre direto no painel, e acha o computador mesmo com outro IP. O
 painel fica deitado, com o processador e a memória grandes no topo de cada computador. Para arrumar
 os cards, **⋮ → Editar painel**: ◀ ▶ mudam a ordem, ★ destaca, ✕ tira, e **Adicionar card** põe de
-volta o que foi tirado. Para
+volta o que foi tirado.
+
+O **i** no processador e na memória abre a lista dos processos que mais pesam naquele computador,
+atualizada a cada segundo. **+ Acompanhar** numa linha vira um card dela no painel; para acompanhar
+um que não está na lista — o Docker ou o WSL, por exemplo —, **Editar painel → Acompanhar
+processo**. O card soma todos os processos com aquele nome. Enquanto uma cópia de arquivos passa de
+um computador para o outro, uma faixa mostra o quanto foi, a velocidade e quanto falta. Para
 o painel aparecer sozinho ao carregar, escolha **InputRemote Painel** em *Configurações → Tela →
 Protetor de tela* do Android. O menu ⋮ escurece a tela, pareia outro computador ou esquece este; na
 janela do computador, **Esquecer** desliga o aparelho na hora.

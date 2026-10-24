@@ -230,8 +230,7 @@ impl Session {
             Input::LockPeerScreen => self.request_peer_lock(now, out),
             Input::SetCopyPaste(choice) => self.on_set_copy_paste(now, choice, out),
             Input::CancelPeerCopy => self.request_peer_cancel_copy(now, out),
-            Input::WatchPeerUsage(watch) => self.watch_peer_usage(now, watch, out),
-            Input::ShareUsage(sample) => self.share_usage(now, sample, out),
+            Input::Panel(recado) => self.send_panel(now, recado, out),
             Input::DisablePeerNetworkPowerSaving => {
                 if !self.on_disable_peer_network_power(now, out) {
                     out.push(Command::Notify(Notice::PeerCannotFixNetworkPower));

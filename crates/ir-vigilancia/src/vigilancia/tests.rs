@@ -1,6 +1,7 @@
 use super::*;
 use ir_ipc::{AvisoDoPainel, ComandoDePainel, Falha, Resposta};
-use ir_monitor::Situacao;
+use ir_monitor::entre_pcs::{codificar, decodificar};
+use ir_monitor::{EntrePcs, Situacao, UsoDeProcesso};
 use ir_proto::message::UsageSample;
 use ir_session::Millis;
 use tokio::sync::broadcast;
@@ -60,14 +61,48 @@ impl Bancada {
     }
 }
 
-fn pedidos(entradas: &[Input]) -> Vec<bool> {
+/// Os recados ao par, já lidos.
+fn recados(entradas: &[Input]) -> Vec<EntrePcs> {
     entradas
         .iter()
         .filter_map(|e| match e {
-            Input::WatchPeerUsage(quer) => Some(*quer),
+            Input::Panel(bytes) => decodificar(bytes),
             _ => None,
         })
         .collect()
+}
+
+/// Os pedidos ao par: `true` para assinar, `false` para parar.
+fn pedidos(entradas: &[Input]) -> Vec<bool> {
+    recados(entradas)
+        .iter()
+        .filter_map(|r| match r {
+            EntrePcs::Assinar(_) => Some(true),
+            EntrePcs::Parar => Some(false),
+            EntrePcs::Uso(..) => None,
+        })
+        .collect()
+}
+
+/// O recado do par, como a sessão o entrega.
+fn do_par(recado: &EntrePcs) -> Notice {
+    Notice::PeerPanel(codificar(recado).unwrap())
+}
+
+fn interesse(nomes: &[&str], lista: bool) -> InteresseEmProcessos {
+    InteresseEmProcessos {
+        nomes: nomes.iter().map(|n| (*n).to_owned()).collect(),
+        lista,
+    }
+}
+
+fn uso(nome: &str) -> UsoDeProcesso {
+    UsoDeProcesso {
+        nome: nome.to_owned(),
+        instancias: 1,
+        cpu_permille: 10,
+        memoria_kib: 1024,
+    }
 }
 
 #[test]
@@ -127,18 +162,23 @@ fn par_antigo_nao_recebe_pedido_e_aparece_desatualizado() {
 #[test]
 fn o_pedido_do_par_liga_a_coleta_e_a_amostra_vai_para_ele() {
     let mut bancada = Bancada::nova("pedido-do-par");
-    bancada.vigilancia.notar(&Notice::PeerWatchesUsage(true));
+    bancada
+        .vigilancia
+        .notar(&do_par(&EntrePcs::Assinar(InteresseEmProcessos::default())));
     assert!(bancada.vigilancia.coletando());
     let amostra = UsageSample {
         cpu_permille: Some(5),
         ..UsageSample::default()
     };
-    let entradas = bancada.evento(Evento::Amostra(amostra.clone()));
-    assert!(matches!(entradas.as_slice(), [Input::ShareUsage(a)] if *a == amostra));
+    let entradas = bancada.evento(Evento::Amostra(amostra.clone(), None));
+    assert_eq!(
+        recados(&entradas),
+        vec![EntrePcs::Uso(amostra.clone(), None)]
+    );
 
-    bancada.vigilancia.notar(&Notice::PeerWatchesUsage(false));
+    bancada.vigilancia.notar(&do_par(&EntrePcs::Parar));
     assert!(!bancada.vigilancia.coletando());
-    assert!(bancada.evento(Evento::Amostra(amostra)).is_empty());
+    assert!(bancada.evento(Evento::Amostra(amostra, None)).is_empty());
 }
 
 #[test]
@@ -154,7 +194,7 @@ fn a_volta_de_cada_rota_chega_ao_quadro() {
     });
     bancada
         .vigilancia
-        .notar(&Notice::PeerUsage(UsageSample::default()));
+        .notar(&do_par(&EntrePcs::Uso(UsageSample::default(), None)));
     let quadro = bancada.vigilancia.quadro();
     assert_eq!(quadro.enlace.unwrap().bluetooth_us, Some(7_000));
     assert_eq!(
@@ -208,4 +248,97 @@ fn sem_monitor_a_janela_ouve_que_nao_deu() {
         &bancada.gravador,
     );
     assert_eq!(resposta, Resposta::Falha(Falha::ForaDeContexto));
+}
+
+/// Uma medida só serve aos dois painéis: cada um recebe os processos que pediu.
+#[test]
+fn os_processos_vao_a_quem_pediu() {
+    let mut bancada = Bancada::nova("processos");
+    let [daqui, do_par_aqui] = [interesse(&["docker"], true), interesse(&["wsl"], false)];
+    let _ = bancada.evento(Evento::Monitor(ir_monitor_rede::Aviso::Interesse([
+        daqui,
+        InteresseEmProcessos::default(),
+    ])));
+    bancada
+        .vigilancia
+        .notar(&do_par(&EntrePcs::Assinar(do_par_aqui)));
+    assert_eq!(
+        bancada.vigilancia.na_vigia,
+        interesse(&["docker", "wsl"], true),
+        "a vigia mede o que os dois querem"
+    );
+
+    let medido = Processos {
+        vigiados: vec![uso("docker"), uso("wsl")],
+        lista: vec![uso("chrome")],
+    };
+    let entradas = bancada.evento(Evento::Amostra(UsageSample::default(), Some(medido)));
+    let recados = recados(&entradas);
+    let [EntrePcs::Uso(_, Some(para_o_par))] = recados.as_slice() else {
+        panic!("o par não recebeu a amostra com os processos")
+    };
+    assert_eq!(para_o_par.vigiados, vec![uso("wsl")]);
+    assert!(
+        para_o_par.lista.is_empty(),
+        "a lista daqui não foi pedida pelo par"
+    );
+    let daqui = bancada.vigilancia.detalhes().processos[0].clone().unwrap();
+    assert_eq!(daqui.vigiados, vec![uso("docker")]);
+    assert_eq!(daqui.lista, vec![uso("chrome")]);
+}
+
+/// O painel daqui pede ao par os processos de lá; mudar o pedido vai na hora, sem esperar a
+/// renovação.
+#[test]
+fn o_pedido_ao_par_leva_os_processos_e_muda_na_hora() {
+    let mut bancada = Bancada::nova("pedido-de-processos");
+    let sessao = Falsa(Some(("nb", true)));
+    bancada.assinantes(1);
+    let config = bancada.config.clone();
+    let _ = bancada.vigilancia.batida(&sessao, &config);
+    let lista_do_par = interesse(&[], true);
+    let _ = bancada.evento(Evento::Monitor(ir_monitor_rede::Aviso::Interesse([
+        InteresseEmProcessos::default(),
+        lista_do_par.clone(),
+    ])));
+    let pedidos: Vec<EntrePcs> = (0..2)
+        .flat_map(|_| recados(&bancada.vigilancia.batida(&sessao, &config)))
+        .collect();
+    assert_eq!(pedidos.first(), Some(&EntrePcs::Assinar(lista_do_par)));
+
+    let processos = Processos {
+        vigiados: Vec::new(),
+        lista: vec![uso("vmmem")],
+    };
+    bancada.vigilancia.notar(&do_par(&EntrePcs::Uso(
+        UsageSample::default(),
+        Some(processos.clone()),
+    )));
+    assert_eq!(bancada.vigilancia.detalhes().processos[1], Some(processos));
+}
+
+#[test]
+fn a_copia_chega_aos_detalhes_com_a_velocidade() {
+    let mut bancada = Bancada::nova("copia");
+    let copia = |feitos| {
+        Evento::Copia(ir_ipc::Transferencia {
+            sentido: ir_ipc::Sentido::Recebendo,
+            nome: "fotos".to_owned(),
+            bytes_feitos: feitos,
+            bytes_total: 100,
+            fase: ir_ipc::Fase::Andando,
+        })
+    };
+    let _ = bancada.evento(copia(10));
+    let primeira = bancada.vigilancia.detalhes().copia.unwrap();
+    assert!(!primeira.enviando);
+    assert_eq!(
+        primeira.por_segundo, None,
+        "uma medida só não tem velocidade"
+    );
+    std::thread::sleep(Duration::from_millis(20));
+    let _ = bancada.evento(copia(60));
+    let segunda = bancada.vigilancia.detalhes().copia.unwrap();
+    assert_eq!(segunda.feitos, 60);
+    assert!(segunda.por_segundo.is_some_and(|v| v > 0));
 }

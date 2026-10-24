@@ -12,10 +12,11 @@ use std::time::{Duration, Instant};
 
 use ir_crypto::enlace::ConnectMode;
 use ir_monitor::mensagem::{self, DoPainel, ParaPainel};
-use ir_monitor::{Apresentacao, Conversa, Evento as DaConversa, Vista};
+use ir_monitor::{Apresentacao, Conversa, Evento as DaConversa, Interesse, Vista};
 
 use crate::cofre::{Cofre, Computador};
 use crate::descoberta;
+use crate::montagem::Montagem;
 
 /// Quanto esperar o TCP abrir.
 const PRAZO_DE_CONEXAO: Duration = Duration::from_secs(3);
@@ -42,13 +43,21 @@ pub enum Destino {
     Voltar(Computador),
 }
 
+/// A versão do vocabulário do painel em que o computador passou a entender
+/// [`DoPainel::Interesse`]. Dizer interesse a um computador de antes derrubaria a ligação: ele não
+/// conhece a mensagem.
+const VERSAO_DOS_DETALHES: u16 = 2;
+
 /// O que o aplicativo pede à linha.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Comando {
     /// A resposta desta tela ao código.
     Confirmar(bool),
     /// Começar (`true`) ou parar de receber o quadro.
     Assinar(bool),
+    /// O que a tela quer além do quadro: os processos dos cards e a lista aberta. Vale para esta
+    /// ligação inteira, e é dito de novo a cada mudança.
+    Interesse(Interesse),
     /// Encerrar a ligação.
     Fechar,
 }
@@ -113,6 +122,10 @@ struct Ligacao {
     assinando: bool,
     renovada: Instant,
     ultimo_sinal: Instant,
+    interesse: Interesse,
+    /// A versão do computador, depois do olá dele.
+    versao_do_computador: Option<u16>,
+    montagem: Montagem,
 }
 
 impl Ligacao {
@@ -136,6 +149,9 @@ impl Ligacao {
             assinando: false,
             renovada: agora,
             ultimo_sinal: agora,
+            interesse: Interesse::default(),
+            versao_do_computador: None,
+            montagem: Montagem::default(),
         })
     }
 
@@ -183,6 +199,10 @@ impl Ligacao {
                         self.mandar(&DoPainel::Assinar(quer))?;
                     }
                 }
+                Ok(Comando::Interesse(interesse)) => {
+                    self.interesse = interesse;
+                    self.dizer_interesse()?;
+                }
             }
         }
     }
@@ -206,7 +226,7 @@ impl Ligacao {
                 DaConversa::Enviar(bytes) => self.escrever(&bytes)?,
                 DaConversa::Codigo { digitos, .. } => self.contar(Evento::Codigo(digitos)),
                 DaConversa::Aberta { par, pareou } => self.abriu(par.hex(), pareou)?,
-                DaConversa::Mensagem(conteudo) => self.mensagem(&conteudo),
+                DaConversa::Mensagem(conteudo) => self.mensagem(&conteudo)?,
             }
         }
         Ok(())
@@ -229,18 +249,43 @@ impl Ligacao {
         Ok(())
     }
 
-    fn mensagem(&mut self, conteudo: &[u8]) {
-        match mensagem::decodificar::<ParaPainel>(conteudo) {
-            Ok(ParaPainel::Quadro(quadro)) => {
-                self.contar(Evento::Quadro(Vista::do_quadro(&quadro)));
-            }
-            Ok(ParaPainel::Ola(apresentacao)) if apresentacao.nome != self.computador.nome => {
-                self.computador.nome = apresentacao.nome;
-                let _ = self.cofre.guardar(self.computador.clone());
+    fn mensagem(&mut self, conteudo: &[u8]) -> Result<(), (String, bool)> {
+        let vista = match mensagem::decodificar::<ParaPainel>(conteudo) {
+            Ok(ParaPainel::Quadro(quadro)) => self.montagem.quadro(quadro),
+            Ok(ParaPainel::Detalhes(detalhes)) => self.montagem.detalhes(detalhes),
+            Ok(ParaPainel::Ola(apresentacao)) => {
+                self.ola(apresentacao)?;
+                None
             }
             // Uma mensagem de uma versão mais nova do computador: o painel segue com o que entende.
-            Ok(ParaPainel::Ola(_)) | Err(_) => {}
+            Err(_) => None,
+        };
+        if let Some(vista) = vista {
+            self.contar(Evento::Quadro(vista));
         }
+        Ok(())
+    }
+
+    /// O olá do computador: o nome dele, e a versão — que diz se ele entende o interesse.
+    fn ola(&mut self, apresentacao: Apresentacao) -> Result<(), (String, bool)> {
+        self.versao_do_computador = Some(apresentacao.versao);
+        if apresentacao.nome != self.computador.nome {
+            self.computador.nome = apresentacao.nome;
+            let _ = self.cofre.guardar(self.computador.clone());
+        }
+        self.dizer_interesse()
+    }
+
+    /// Diz o interesse ao computador, se ele já se apresentou e o entende.
+    fn dizer_interesse(&mut self) -> Result<(), (String, bool)> {
+        let entende = self
+            .versao_do_computador
+            .is_some_and(|versao| versao >= VERSAO_DOS_DETALHES);
+        if !entende || !self.conversa.aberta() {
+            return Ok(());
+        }
+        self.montagem.esperar_detalhes();
+        self.mandar(&DoPainel::Interesse(self.interesse.clone()))
     }
 
     fn mandar(&mut self, mensagem: &DoPainel) -> Result<(), (String, bool)> {

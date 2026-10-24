@@ -125,11 +125,9 @@ pub enum Input {
     /// A pessoa pediu, daqui, que pare a cópia que o par está mandando para cá. Só quem envia sabe
     /// parar; a sessão leva o pedido (`session/copy_paste.rs`).
     CancelPeerCopy,
-    /// Um painel começou (`true`) ou parou de olhar esta máquina: peça, ou desfaça o pedido, das
-    /// amostras de uso do par (`session/usage.rs`).
-    WatchPeerUsage(bool),
-    /// A amostra de uso desta máquina, para o par que a pediu.
-    ShareUsage(ir_proto::message::UsageSample),
+    /// Um recado do painel para o par (`session/usage.rs`). A sessão só o leva; o que vai dentro é
+    /// do `ir-monitor`.
+    Panel(Vec<u8>),
 }
 
 /// Por que um portador caiu, do ponto de vista local.

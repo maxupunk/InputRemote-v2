@@ -46,7 +46,7 @@ struct Contexto {
     /// Os recados fora da janela: a notificação do sistema (`recados`).
     recados: RefCell<crate::recados::Recados>,
     /// A taxa da cópia em curso, medida entre avisos.
-    velocimetro: RefCell<crate::historico::Velocimetro>,
+    velocimetro: RefCell<ir_ipc::transferencia::Velocimetro>,
     /// De qual cópia é a medida corrente.
     copia_medida: RefCell<Option<String>>,
     /// As últimas cópias.

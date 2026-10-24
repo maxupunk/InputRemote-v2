@@ -5,14 +5,14 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
 use ir_crypto::{Identity, PublicKey};
-use ir_monitor::{Conversa, Politica};
+use ir_monitor::{Conversa, Interesse, InteresseEmProcessos, Politica};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
 use crate::conexao::{self, Ligacao};
-use crate::{Aviso, Comando, JANELA_DE_PAREAMENTO};
+use crate::{Aviso, Comando, JANELA_DE_PAREAMENTO, Publicacao};
 
 /// O que uma conexão conta à central.
 #[derive(Debug)]
@@ -34,6 +34,8 @@ pub(crate) enum DaConexao {
     Apresentou(PublicKey, String),
     /// O painel começou ou parou de assinar.
     Assinatura(u64, bool),
+    /// O painel disse o que quer além do quadro.
+    Interesse(u64, Interesse),
     /// A conexão acabou.
     Fechou(u64),
 }
@@ -44,7 +46,7 @@ pub(crate) struct Partes {
     pub(crate) nome: Arc<str>,
     pub(crate) conhecidos: Vec<PublicKey>,
     pub(crate) avisos: mpsc::UnboundedSender<Aviso>,
-    pub(crate) quadros: watch::Receiver<Option<Arc<Vec<u8>>>>,
+    pub(crate) quadros: watch::Receiver<Option<Arc<Publicacao>>>,
     pub(crate) porta: u16,
 }
 
@@ -53,6 +55,7 @@ struct Viva {
     decisoes: mpsc::UnboundedSender<bool>,
     par: Option<PublicKey>,
     assinando: bool,
+    interesse: Option<Interesse>,
     tarefa: JoinHandle<()>,
 }
 
@@ -66,6 +69,7 @@ pub(crate) struct Central {
     da_conexao: mpsc::UnboundedSender<DaConexao>,
     recebidas: mpsc::UnboundedReceiver<DaConexao>,
     assinantes: usize,
+    interesse: [InteresseEmProcessos; 2],
 }
 
 impl Central {
@@ -81,6 +85,7 @@ impl Central {
             da_conexao,
             recebidas,
             assinantes: 0,
+            interesse: Default::default(),
         }
     }
 
@@ -134,6 +139,12 @@ impl Central {
                 }
                 self.contar_assinantes();
             }
+            DaConexao::Interesse(id, interesse) => {
+                if let Some(viva) = self.vivas.get_mut(&id) {
+                    viva.interesse = Some(interesse);
+                }
+                self.contar_assinantes();
+            }
             DaConexao::Fechou(id) => self.fechou(id),
         }
     }
@@ -160,6 +171,7 @@ impl Central {
             decisoes,
             par: None,
             assinando: false,
+            interesse: None,
             tarefa,
         };
         self.vivas.insert(id, viva);
@@ -246,11 +258,22 @@ impl Central {
         }
     }
 
+    /// Quantos assinam e o que querem dos processos — o que liga e desliga a coleta.
     fn contar_assinantes(&mut self) {
         let agora = self.vivas.values().filter(|v| v.assinando).count();
         if agora != self.assinantes {
             self.assinantes = agora;
             self.avisar(Aviso::Assinantes(agora));
+        }
+        let interesse = Interesse::por_maquina(
+            self.vivas
+                .values()
+                .filter(|v| v.assinando)
+                .filter_map(|v| v.interesse.as_ref()),
+        );
+        if interesse != self.interesse {
+            self.avisar(Aviso::Interesse(interesse.clone()));
+            self.interesse = interesse;
         }
     }
 

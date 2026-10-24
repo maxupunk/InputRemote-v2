@@ -4,6 +4,7 @@ import io.github.inputremote.painel.dados.ComputadorAchado
 import io.github.inputremote.painel.dados.ComputadorPareado
 import io.github.inputremote.painel.dados.EventoDoNucleo
 import io.github.inputremote.painel.dados.FonteDoPainel
+import io.github.inputremote.painel.dados.Interesse
 import io.github.inputremote.painel.dados.Ligacao
 import io.github.inputremote.painel.dados.Vista
 import java.util.concurrent.LinkedBlockingQueue
@@ -26,6 +27,7 @@ private class LigacaoFalsa : Ligacao {
     val confirmacoes = mutableListOf<Boolean>()
     var assinada = false
     var fechada = false
+    val interesses = LinkedBlockingQueue<Interesse>()
 
     override fun proximo(esperaMs: Int): EventoDoNucleo? = eventos.poll(esperaMs.toLong(), TimeUnit.MILLISECONDS)
     override fun confirmar(conferiu: Boolean) {
@@ -33,6 +35,9 @@ private class LigacaoFalsa : Ligacao {
     }
     override fun assinar(quer: Boolean) {
         assinada = quer
+    }
+    override fun interessar(interesse: Interesse) {
+        interesses += interesse
     }
     override fun fechar() {
         fechada = true
@@ -130,5 +135,25 @@ class ControladorTest {
         assertEquals("a rede caiu", tela.motivo)
         // Depois da espera, uma ligação nova — sem a pessoa fazer nada.
         proximaLigacao(fonte)
+    }
+
+    @Test
+    fun oInteresseVaiACadaLigacaoEACadaMudanca() {
+        val fonte = FonteFalsa(pareados = listOf(pareado))
+        val controlador = Controlador(fonte, escopo)
+        controlador.acompanhar(listOf("docker"))
+        controlador.visivel(true)
+        val ligacao = proximaLigacao(fonte)
+        val primeiro = ligacao.interesses.poll(5, TimeUnit.SECONDS)
+        assertEquals("a ligação nova já nasce sabendo", Interesse(listOf("docker")), primeiro)
+
+        ligacao.eventos += EventoDoNucleo.Quadro(vista)
+        esperarTela(controlador) { it is Tela.Painel }
+        controlador.abrirLista(1)
+        assertEquals(Interesse(listOf("docker"), lista = 1), ligacao.interesses.poll(5, TimeUnit.SECONDS))
+        esperarTela(controlador) { it is Tela.Painel && it.lista == 1 }
+
+        controlador.abrirLista(1)
+        assertEquals("o mesmo interesse não vai de novo", null, ligacao.interesses.poll(200, TimeUnit.MILLISECONDS))
     }
 }

@@ -10,6 +10,8 @@ package io.github.inputremote.painel.dados
 data class Vista(
     val maquinas: List<VistaDaMaquina>,
     val enlace: VistaDoEnlace?,
+    /** A cópia de arquivos entre os computadores, em curso ou que acabou há pouco. */
+    val copia: Bloco? = null,
 )
 
 /** O cartão de um computador. */
@@ -19,7 +21,28 @@ data class VistaDaMaquina(
     val aviso: String?,
     /** O pior nível entre os blocos, para a borda do cartão. */
     val nivel: Nivel,
+    /** Os cards, inclusive os dos processos acompanhados (`proc:docker`). */
     val blocos: List<Bloco>,
+    /** A lista de processos, quando pedida e já medida; nula antes disso. */
+    val processos: List<LinhaDeProcesso>? = null,
+)
+
+/** Uma linha da lista de processos: os de mesmo nome somados. */
+data class LinhaDeProcesso(
+    /** A chave do card que acompanharia este processo, pronta. */
+    val chave: String,
+    val nome: String,
+    /** Quantos processos com este nome. */
+    val instancias: Int,
+    /** "12,3 %". */
+    val cpu: String,
+    /** "1,2 GB". */
+    val memoria: String,
+    /** Para ordenar pelo processador: milésimos da máquina. */
+    val cpuPermille: Int,
+    /** Para ordenar pela memória. */
+    val memoriaKib: Long,
+    val nivel: Nivel,
 )
 
 /** A faixa do enlace entre os dois computadores. */

@@ -35,7 +35,7 @@ impl Fonte for Processador {
     }
 }
 
-fn tempos_do_sistema() -> Option<TemposDoProcessador> {
+pub(super) fn tempos_do_sistema() -> Option<TemposDoProcessador> {
     let mut ocioso = FILETIME::default();
     let mut nucleo = FILETIME::default();
     let mut usuario = FILETIME::default();

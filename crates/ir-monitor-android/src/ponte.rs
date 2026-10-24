@@ -36,6 +36,13 @@ pub fn evento(evento: &Evento) -> String {
     valor.to_string()
 }
 
+/// Os nomes de processos que o Kotlin manda, de um vetor JSON de textos. O que não for isso vira
+/// lista vazia: a tela fica sem os cards de processo, e não sem o painel.
+#[must_use]
+pub fn nomes(json: &str) -> Vec<String> {
+    serde_json::from_str(json).unwrap_or_default()
+}
+
 /// Os computadores que a descoberta achou, em JSON.
 #[must_use]
 pub fn achados(achados: &[Achado]) -> String {
@@ -86,6 +93,52 @@ mod tests {
         assert_eq!(valor["vista"]["maquinas"][0]["nome"], "DESKTOP");
         assert!(valor["vista"]["maquinas"][0]["aviso"].is_string());
         assert!(valor["vista"]["enlace"].is_null());
+    }
+
+    #[test]
+    fn os_detalhes_vao_dentro_da_vista() {
+        use ir_monitor::{Detalhes, Processos, UsoDeProcesso};
+        let quadro = Quadro {
+            maquinas: vec![Maquina {
+                nome: "DESKTOP".to_owned(),
+                situacao: Situacao::Amostra(ir_proto::message::UsageSample::default()),
+            }],
+            enlace: None,
+        };
+        let docker = UsoDeProcesso {
+            nome: "docker".to_owned(),
+            instancias: 2,
+            cpu_permille: 15,
+            memoria_kib: 2048,
+        };
+        let detalhes = Detalhes {
+            copia: None,
+            processos: vec![Some(Processos {
+                vigiados: vec![docker.clone()],
+                lista: vec![docker],
+            })],
+        };
+        let vista = Vista::montar(&quadro, Some(&detalhes));
+        let valor = ler(&evento(&Evento::Quadro(vista)));
+        let maquina = &valor["vista"]["maquinas"][0];
+        let card = maquina["blocos"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|b| b["chave"] == "proc:docker");
+        assert!(card.is_some(), "o card do processo vai entre os blocos");
+        let linha = &maquina["processos"][0];
+        assert_eq!(linha["nome"], "docker");
+        assert_eq!(linha["cpu_permille"], 15);
+        assert_eq!(linha["memoria_kib"], 2048);
+        assert_eq!(linha["chave"], "proc:docker");
+        assert!(valor["vista"]["copia"].is_null());
+    }
+
+    #[test]
+    fn os_nomes_vem_de_um_vetor_json() {
+        assert_eq!(nomes(r#"["docker","wsl"]"#), vec!["docker", "wsl"]);
+        assert!(nomes("lixo").is_empty());
     }
 
     #[test]

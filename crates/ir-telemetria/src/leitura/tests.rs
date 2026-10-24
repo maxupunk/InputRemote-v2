@@ -125,3 +125,10 @@ fn fica_a_mais_quente_de_cada_sensor_em_ordem() {
         ]
     );
 }
+
+#[test]
+fn pid_stat_le_o_nome_com_parenteses_e_os_numeros_depois_dele() {
+    let texto = "4812 (Web (Content)) S 1 4812 4812 0 -1 4194560 100 0 0 0 250 50 0 0 20 0 30 0 1234 2000000 512 18446744073709551615";
+    assert_eq!(proc_pid_stat(texto), Some(("Web (Content)", 300, 512)));
+    assert_eq!(proc_pid_stat("1 (curto) S 1"), None);
+}

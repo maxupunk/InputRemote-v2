@@ -4,6 +4,7 @@ import io.github.inputremote.painel.dados.ComputadorAchado
 import io.github.inputremote.painel.dados.EventoDoNucleo
 import io.github.inputremote.painel.dados.FonteDoPainel
 import io.github.inputremote.painel.dados.Historico
+import io.github.inputremote.painel.dados.Interesse
 import io.github.inputremote.painel.dados.Ligacao
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -24,6 +25,9 @@ import kotlinx.coroutines.launch
  * Só existe ligação enquanto a tela está à vista ([visivel]): ao sair, a ligação fecha, a
  * assinatura acaba, e o computador para de coletar (docs/12, §3.1). Toda espera bloqueante roda em
  * [io]; a tela só lê [tela].
+ *
+ * Guarda também o [Interesse] — os processos dos cards e a lista aberta — e o diz a cada ligação
+ * nova: o computador só mede processo enquanto alguém o pede.
  */
 class Controlador(
     private val fonte: FonteDoPainel,
@@ -40,6 +44,9 @@ class Controlador(
     /** O nome do computador desta ligação, para a tela. */
     @Volatile
     private var nome = ""
+
+    @Volatile
+    private var interesse = Interesse()
 
     /** O que a tela mostra agora. */
     val tela: StateFlow<Tela> = estado.asStateFlow()
@@ -74,6 +81,24 @@ class Controlador(
             estado.value = Tela.Conferindo(computador.nome)
             manter { fonte.parear(computador) }
         }
+    }
+
+    /** Os processos que os cards acompanham, para o computador medir. */
+    fun acompanhar(processos: List<String>) = interessar(interesse.copy(processos = processos))
+
+    /**
+     * Abre a lista de processos do computador nesta posição do quadro, ou a fecha (nulo). Aberta, o
+     * computador mede e manda os processos a cada segundo; fechada, para.
+     */
+    fun abrirLista(maquina: Int?) {
+        interessar(interesse.copy(lista = maquina))
+        estado.update { (it as? Tela.Painel)?.copy(lista = maquina) ?: it }
+    }
+
+    private fun interessar(novo: Interesse) {
+        if (novo == interesse) return
+        interesse = novo
+        ligacao?.interessar(novo)
     }
 
     /** A resposta desta tela ao código. */
@@ -126,6 +151,7 @@ class Controlador(
             val nova = abrir() ?: return procurarNaRede(null)
             ligacao = nova
             nova.assinar(true)
+            nova.interessar(interesse)
             val queda = acompanhar(nova)
             ligacao = null
             if (queda.recusado) return procurarNaRede(RECUSADO)
@@ -156,7 +182,7 @@ class Controlador(
                 is EventoDoNucleo.Quadro -> {
                     ultimoQuadro = System.currentTimeMillis()
                     val series = historico.anotar(evento.vista)
-                    estado.value = Tela.Painel(nome, evento.vista, series)
+                    estado.value = Tela.Painel(nome, evento.vista, series, lista = interesse.lista)
                 }
                 is EventoDoNucleo.Caiu -> return Queda(evento.motivo, evento.recusado, abriu)
                 null -> envelhecer(ultimoQuadro)

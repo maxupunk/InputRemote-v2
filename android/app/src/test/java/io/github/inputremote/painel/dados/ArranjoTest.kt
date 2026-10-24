@@ -58,4 +58,28 @@ class ArranjoTest {
         val ordenados = padrao.remover("disco").ordenar(itens) { it }
         assertEquals(listOf("cpu", "ram"), ordenados.map { it.first })
     }
+
+    @Test
+    fun acompanharUmProcessoCriaOCardEPedeAoComputador() {
+        val arranjo = padrao.acompanhar(" Docker ").acompanhar("wsl")
+        assertEquals(listOf("proc:docker", "proc:wsl"), chaves(arranjo).takeLast(2))
+        assertEquals(listOf("docker", "wsl"), arranjo.processos())
+        assertSame("o mesmo processo não entra duas vezes", arranjo, arranjo.acompanhar("DOCKER"))
+        assertSame("sem nome, nada", arranjo, arranjo.acompanhar("  "))
+    }
+
+    @Test
+    fun cabemQuatroProcessos() {
+        val cheio = listOf("a", "b", "c", "d").fold(padrao) { arranjo, nome -> arranjo.acompanhar(nome) }
+        assertFalse(cheio.podeAcompanhar())
+        assertSame(cheio, cheio.acompanhar("e"))
+    }
+
+    @Test
+    fun processoTiradoEEsquecidoEOdeOutroPainelNaoEntra() {
+        val sem = padrao.acompanhar("docker").remover("proc:docker")
+        assertTrue(sem.processos().isEmpty())
+        assertFalse("proc:docker" in sem.conhecidas)
+        assertSame(sem, sem.conhecer(listOf("proc:steam")))
+    }
 }

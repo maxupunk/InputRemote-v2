@@ -3056,6 +3056,7 @@ dependencies = [
 name = "ir-telemetria"
 version = "0.1.0-dev"
 dependencies = [
+ "ir-monitor",
  "ir-proto",
  "libc",
  "serde",

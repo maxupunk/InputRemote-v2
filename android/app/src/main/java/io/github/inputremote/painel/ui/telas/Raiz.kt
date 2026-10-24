@@ -18,6 +18,8 @@ data class Acoes(
     val parear: (ComputadorAchado) -> Unit,
     val confirmar: (Boolean) -> Unit,
     val esquecer: () -> Unit,
+    /** Abre a lista de processos do computador nesta posição do quadro, ou a fecha (nulo). */
+    val abrirLista: (Int?) -> Unit = {},
 )
 
 /**

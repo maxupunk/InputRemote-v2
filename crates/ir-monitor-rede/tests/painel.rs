@@ -13,7 +13,10 @@ use std::time::Duration;
 use ir_crypto::enlace::ConnectMode;
 use ir_crypto::{Identity, PublicKey};
 use ir_monitor::mensagem::{codificar, decodificar};
-use ir_monitor::{Apresentacao, Conversa, DoPainel, Evento, Maquina, ParaPainel, Quadro, Situacao};
+use ir_monitor::{
+    Apresentacao, Conversa, Detalhes, DoPainel, Evento, Interesse, Maquina, ParaPainel, Quadro,
+    Situacao,
+};
 use ir_monitor_rede::{Aviso, Comando, Monitor};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -80,6 +83,24 @@ impl Painel {
             _ => None,
         })
         .await
+    }
+
+    /// As próximas `quantas` mensagens — que podem chegar juntas numa leitura só.
+    async fn mensagens(&mut self, quantas: usize) -> Vec<ParaPainel> {
+        let mut buffer = [0u8; 4096];
+        let mut recebidas = Vec::new();
+        while recebidas.len() < quantas {
+            let lidos = tokio::time::timeout(PRAZO, self.socket.read(&mut buffer))
+                .await
+                .expect("o computador não respondeu a tempo")
+                .unwrap();
+            for evento in self.conversa.alimentar(&buffer[..lidos]).unwrap() {
+                if let Evento::Mensagem(bytes) = evento {
+                    recebidas.push(decodificar::<ParaPainel>(&bytes).unwrap());
+                }
+            }
+        }
+        recebidas
     }
 
     /// Se o computador fecha a conexão sem abri-la.
@@ -197,7 +218,7 @@ async fn parear_apresentar_assinar_e_receber_o_quadro() {
         }
     );
 
-    monitor.publicar(quadro());
+    monitor.publicar(quadro(), Detalhes::default());
     painel.mandar(&DoPainel::Assinar(true)).await;
     assert_eq!(
         aviso(&mut avisos, |a| matches!(a, Aviso::Assinantes(_))).await,
@@ -210,6 +231,49 @@ async fn parear_apresentar_assinar_e_receber_o_quadro() {
         aviso(&mut avisos, |a| matches!(a, Aviso::Assinantes(_))).await,
         Aviso::Assinantes(0),
         "sem assinante o serviço para de coletar"
+    );
+}
+
+/// Os detalhes só vão a quem os pediu, e o pedido vira o que medir em cada computador.
+#[tokio::test]
+async fn quem_diz_interesse_recebe_os_detalhes() {
+    let porta = porta_livre();
+    let (tx, mut avisos) = mpsc::unbounded_channel();
+    let monitor = Monitor::iniciar_na_porta(Identity::generate(), "DESKTOP", Vec::new(), tx, porta);
+    let (mut painel, _) = parear(&monitor, &mut avisos, porta).await;
+
+    let detalhes = Detalhes {
+        copia: None,
+        processos: vec![None],
+    };
+    monitor.publicar(quadro(), detalhes.clone());
+    painel
+        .mandar(&DoPainel::Interesse(Interesse {
+            processos: vec!["docker".to_owned()],
+            lista: Some(0),
+        }))
+        .await;
+    painel.mandar(&DoPainel::Assinar(true)).await;
+    let Aviso::Interesse([daqui, par]) =
+        aviso(&mut avisos, |a| matches!(a, Aviso::Interesse(_))).await
+    else {
+        unreachable!()
+    };
+    assert_eq!(daqui.nomes, vec!["docker"]);
+    assert!(daqui.lista && !par.lista, "a lista só de onde foi aberta");
+    assert_eq!(
+        painel.mensagens(2).await,
+        vec![ParaPainel::Quadro(quadro()), ParaPainel::Detalhes(detalhes)]
+    );
+
+    painel.mandar(&DoPainel::Assinar(false)).await;
+    let Aviso::Interesse(depois) = aviso(&mut avisos, |a| matches!(a, Aviso::Interesse(_))).await
+    else {
+        unreachable!()
+    };
+    assert!(
+        depois.iter().all(ir_monitor::InteresseEmProcessos::vazio),
+        "sem assinante, nada de processos"
     );
 }
 

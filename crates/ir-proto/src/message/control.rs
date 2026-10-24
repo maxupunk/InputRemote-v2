@@ -166,17 +166,14 @@ pub enum Control {
     /// sabe parar de ler, então quem recebe pede; o cancelamento segue o caminho de sempre, e os
     /// dois lados descartam o que já foi.
     CancelCopy,
-    /// Mande, ou pare de mandar, a sua amostra de uso a cada segundo. Desde a versão 11, e só para
-    /// quem a negociou ([`crate::version::supports_usage`]).
+    /// Um recado do painel no Android entre os computadores. Desde a versão 11, e só para quem a
+    /// negociou ([`crate::version::supports_panel`]).
     ///
-    /// Quem pede é o computador que tem um painel olhando ([12](../../../../docs/12-painel-android.md)).
-    /// Sem pedido ninguém coleta: o custo do painel só existe enquanto alguém o vê.
-    WatchUsage {
-        /// `true` para começar, `false` para parar.
-        watch: bool,
-    },
-    /// A amostra de uso de quem envia, a resposta de cada segundo a [`Control::WatchUsage`].
-    Usage(crate::message::UsageSample),
+    /// Opaco aqui: o que vai dentro — o pedido de amostras, a amostra, os processos — é do
+    /// vocabulário do painel (`ir_monitor::entre_pcs`), versionado à parte, e o painel cresce sem
+    /// mexer no protocolo ([12](../../../../docs/12-painel-android.md)). Até
+    /// [`crate::limits::MAX_PANEL_MESSAGE`] bytes, para caber no quadro do rádio.
+    Panel(Vec<u8>),
 }
 
 /// A economia de energia do Wi-Fi de uma máquina.

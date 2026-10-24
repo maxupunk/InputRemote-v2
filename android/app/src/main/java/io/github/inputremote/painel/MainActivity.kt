@@ -42,6 +42,9 @@ class MainActivity : ComponentActivity() {
             val arranjo by preferencias.arranjo.collectAsStateWithLifecycle()
             LaunchedEffect(escuro) { aplicarBrilho(escuro) }
             LaunchedEffect(deitado) { aplicarOrientacao(deitado) }
+            // Os cards de processo são o pedido ao computador: o que está no arranjo é o que ele mede.
+            val processos = arranjo.processos()
+            LaunchedEffect(processos) { controlador.acompanhar(processos) }
             Painel(
                 tela,
                 Acoes(
@@ -49,6 +52,7 @@ class MainActivity : ComponentActivity() {
                     parear = controlador::parear,
                     confirmar = controlador::confirmar,
                     esquecer = controlador::esquecer,
+                    abrirLista = controlador::abrirLista,
                 ),
                 Aparelho(
                     arranjo = arranjo,

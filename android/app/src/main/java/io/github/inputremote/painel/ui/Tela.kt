@@ -40,5 +40,7 @@ sealed interface Tela {
         val series: Map<String, List<Float>>,
         /** Há quantos segundos não chega quadro; zero com o quadro em dia. */
         val segundosSemDados: Int = 0,
+        /** De qual computador (a posição no quadro) a lista de processos está aberta. */
+        val lista: Int? = null,
     ) : Tela
 }

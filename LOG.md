@@ -94,3 +94,4 @@ quê. Um registro que se reescreve não é registro.
 | 67 | 2026-10-23 | [Cancelar a cópia de qualquer lado, e a cópia grande que espera a travessia](docs/logs/67-cancelar-a-copia-de-qualquer-lado.md) |
 | 68 | 2026-10-24 | [O painel no Android: o uso dos dois computadores numa tela à parte](docs/logs/68-o-painel-no-android.md) |
 | 69 | 2026-10-24 | [O painel deitado, e os cards que a pessoa arruma](docs/logs/69-o-painel-deitado-e-os-cards.md) |
+| 70 | 2026-10-24 | [Os processos e a cópia no painel](docs/logs/70-processos-e-copia-no-painel.md) |

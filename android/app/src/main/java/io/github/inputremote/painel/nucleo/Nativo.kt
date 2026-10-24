@@ -36,6 +36,12 @@ internal object Nativo {
     /** Começa ou para de receber o quadro. */
     @JvmStatic external fun assinar(id: Long, quer: Boolean)
 
+    /**
+     * O que a tela quer além do quadro: os nomes dos processos acompanhados, em JSON, e de qual
+     * computador (a posição no quadro) a lista de processos está aberta — ou -1.
+     */
+    @JvmStatic external fun interesse(id: Long, processos: String, lista: Int)
+
     /** Encerra a ligação. */
     @JvmStatic external fun fechar(id: Long)
 }

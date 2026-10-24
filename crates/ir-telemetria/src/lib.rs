@@ -14,6 +14,7 @@
 //! | [`conta`] | as contas: uso do processador e taxa de bytes entre duas leituras |
 //! | [`leitura`] | o texto de `/proc` e `/sys` virando número, puro e testável em qualquer sistema |
 //! | `linux`, `windows` | as fontes de cada sistema |
+//! | [`processos`] | os processos agrupados pelo nome, entre duas fotos do sistema |
 //! | [`vigia`] | a linha que amostra a cada segundo |
 //!
 //! Cada fonte lê **uma** coisa e escreve **um** campo da amostra. O coletor não sabe de sistema
@@ -33,6 +34,7 @@ pub mod coletor;
 pub mod conta;
 pub mod fonte;
 pub mod leitura;
+pub mod processos;
 pub mod vigia;
 
 #[cfg(target_os = "linux")]
@@ -42,6 +44,7 @@ mod windows;
 
 pub use coletor::Coletor;
 pub use fonte::{Agendada, Fonte};
+pub use processos::Medidor;
 pub use vigia::Vigia;
 
 /// As fontes desta máquina, cada uma com a sua cadência.
@@ -61,5 +64,22 @@ pub fn fontes_desta_maquina() -> Vec<Agendada> {
     #[cfg(not(any(target_os = "linux", windows)))]
     {
         Vec::new()
+    }
+}
+
+/// O medidor dos processos desta máquina; `None` onde não se sabe tirar a foto.
+#[must_use]
+pub fn medidor_desta_maquina() -> Option<Medidor> {
+    #[cfg(target_os = "linux")]
+    {
+        linux::Proc::abrir().map(Medidor::novo)
+    }
+    #[cfg(windows)]
+    {
+        Some(Medidor::novo(windows::ListaDoSistema::default()))
+    }
+    #[cfg(not(any(target_os = "linux", windows)))]
+    {
+        None
     }
 }

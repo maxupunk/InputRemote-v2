@@ -10,6 +10,7 @@
 //! | [`cofre`] | a identidade do aparelho e os computadores pareados, num arquivo |
 //! | [`descoberta`] | a pergunta "quem está aí?" de sempre, na UDP 52524 |
 //! | [`cliente`] | a ligação com um computador, numa linha própria |
+//! | `montagem` | o quadro e os detalhes de cada segundo juntos numa vista |
 //! | [`ponte`] | os eventos em JSON, o contrato com o Kotlin |
 //! | [`jni`] | as funções que o Kotlin chama |
 
@@ -27,6 +28,7 @@ pub mod cliente;
 pub mod cofre;
 pub mod descoberta;
 pub mod jni;
+mod montagem;
 pub mod ponte;
 
 use std::path::PathBuf;

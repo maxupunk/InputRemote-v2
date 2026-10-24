@@ -4,6 +4,7 @@ import io.github.inputremote.painel.dados.Bloco
 import io.github.inputremote.painel.dados.ComputadorAchado
 import io.github.inputremote.painel.dados.ComputadorPareado
 import io.github.inputremote.painel.dados.EventoDoNucleo
+import io.github.inputremote.painel.dados.LinhaDeProcesso
 import io.github.inputremote.painel.dados.Nivel
 import io.github.inputremote.painel.dados.Vista
 import io.github.inputremote.painel.dados.VistaDaMaquina
@@ -48,6 +49,7 @@ internal object Leitura {
                 vencendo = enlace.textoOuNulo("vencendo"),
             )
         },
+        copia = json.optJSONObject("copia")?.let(::bloco),
     )
 
     private fun maquina(json: JSONObject) = VistaDaMaquina(
@@ -55,6 +57,18 @@ internal object Leitura {
         aviso = json.textoOuNulo("aviso"),
         nivel = Nivel.de(json.optString("nivel")),
         blocos = objetos(json.optJSONArray("blocos")).map(::bloco),
+        processos = json.optJSONArray("processos")?.let { lista -> objetos(lista).map(::linha) },
+    )
+
+    private fun linha(json: JSONObject) = LinhaDeProcesso(
+        chave = json.optString("chave"),
+        nome = json.optString("nome"),
+        instancias = json.optInt("instancias"),
+        cpu = json.optString("cpu", "—"),
+        memoria = json.optString("memoria", "—"),
+        cpuPermille = json.optInt("cpu_permille"),
+        memoriaKib = json.optLong("memoria_kib"),
+        nivel = Nivel.de(json.optString("nivel")),
     )
 
     private fun bloco(json: JSONObject) = Bloco(

@@ -38,6 +38,7 @@ import io.github.inputremote.painel.dados.Arranjo
 import io.github.inputremote.painel.dados.Bloco
 import io.github.inputremote.painel.dados.Historico
 import io.github.inputremote.painel.dados.Nivel
+import io.github.inputremote.painel.dados.Ordem
 import io.github.inputremote.painel.dados.Vista
 import io.github.inputremote.painel.dados.VistaDaMaquina
 import io.github.inputremote.painel.dados.VistaDoEnlace
@@ -57,15 +58,31 @@ private val LARGURA_DO_COMPACTO = 140.dp
 /** O nome da faixa do enlace, quando ela é oferecida em "Adicionar card". */
 private const val NOME_DO_ENLACE = "Entre os computadores"
 
+/** O nome da faixa da cópia, idem. */
+private const val NOME_DA_COPIA = "Cópia de arquivos"
+
+/** Os cards cujo "i" abre a lista de processos. */
+private val COM_LISTA = setOf("cpu", "ram")
+
 /**
  * O painel, pensado deitado: um computador por coluna, o processador e a memória grandes no topo
  * de cada uma, o resto numa grade compacta, e a faixa do enlace fina embaixo. Em pé, os
  * computadores se empilham e a faixa vai para o topo (docs/12, §5.2). Quais cards aparecem, e em
- * que ordem, é do [Aparelho.arranjo].
+ * que ordem, é do [Aparelho.arranjo]. O "i" do processador e da memória abre a lista de processos
+ * daquele computador; a cópia de arquivos aparece numa faixa enquanto acontece.
  */
 @Composable
 fun TelaDoPainel(painel: Tela.Painel, acoes: Acoes, aparelho: Aparelho) {
     var editando by rememberSaveable { mutableStateOf(false) }
+    var ordem by rememberSaveable { mutableStateOf(Ordem.PROCESSADOR) }
+    val informar: ((Int, String) -> Unit)? = if (aparelho.editavel) {
+        { maquina, chave ->
+            ordem = Ordem.doCard(chave)
+            acoes.abrirLista(maquina)
+        }
+    } else {
+        null
+    }
     val rotulos = remember(painel.vista) { rotulosDa(painel.vista) }
     // Uma métrica que este aparelho nunca viu entra no fim, visível: a versão nova do computador
     // não fica escondida esperando alguém ir procurá-la.
@@ -74,6 +91,19 @@ fun TelaDoPainel(painel: Tela.Painel, acoes: Acoes, aparelho: Aparelho) {
     BoxWithConstraints(Modifier.fillMaxSize().padding(12.dp)) {
         val deitado = maxWidth > maxHeight
         val enlace = painel.vista.enlace?.takeIf { aparelho.arranjo.visivel(Arranjo.ENLACE) }
+        val copia = aparelho.arranjo.visivel(Arranjo.COPIA) && (painel.vista.copia != null || editando)
+        // Deitado, as duas faixas dividem uma linha: a altura é dos cartões dos computadores.
+        val faixas: @Composable () -> Unit = {
+            if (deitado) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (enlace != null) Box(Modifier.weight(1.4f)) { FaixaDoEnlace(enlace, painel.series, editando, aparelho) }
+                    if (copia) Box(Modifier.weight(1f)) { FaixaDaCopia(painel.vista.copia, painel.series, editando, aparelho) }
+                }
+            } else {
+                if (enlace != null) FaixaDoEnlace(enlace, painel.series, editando, aparelho)
+                if (copia) FaixaDaCopia(painel.vista.copia, painel.series, editando, aparelho)
+            }
+        }
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Cabecalho(painel, acoes, aparelho) { editando = true }
             if (editando) BarraDeEdicao(aparelho, rotulos) { editando = false }
@@ -81,17 +111,22 @@ fun TelaDoPainel(painel: Tela.Painel, acoes: Acoes, aparelho: Aparelho) {
                 modifier = Modifier.weight(1f).alpha(if (painel.segundosSemDados > 0) 0.45f else 1f),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                if (!deitado && enlace != null) FaixaDoEnlace(enlace, painel.series, editando, aparelho)
-                Maquinas(painel, aparelho, editando, lado = deitado, modifier = Modifier.weight(1f))
-                if (deitado && enlace != null) FaixaDoEnlace(enlace, painel.series, editando, aparelho)
+                if (!deitado) faixas()
+                Maquinas(painel, aparelho, editando, lado = deitado, modifier = Modifier.weight(1f), informar)
+                if (deitado) faixas()
             }
         }
     }
+    val lista = painel.lista?.let { painel.vista.maquinas.getOrNull(it) }
+    if (lista != null) ListaDeProcessos(lista, ordem, aparelho) { acoes.abrirLista(null) }
 }
 
-/** O nome de cada card que existe agora, pela chave. */
+/**
+ * O nome de cada card que existe agora, pela chave. A cópia está sempre: ela só aparece quando há
+ * cópia, mas a pessoa precisa poder pô-la e tirá-la a qualquer hora.
+ */
 private fun rotulosDa(vista: Vista): Map<String, String> {
-    val blocos = vista.maquinas.flatMap { it.blocos }.associate { it.chave to it.rotulo }
+    val blocos = vista.maquinas.flatMap { it.blocos }.associate { it.chave to it.rotulo } + (Arranjo.COPIA to NOME_DA_COPIA)
     return if (vista.enlace == null) blocos else blocos + (Arranjo.ENLACE to NOME_DO_ENLACE)
 }
 
@@ -130,17 +165,29 @@ private fun Menu(acoes: Acoes, aparelho: Aparelho, editar: () -> Unit) {
 }
 
 @Composable
-private fun Maquinas(painel: Tela.Painel, aparelho: Aparelho, editando: Boolean, lado: Boolean, modifier: Modifier) {
+private fun Maquinas(
+    painel: Tela.Painel,
+    aparelho: Aparelho,
+    editando: Boolean,
+    lado: Boolean,
+    modifier: Modifier,
+    informar: ((Int, String) -> Unit)?,
+) {
     val maquinas = painel.vista.maquinas
+    // O "i" de cada cartão abre a lista daquele computador: a posição dele no quadro.
+    val deCada = { posicao: Int -> informar?.let { abrir -> { chave: String -> abrir(posicao, chave) } } }
     if (lado && maquinas.size > 1) {
         Row(modifier, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            maquinas.forEach {
-                CartaoDaMaquina(it, painel.series, aparelho, editando, Modifier.weight(1f).fillMaxHeight(), rolavel = true)
+            maquinas.forEachIndexed { i, maquina ->
+                val mod = Modifier.weight(1f).fillMaxHeight()
+                CartaoDaMaquina(maquina, painel.series, aparelho, editando, mod, rolavel = true, informar = deCada(i))
             }
         }
     } else {
         Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            maquinas.forEach { CartaoDaMaquina(it, painel.series, aparelho, editando, Modifier.fillMaxWidth()) }
+            maquinas.forEachIndexed { i, maquina ->
+                CartaoDaMaquina(maquina, painel.series, aparelho, editando, Modifier.fillMaxWidth(), informar = deCada(i))
+            }
         }
     }
 }
@@ -157,6 +204,7 @@ private fun CartaoDaMaquina(
     editando: Boolean,
     modifier: Modifier,
     rolavel: Boolean = false,
+    informar: ((String) -> Unit)? = null,
 ) {
     val borda = if (maquina.nivel == Nivel.ATENCAO || maquina.nivel == Nivel.CRITICO) maquina.nivel.cor() else Cores.borda
     val (grandes, compactos) = aparelho.arranjo.ordenar(maquina.blocos) { it.chave }.partition { it.second.destaque }
@@ -177,7 +225,8 @@ private fun CartaoDaMaquina(
             val desenhar: @Composable (Bloco, Boolean, Modifier) -> Unit = { bloco, destaque, mod ->
                 Editavel(bloco.chave, editando, aparelho, mod) {
                     val serie = series[Historico.chave(maquina.nome, bloco.chave)].orEmpty()
-                    BlocoDeMetrica(bloco, serie, destaque, Modifier.fillMaxWidth())
+                    val abrir = informar?.takeIf { !editando && bloco.chave in COM_LISTA }
+                    BlocoDeMetrica(bloco, serie, destaque, Modifier.fillMaxWidth(), abrir?.let { { it(bloco.chave) } })
                 }
             }
             Grade(grandes.map { it.first }, LARGURA_DO_DESTAQUE) { bloco, mod -> desenhar(bloco, true, mod) }
@@ -204,6 +253,30 @@ private fun FaixaDoEnlace(enlace: VistaDoEnlace, series: Map<String, List<Float>
                     Text(NOME_DO_ENLACE, color = Cores.textoFraco, fontSize = 12.sp, maxLines = 1)
                     enlace.vencendo?.let { Text("mais rápido: $it", color = Cores.acao, fontSize = 13.sp, maxLines = 1) }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * A cópia de arquivos entre os computadores, numa faixa fina como a do enlace: o que vai, quanto
+ * já foi, a velocidade e quanto falta. Some sozinha um pouco depois de a cópia acabar; na edição,
+ * fica um lugar marcado, para a pessoa poder tirá-la sem esperar uma cópia.
+ */
+@Composable
+private fun FaixaDaCopia(copia: Bloco?, series: Map<String, List<Float>>, editando: Boolean, aparelho: Aparelho) {
+    Editavel(Arranjo.COPIA, editando, aparelho, podeMover = false, podeDestacar = false) {
+        Card(colors = CardDefaults.cardColors(containerColor = Cores.superficie), border = BorderStroke(1.dp, Cores.borda)) {
+            if (copia == null) {
+                Text(
+                    "$NOME_DA_COPIA: aparece aqui enquanto uma cópia acontece",
+                    color = Cores.textoFraco,
+                    fontSize = 13.sp,
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                )
+            } else {
+                val serie = series[Historico.chave(Historico.ENLACE, copia.chave)].orEmpty()
+                BlocoDeMetrica(copia, serie, destaque = false, Modifier.fillMaxWidth().padding(6.dp))
             }
         }
     }

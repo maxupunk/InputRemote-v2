@@ -8,6 +8,10 @@ package io.github.inputremote.painel.dados
  * uma versão futura do computador mandar: uma chave nunca vista entra no fim, e uma que a pessoa
  * apagou continua conhecida, para poder voltar por "Adicionar card".
  *
+ * Os cards de processo (`proc:docker`) são a exceção: quem os cria é a pessoa, por "Acompanhar".
+ * Eles são o pedido ao computador — o que está no arranjo é o que ele mede ([processos]) —, então
+ * não entram sozinhos e, tirados, são esquecidos.
+ *
  * Imutável: toda edição devolve um arranjo novo.
  */
 data class Arranjo(
@@ -25,9 +29,12 @@ data class Arranjo(
     /** As chaves conhecidas que a pessoa tirou da tela. */
     fun ocultas(): Set<String> = conhecidas - cards.map { it.chave }.toSet()
 
-    /** Uma chave nova entra no fim, visível; uma já conhecida fica como a pessoa deixou. */
+    /**
+     * Uma chave nova entra no fim, visível; uma já conhecida fica como a pessoa deixou. Processo não
+     * entra assim: o card de outro painel ligado ao mesmo computador não aparece neste.
+     */
     fun conhecer(chaves: Collection<String>): Arranjo {
-        val novas = chaves.filterNot { it in conhecidas }.distinct()
+        val novas = chaves.filterNot { it in conhecidas || ehProcesso(it) }.distinct()
         if (novas.isEmpty()) return this
         return copy(cards = cards + novas.map { Card(it) }, conhecidas = conhecidas + novas)
     }
@@ -43,8 +50,27 @@ data class Arranjo(
         return copy(cards = lista)
     }
 
-    /** Tira o card da tela. Ele continua conhecido. */
-    fun remover(chave: String): Arranjo = copy(cards = cards.filterNot { it.chave == chave })
+    /** Tira o card da tela. Ele continua conhecido — menos o de processo, que é esquecido. */
+    fun remover(chave: String): Arranjo = copy(
+        cards = cards.filterNot { it.chave == chave },
+        conhecidas = if (ehProcesso(chave)) conhecidas - chave else conhecidas,
+    )
+
+    /** Os nomes dos processos acompanhados, na ordem da tela. É o que se pede ao computador. */
+    fun processos(): List<String> = cards.map { it.chave }.filter(::ehProcesso).map { it.removePrefix(PREFIXO_DE_PROCESSO) }
+
+    /** Se cabe mais um processo: o computador mede no máximo [MAX_PROCESSOS]. */
+    fun podeAcompanhar(): Boolean = processos().size < MAX_PROCESSOS
+
+    /**
+     * Um card para os processos com este nome — `docker` soma todos os que têm "docker" no nome.
+     * Sem nome, já acompanhado ou sem lugar, nada muda.
+     */
+    fun acompanhar(nome: String): Arranjo {
+        val chave = chaveDoProcesso(nome)
+        if (chave == PREFIXO_DE_PROCESSO || visivel(chave) || !podeAcompanhar()) return this
+        return adicionar(chave)
+    }
 
     /** Põe de volta, no fim. */
     fun adicionar(chave: String): Arranjo =
@@ -67,6 +93,20 @@ data class Arranjo(
         /** A faixa "Entre os computadores", que também é um card que se tira e se põe. */
         const val ENLACE = "enlace"
 
+        /** A faixa da cópia de arquivos, que só aparece enquanto há cópia. */
+        const val COPIA = "copia"
+
+        /** O começo da chave de um card de processo, a mesma do núcleo (`vista::PREFIXO_DE_PROCESSO`). */
+        const val PREFIXO_DE_PROCESSO = "proc:"
+
+        /** Quantos processos o computador mede por painel (`processos::MAX_VIGIADOS`). */
+        const val MAX_PROCESSOS = 4
+
+        /** A chave do card que acompanha este processo. */
+        fun chaveDoProcesso(nome: String) = PREFIXO_DE_PROCESSO + nome.trim().lowercase()
+
+        fun ehProcesso(chave: String) = chave.startsWith(PREFIXO_DE_PROCESSO)
+
         /**
          * O que se olha primeiro é o processador e a memória: grandes e no começo. Depois o que
          * mais muda (temperatura, rede), e por fim o que muda devagar.
@@ -83,6 +123,7 @@ data class Arranjo(
             Card("temp-placa"),
             Card("temp"),
             Card(ENLACE),
+            Card(COPIA),
         ).let { cards -> Arranjo(cards, cards.map { it.chave }.toSet()) }
     }
 }

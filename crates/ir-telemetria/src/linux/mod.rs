@@ -4,7 +4,10 @@
 //! reabrir a cada segundo ([12, §3.3](../../../../docs/12-painel-android.md)).
 
 mod proc;
+mod processos;
 mod sys;
+
+pub(crate) use processos::Proc;
 
 use std::fs::File;
 use std::io::{Read, Seek};

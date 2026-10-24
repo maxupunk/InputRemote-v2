@@ -629,8 +629,9 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 
 ## Etapa 12 — Painel no Android ([12](docs/12-painel-android.md), [ADR-0018](docs/adr/0018-painel-no-android.md))
 
-- [x] Protocolo 11: `WatchUsage` e `Usage` com portão de versão e vetores gravados; a latência de
-      cada rota medida pelo `Pong` antes da detecção de repetição ([log 68](docs/logs/68-o-painel-no-android.md))
+- [x] Protocolo 11: o recado do painel entre os computadores (`Panel`, opaco para a sessão) com
+      portão de versão e vetores gravados; a latência de cada rota medida pelo `Pong` antes da
+      detecção de repetição ([log 68](docs/logs/68-o-painel-no-android.md), [log 70](docs/logs/70-processos-e-copia-no-painel.md))
 - [x] `ir-telemetria`: as seis fontes nos dois sistemas, cada uma na sua cadência, coleta só com
       alguém olhando; provada com `--example amostra` no Windows e no Fedora 44 ([log 68](docs/logs/68-o-painel-no-android.md))
 - [x] `ir-monitor`: a conversa cifrada com as duas confirmações, o vocabulário do painel com
@@ -645,8 +646,12 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       ao vivo, voltar sem código depois de fechar à força ([log 68](docs/logs/68-o-painel-no-android.md))
 - [x] O painel deitado, com o processador e a memória em destaque, e os cards que a pessoa move,
       destaca, tira e põe de volta; conferido no tablet de verdade ([log 69](docs/logs/69-o-painel-deitado-e-os-cards.md))
+- [x] A cópia de arquivos em tempo real, os cards de processo (Docker, WSL) e a lista do "i" no
+      processador e na memória, ao vivo; a foto de processos em uma chamada no Windows; conferido
+      no tablet de verdade ([log 70](docs/logs/70-processos-e-copia-no-painel.md))
 - [ ] `[H]` Bancada com o serviço **instalado** nos dois computadores e um aparelho de verdade: o
-      par da versão 11 respondendo, as duas rotas medidas, o par antigo pedindo atualização
+      par da versão 11 respondendo, as duas rotas medidas, o par antigo pedindo atualização, os
+      processos do par e uma cópia de verdade
 - [ ] `[H]` O orçamento de [12, §3.4](docs/12-painel-android.md): CPU e memória do serviço com um
       painel olhando por 5 minutos, nos dois sistemas
 - [ ] `[H]` Temperatura no Windows como serviço (`SYSTEM`): a zona do ACPI, e o LibreHardwareMonitor

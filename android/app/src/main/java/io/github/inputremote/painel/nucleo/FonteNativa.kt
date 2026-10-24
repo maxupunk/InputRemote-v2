@@ -4,7 +4,9 @@ import io.github.inputremote.painel.dados.ComputadorAchado
 import io.github.inputremote.painel.dados.ComputadorPareado
 import io.github.inputremote.painel.dados.EventoDoNucleo
 import io.github.inputremote.painel.dados.FonteDoPainel
+import io.github.inputremote.painel.dados.Interesse
 import io.github.inputremote.painel.dados.Ligacao
+import org.json.JSONArray
 
 /**
  * A fonte de verdade: o núcleo em Rust.
@@ -33,6 +35,9 @@ private class LigacaoNativa(private val id: Long) : Ligacao {
     override fun confirmar(conferiu: Boolean) = Nativo.confirmar(id, conferiu)
 
     override fun assinar(quer: Boolean) = Nativo.assinar(id, quer)
+
+    override fun interessar(interesse: Interesse) =
+        Nativo.interesse(id, JSONArray(interesse.processos).toString(), interesse.lista ?: -1)
 
     override fun fechar() = Nativo.fechar(id)
 

@@ -276,5 +276,50 @@ fn pasta_de(destino: &str) -> String {
         .unwrap_or_else(|| destino.to_owned())
 }
 
+/// O peso da medida nova na média móvel. Um terço: acompanha a mudança real em poucos avisos e
+/// engole o solavanco de um bloco que demorou.
+const PESO: f64 = 1.0 / 3.0;
+
+/// A velocidade de uma cópia, medida entre avisos e suavizada.
+///
+/// Um só para quem mostra cópia — a janela e o painel no Android —, para os dois dizerem a mesma
+/// velocidade da mesma cópia. Devolve o número; cada tela escreve do seu jeito.
+#[derive(Debug, Default)]
+pub struct Velocimetro {
+    /// Quando e com quantos bytes foi a última medida.
+    ultima: Option<(std::time::Instant, u64)>,
+    /// A média móvel, em bytes por segundo.
+    media: Option<f64>,
+}
+
+impl Velocimetro {
+    /// Recomeça: é outra cópia.
+    pub fn zerar(&mut self) {
+        self.ultima = None;
+        self.media = None;
+    }
+
+    /// Conta que a cópia está em `bytes` agora, e devolve a velocidade em bytes por segundo.
+    ///
+    /// `None` enquanto não houver duas medidas — um número inventado no primeiro aviso seria pior
+    /// que nenhum.
+    pub fn medir(&mut self, bytes: u64, agora: std::time::Instant) -> Option<f64> {
+        let (quando, antes) = self.ultima.replace((agora, bytes))?;
+        let segundos = agora.saturating_duration_since(quando).as_secs_f64();
+        // Bytes que voltaram atrás são outra cópia usando o mesmo velocímetro; o tempo zerado é
+        // dois avisos no mesmo instante. Nos dois casos, não há taxa a calcular agora.
+        if segundos <= 0.0 || bytes < antes {
+            return self.media;
+        }
+        #[allow(clippy::cast_precision_loss)]
+        let taxa = (bytes - antes) as f64 / segundos;
+        let media = self
+            .media
+            .map_or(taxa, |anterior| anterior * (1.0 - PESO) + taxa * PESO);
+        self.media = Some(media);
+        self.media
+    }
+}
+
 #[cfg(test)]
 mod testes;

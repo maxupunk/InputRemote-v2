@@ -8,8 +8,8 @@
 //!
 //! Uma **central** é a única dona do estado: os painéis conhecidos, a janela, quem está pareando,
 //! quem assina. As tarefas de cada conexão só falam com ela por canal ([02, §4]). O serviço manda
-//! [`Comando`]s e recebe [`Aviso`]s; o quadro vai por [`Monitor::publicar`], codificado uma vez
-//! e cifrado por cada conexão.
+//! [`Comando`]s e recebe [`Aviso`]s; o quadro e os detalhes vão por [`Monitor::publicar`],
+//! codificados uma vez e cifrados por cada conexão. Os detalhes só vão a quem disse que os quer.
 //!
 //! # Custo
 //!
@@ -17,6 +17,7 @@
 //! - A assinatura de um painel **expira** em [`ASSINATURA_EXPIRA`] sem renovação: um tablet que
 //!   sumiu da rede sem avisar não deixa a coleta ligada. Sem assinante, o serviço não coleta nada
 //!   ([`Aviso::Assinantes`]).
+//! - Os processos só são medidos quando um painel assinante os quer ([`Aviso::Interesse`]).
 //!
 //! [02, §4]: ../../../docs/02-arquitetura.md
 
@@ -38,8 +39,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use ir_crypto::{Identity, PublicKey};
-use ir_monitor::Quadro;
 use ir_monitor::mensagem::{self, ParaPainel};
+use ir_monitor::{Detalhes, InteresseEmProcessos, Quadro};
 use tokio::sync::{mpsc, watch};
 
 /// Quanto tempo a janela de pareamento fica aberta: os mesmos três minutos do pareamento entre os
@@ -84,13 +85,23 @@ pub enum Aviso {
     Assinantes(usize),
     /// Os painéis conectados agora, para a janela mostrar quem está ligado.
     Conectados(Vec<PublicKey>),
+    /// O que os painéis assinantes querem dos processos de cada computador: este (0) e o par (1).
+    /// Vem quando muda.
+    Interesse([InteresseEmProcessos; 2]),
+}
+
+/// O que vai a cada segundo, já em bytes: o quadro para todos, os detalhes para quem os quer.
+#[derive(Debug)]
+pub(crate) struct Publicacao {
+    pub(crate) quadro: Vec<u8>,
+    pub(crate) detalhes: Option<Vec<u8>>,
 }
 
 /// O monitor em funcionamento. Soltá-lo fecha a porta e todas as conexões.
 #[derive(Debug)]
 pub struct Monitor {
     comandos: mpsc::UnboundedSender<Comando>,
-    quadro: watch::Sender<Option<Arc<Vec<u8>>>>,
+    quadro: watch::Sender<Option<Arc<Publicacao>>>,
 }
 
 impl Monitor {
@@ -133,10 +144,14 @@ impl Monitor {
         let _ = self.comandos.send(comando);
     }
 
-    /// O quadro deste segundo, para quem assina. Codificado aqui, uma vez para todos.
-    pub fn publicar(&self, quadro: Quadro) {
-        if let Ok(bytes) = mensagem::codificar(&ParaPainel::Quadro(quadro)) {
-            self.quadro.send_replace(Some(Arc::new(bytes)));
-        }
+    /// O quadro e os detalhes deste segundo, para quem assina. Codificados aqui, uma vez para
+    /// todos.
+    pub fn publicar(&self, quadro: Quadro, detalhes: Detalhes) {
+        let Ok(quadro) = mensagem::codificar(&ParaPainel::Quadro(quadro)) else {
+            return;
+        };
+        let detalhes = mensagem::codificar(&ParaPainel::Detalhes(detalhes)).ok();
+        self.quadro
+            .send_replace(Some(Arc::new(Publicacao { quadro, detalhes })));
     }
 }

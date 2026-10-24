@@ -52,6 +52,7 @@ class PainelDream : DreamService(), LifecycleOwner, SavedStateRegistryOwner {
         isScreenBright = !preferencias.escurecer.value
         val escopo = MainScope().also { escopo = it }
         val controlador = Controlador(fonteNativa(this), escopo).also { controlador = it }
+        controlador.acompanhar(preferencias.arranjo.value.processos())
         val nada = {}
         val acoes = Acoes(procurar = nada, parear = {}, confirmar = {}, esquecer = nada)
         // Os mesmos cards que a pessoa arrumou no aplicativo; aqui só para olhar.

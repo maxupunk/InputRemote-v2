@@ -53,8 +53,8 @@ Da entrevista com o usuário, e as três que mudaram na implementação (marcada
 ### 3.1. O fluxo, e por que o custo é zero sem ninguém olhando
 
 1. A tela do Android aparece; ele liga e manda `Assinar(true)`, renovado a cada 2 s.
-2. O computador liga a **sua** coleta e pede ao par `WatchUsage{watch: true}` pela sessão que já
-   existe, também renovado a cada 2 s.
+2. O computador liga a **sua** coleta e pede ao par a amostra dele (`EntrePcs::Assinar`, dentro de
+   `Control::Panel`) pela sessão que já existe, também renovado a cada 2 s.
 3. A cada segundo cada lado coleta; o computador junta as amostras e as voltas de cada rota num
    `Quadro`, codificado uma vez e cifrado para cada painel.
 4. A tela do Android some: a ligação fecha. Sem renovação, as duas assinaturas **expiram em 5 s** —
@@ -64,9 +64,10 @@ Sem assinatura não há linha de coleta, nem arquivo de `/proc` aberto, nem cons
 
 ### 3.2. Protocolo
 
-- **Versão 11** entre os computadores: `Control::WatchUsage` e `Control::Usage`
-  ([03, §6](03-protocolo.md)). Com um par mais antigo, o painel mostra só o computador que agrega e
-  diz "Atualize o InputRemote neste computador" no cartão do outro.
+- **Versão 11** entre os computadores: `Control::Panel`, um recado opaco para a sessão
+  ([03, §6](03-protocolo.md)). Dentro dele, `ir_monitor::EntrePcs`: o pedido (com os processos que
+  o painel quer), parar, e a amostra com os processos. Com um par mais antigo, o painel mostra só o
+  computador que agrega e diz "Atualize o InputRemote neste computador" no cartão do outro.
 - **`UsageSample` em ponto fixo**: CPU em milésimos, memória e disco em KiB, tráfego em bytes/s,
   bateria em %, até 8 temperaturas em centésimos de grau. `None` é "não sei ler". Uma amostra
   completa tem cerca de 40 bytes.
@@ -76,8 +77,9 @@ Sem assinatura não há linha de coleta, nem arquivo de `/proc` aberto, nem cons
   uma estimativa honesta de quanto aquela rota atrasa, exata com um portador só. O painel mostra a
   mediana dos últimos 10 s de cada rota, e chama de "mais rápida" a de mediana menor.
 - **O enlace do painel** (`ir-monitor`) é outro: TCP 52527, Noise `XX` com o código para parear,
-  `IK` com a chave fixada para voltar, e um vocabulário (versão 1, vetores gravados) que só tem
-  `Ola` e `Assinar` vindo do painel.
+  `IK` com a chave fixada para voltar, e um vocabulário (versão 2, vetores gravados) que só tem
+  `Ola`, `Assinar` e `Interesse` vindo do painel. Os `Detalhes` — a cópia em curso e os processos —
+  só vão a quem disse interesse, e o aplicativo só o diz a um computador da versão 2.
 
 ### 3.3. Coleta: `ir-telemetria`
 
@@ -107,6 +109,15 @@ pub trait Fonte {
 
 Os arquivos de `/proc` e `/sys` ficam abertos durante a assinatura; a conexão WMI é aberta uma vez.
 Cada tipo de sensor mostra o mais quente.
+
+**Processos** ([log 70](logs/70-processos-e-copia-no-painel.md)): só com interesse — um card de
+processo ou a lista aberta, aqui ou no painel do par. Uma foto por segundo, e o uso é a diferença
+entre duas, agrupado pelo nome; um card soma tudo que contém o nome (`wsl` pega o `VmmemWSL`).
+
+| | Windows | Linux |
+|---|---|---|
+| A foto | `NtQuerySystemInformation(SystemProcessInformation)`: uma chamada, 6–9 ms | `/proc/<pid>/stat` de cada processo |
+| Memória | *working set* privado (a coluna do Gerenciador de Tarefas) | `rss` |
 
 ### 3.4. Orçamento de recursos (critério de aceite)
 
@@ -163,8 +174,14 @@ deitado) tudo cabe sem rolar ([log 69](logs/69-o-painel-deitado-e-os-cards.md)):
   lado** — número de 36 sp, barra grossa e o último minuto em gráfico;
 - **o resto em linhas compactas**: valor e detalhe lado a lado, barra fina, sem gráfico. O valor
   nunca é cortado; quem encolhe, com reticências, é o detalhe;
-- **a faixa "Entre os computadores"** numa linha fina embaixo. Em pé, a faixa vai para o topo e os
-  computadores se empilham.
+- **a faixa "Entre os computadores"** numa linha fina embaixo e, enquanto há cópia de arquivos,
+  **a faixa da cópia** ao lado dela: o que vai, quanto, a velocidade e quanto falta. Em pé, as faixas
+  vão para o topo e os computadores se empilham.
+
+**O "i"** no processador e na memória abre a lista de processos daquele computador, ao vivo:
+ordenada pelo processador ou pela memória, conforme o "i" tocado; as linhas só trocam de lugar a cada
+5 s, para não andarem debaixo do dedo; e cada uma tem **+ Acompanhar**, que vira um card. Os cards de
+processo (até quatro) são o que o computador mede: tirados, são esquecidos.
 
 **Os cards são da pessoa** (`dados/Arranjo.kt`): no menu ⋮, **Editar painel** põe em cada card
 ◀ ▶ (mudar a ordem), ★ (destaque ou compacto) e ✕ (tirar), e no topo **Adicionar card** (só
@@ -213,6 +230,7 @@ métrica nova de uma versão futura entra no fim sozinha, e uma que a pessoa tir
 | E4 | o aplicativo | feito: emulador de tablet contra a bancada (`cargo run -p ir-monitor-rede --example bancada`) |
 | E5 | modo painel | feito no código; **falta** uma noite inteira num aparelho no carregador |
 | E6 | o orçamento da §3.4 medido, com o serviço instalado e um aparelho de verdade | **falta** |
+| E7 | a cópia em tempo real, os cards de processo e a lista do "i" | feito: tablet de verdade contra a bancada ([log 70](logs/70-processos-e-copia-no-painel.md)) |
 
 ## 8. Riscos
 

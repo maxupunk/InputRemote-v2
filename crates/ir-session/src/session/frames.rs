@@ -155,10 +155,7 @@ impl Session {
                 self.on_copy_paste(crate::config::CopyPaste { enabled, chosen_at }, out);
             }
             Control::CancelCopy => out.push(Command::Notify(Notice::PeerCancelledCopy)),
-            Control::WatchUsage { watch } => {
-                out.push(Command::Notify(Notice::PeerWatchesUsage(watch)));
-            }
-            Control::Usage(sample) => Self::on_peer_usage(sample, out),
+            Control::Panel(recado) => out.push(Command::Notify(Notice::PeerPanel(recado))),
             // Só quem aceita ser controlado gera Ctrl+Alt+Del a pedido do par. Quem gera, e decide
             // se pode, é a periferia daqui.
             Control::SecureAttention if self.config.policy.receives() => {

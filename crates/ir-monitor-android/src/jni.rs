@@ -23,6 +23,8 @@ use jni::objects::{JClass, JString};
 use jni::sys::{jboolean, jint, jlong};
 use jni::{Env, EnvUnowned};
 
+use ir_monitor::Interesse;
+
 use crate::Ligacao;
 use crate::cliente::{Comando, Destino};
 use crate::cofre::Cofre;
@@ -193,6 +195,25 @@ pub extern "system" fn Java_io_github_inputremote_painel_nucleo_Nativo_assinar<'
     quer: jboolean,
 ) {
     comandar(id, Comando::Assinar(quer));
+}
+
+/// O que a tela quer além do quadro: os nomes dos processos dos cards, em JSON (`["docker"]`), e
+/// de qual computador a lista de processos está aberta — a posição dele no quadro, ou -1.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_github_inputremote_painel_nucleo_Nativo_interesse<'c>(
+    mut env: EnvUnowned<'c>,
+    _classe: JClass<'c>,
+    id: jlong,
+    processos: JString<'c>,
+    lista: jint,
+) {
+    env.with_env(|env| -> jni::errors::Result<()> {
+        let processos = ponte::nomes(&texto(env, &processos)?);
+        let lista = u8::try_from(lista).ok();
+        comandar(id, Comando::Interesse(Interesse { processos, lista }));
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>();
 }
 
 /// Encerra a ligação e a tira do registro.

@@ -50,22 +50,21 @@ use crate::error::{ProtoError, Result};
 /// ([log 67](../../../docs/logs/67-cancelar-a-copia-de-qualquer-lado.md)). Só sai para quem negociou
 /// a 10 ([`supports_cancel_copy`]).
 ///
-/// Versão 11: `Control::WatchUsage` e `Control::Usage`, o computador que tem um painel olhando
-/// pedindo a amostra de uso do par ([12](../../../docs/12-painel-android.md)). Só sai para quem
-/// negociou a 11 ([`supports_usage`]); com um par mais antigo o painel mostra só esta máquina.
+/// Versão 11: `Control::Panel`, o recado do painel no Android entre os computadores
+/// ([12](../../../docs/12-painel-android.md)). Só sai para quem negociou a 11 ([`supports_panel`]);
+/// com um par mais antigo o painel mostra só esta máquina.
 pub const CURRENT: ProtocolVersion = ProtocolVersion(11);
 
-/// A primeira versão que troca a amostra de uso para o painel.
-pub const USAGE_SINCE: ProtocolVersion = ProtocolVersion(11);
+/// A primeira versão que leva o recado do painel.
+pub const PANEL_SINCE: ProtocolVersion = ProtocolVersion(11);
 
-/// Se a versão acordada com o par permite mandar [`Control::WatchUsage`](crate::message::Control)
-/// e [`Control::Usage`](crate::message::Control).
+/// Se a versão acordada com o par permite mandar [`Control::Panel`](crate::message::Control).
 ///
 /// O mesmo portão de [`supports_cancel_copy`]: mensagem desconhecida derrubaria a sessão do par
 /// antigo.
 #[must_use]
-pub fn supports_usage(agreed: ProtocolVersion) -> bool {
-    agreed >= USAGE_SINCE
+pub fn supports_panel(agreed: ProtocolVersion) -> bool {
+    agreed >= PANEL_SINCE
 }
 
 /// A primeira versão em que quem recebe uma cópia pode pedir que ela pare.

@@ -34,6 +34,16 @@ interface Ligacao {
     /** Começa ou para de receber o quadro. */
     fun assinar(quer: Boolean)
 
+    /** O que a tela quer além do quadro. Vale até o próximo; uma ligação nova começa sem nenhum. */
+    fun interessar(interesse: Interesse)
+
     /** Encerra a ligação. Depois disto, nada mais chega. */
     fun fechar()
 }
+
+/**
+ * O que a tela quer além do quadro: os processos dos cards, e a lista de processos de qual
+ * computador — a posição dele no quadro — está aberta. Sem nada disso, o computador não mede
+ * processo nenhum.
+ */
+data class Interesse(val processos: List<String> = emptyList(), val lista: Int? = null)

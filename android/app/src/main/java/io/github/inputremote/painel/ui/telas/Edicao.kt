@@ -96,9 +96,11 @@ private fun Controle(simbolo: String, nome: String, cor: androidx.compose.ui.gra
 @Composable
 fun BarraDeEdicao(aparelho: Aparelho, rotulos: Map<String, String>, concluir: () -> Unit) {
     var escolhendo by remember { mutableStateOf(false) }
+    var processo by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
-            "Toque ◀ ▶ para mudar a ordem, ★ para destacar, ✕ para tirar. Vale para os dois computadores.",
+            "Toque ◀ ▶ para mudar a ordem, ★ para destacar, ✕ para tirar. Vale para os dois computadores. " +
+                "O \"i\" do processador e da memória mostra os processos.",
             color = Cores.textoFraco,
             fontSize = 13.sp,
         )
@@ -110,12 +112,16 @@ fun BarraDeEdicao(aparelho: Aparelho, rotulos: Map<String, String>, concluir: ()
             TextButton(onClick = { aparelho.editarArranjo { Arranjo.PADRAO.conhecer(it.conhecidas) } }) {
                 Text("Restaurar padrão")
             }
+            OutlinedButton(onClick = { processo = true }) { Text("Acompanhar processo") }
             OutlinedButton(onClick = { escolhendo = true }) { Text("Adicionar card") }
             Button(onClick = concluir) { Text("Concluir") }
         }
     }
     if (escolhendo) {
         EscolherCard(aparelho, rotulos) { escolhendo = false }
+    }
+    if (processo) {
+        AcompanharProcesso(aparelho, sugestoes = emptyList()) { processo = false }
     }
 }
 

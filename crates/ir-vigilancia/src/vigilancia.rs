@@ -6,13 +6,18 @@ use std::time::{Duration, Instant};
 use ir_configuracao::{Config, Gravador};
 use ir_crypto::{Identity, PublicKey};
 use ir_ipc::Aviso;
-use ir_monitor::{Mesa, Rota};
+use ir_ipc::transferencia::Velocimetro;
+use ir_monitor::{InteresseEmProcessos, Mesa, Processos, Rota};
 use ir_monitor_rede::Monitor;
 use ir_proto::carrier::Carrier;
+use ir_proto::message::UsageSample;
 use ir_session::{Input, Notice};
 use ir_telemetria::Vigia;
 
 use crate::{Evento, Sessao};
+
+mod copia;
+mod par;
 
 /// Depois de quanto tempo sem renovação o pedido do par vale como desfeito. O mesmo prazo da
 /// assinatura do painel ([`ir_monitor_rede::ASSINATURA_EXPIRA`]), pelo mesmo motivo.
@@ -33,15 +38,21 @@ pub struct Vigilancia {
     pub(crate) monitor: Option<Monitor>,
     mesa: Mesa,
     vigia: Option<Vigia>,
+    /// O que a vigia mede dos processos agora.
+    na_vigia: InteresseEmProcessos,
     pub(crate) assinantes: usize,
-    /// Até quando o par quer a amostra daqui.
-    par_quer_ate: Option<Instant>,
-    /// Se este lado está pedindo a amostra do par.
-    pedindo: bool,
+    /// O que os painéis daqui querem dos processos: deste computador (0) e do par (1).
+    pub(crate) dos_paineis: [InteresseEmProcessos; 2],
+    /// Até quando o par quer a amostra daqui, e com que processos.
+    par_quer: Option<(Instant, InteresseEmProcessos)>,
+    /// O último pedido feito ao par; `None` quando este lado não está pedindo.
+    pedido: Option<InteresseEmProcessos>,
     /// Se a mesa já sabe do par desta sessão.
     par_na_mesa: bool,
     pub(crate) conectados: Vec<PublicKey>,
     batidas: u32,
+    /// A velocidade da cópia em curso, e de qual cópia.
+    velocimetro: (Velocimetro, Option<String>),
 }
 
 impl core::fmt::Debug for Vigilancia {
@@ -49,14 +60,15 @@ impl core::fmt::Debug for Vigilancia {
         f.debug_struct("Vigilancia")
             .field("assinantes", &self.assinantes)
             .field("coletando", &self.vigia.is_some())
-            .field("pedindo_ao_par", &self.pedindo)
+            .field("pedindo_ao_par", &self.pedido.is_some())
             .finish_non_exhaustive()
     }
 }
 
 impl Vigilancia {
     /// A vigilância deste computador. `entregar` leva os [`Evento`]s ao laço do serviço e devolve
-    /// se ele ainda os recebe; `avisos` é o emissor das janelas.
+    /// se ele ainda os recebe; `avisos` é o emissor das janelas — de onde vem, também, a cópia em
+    /// curso.
     pub fn nova(
         nome: &str,
         identidade: Identity,
@@ -71,17 +83,19 @@ impl Vigilancia {
             monitor: None,
             mesa: Mesa::nova(nome),
             vigia: None,
+            na_vigia: InteresseEmProcessos::default(),
             assinantes: 0,
-            par_quer_ate: None,
-            pedindo: false,
+            dos_paineis: Default::default(),
+            par_quer: None,
+            pedido: None,
             par_na_mesa: false,
             conectados: Vec::new(),
             batidas: 0,
+            velocimetro: (Velocimetro::default(), None),
         }
     }
 
-    /// Um aviso da sessão. Só três interessam: a volta de cada rota, a amostra do par e o pedido
-    /// dele.
+    /// Um aviso da sessão. Só dois interessam: a volta de cada rota e o recado do painel do par.
     pub fn notar(&mut self, notice: &Notice) {
         let agora = Instant::now();
         match notice {
@@ -95,17 +109,13 @@ impl Vigilancia {
                 let micros = rtt.get().saturating_mul(1000);
                 self.mesa.anotar_volta(rota, agora, micros);
             }
-            Notice::PeerUsage(amostra) => self.mesa.anotar_par(agora, amostra.clone()),
-            Notice::PeerWatchesUsage(quer) => {
-                self.par_quer_ate = quer.then(|| agora + PEDIDO_DO_PAR_EXPIRA);
-                self.ajustar_vigia();
-            }
+            Notice::PeerPanel(recado) => self.recado_do_par(agora, recado),
             _ => {}
         }
     }
 
-    /// Algo que chegou de fora do laço: um aviso do monitor, ou a amostra deste segundo. Devolve
-    /// as entradas para a sessão.
+    /// Algo que chegou de fora do laço: um aviso do monitor, a amostra deste segundo ou a cópia
+    /// em curso. Devolve as entradas para a sessão.
     #[must_use]
     pub fn evento(
         &mut self,
@@ -118,14 +128,29 @@ impl Vigilancia {
                 self.do_monitor(aviso, config, gravador);
                 Vec::new()
             }
-            Evento::Amostra(amostra) => {
-                self.mesa.anotar_local(amostra.clone());
-                match self.par_quer_ate {
-                    Some(_) => vec![Input::ShareUsage(amostra)],
-                    None => Vec::new(),
-                }
+            Evento::Amostra(amostra, processos) => self.amostra(amostra, processos.as_ref()),
+            Evento::Copia(transferencia) => {
+                self.copia(&transferencia);
+                Vec::new()
             }
         }
+    }
+
+    /// A amostra deste segundo: na mesa, com os processos que os painéis daqui pediram, e para o
+    /// par, com os que o painel dele pediu.
+    fn amostra(&mut self, amostra: UsageSample, processos: Option<&Processos>) -> Vec<Input> {
+        let [daqui, _] = &self.dos_paineis;
+        self.mesa
+            .anotar_processos(processos.and_then(|p| p.para(daqui)));
+        self.mesa.anotar_local(amostra.clone());
+        self.par_quer
+            .as_ref()
+            .and_then(|(_, interesse)| {
+                let processos = processos.and_then(|p| p.para(interesse));
+                par::mandar(&ir_monitor::EntrePcs::Uso(amostra, processos))
+            })
+            .into_iter()
+            .collect()
     }
 
     /// Conta às janelas.
@@ -133,29 +158,29 @@ impl Vigilancia {
         let _ = self.avisos.send(aviso);
     }
 
-    /// A batida de cada segundo: o monitor de pé, o par na mesa, o pedido ao par e o quadro.
-    /// Devolve as entradas para a sessão.
+    /// A batida de cada segundo: o monitor de pé, o par na mesa, o pedido ao par, o quadro e os
+    /// detalhes. Devolve as entradas para a sessão.
     #[must_use]
     pub fn batida(&mut self, sessao: &impl Sessao, config: &Config) -> Vec<Input> {
         let agora = Instant::now();
         self.batidas = self.batidas.wrapping_add(1);
         self.garantir_monitor(config);
         self.acompanhar_o_par(sessao);
-        if self.par_quer_ate.is_some_and(|ate| agora >= ate) {
-            self.par_quer_ate = None;
+        if self.par_quer.as_ref().is_some_and(|(ate, _)| agora >= *ate) {
+            self.par_quer = None;
         }
         self.ajustar_vigia();
         let entradas = self.pedir_ao_par(sessao);
         if self.assinantes > 0
             && let Some(monitor) = &self.monitor
         {
-            monitor.publicar(self.mesa.quadro(agora));
+            monitor.publicar(self.mesa.quadro(agora), self.mesa.detalhes(agora));
         }
         entradas
     }
 
-    /// Sobe o monitor na primeira batida com `tokio` por perto. Fora dele (os testes síncronos do
-    /// serviço), não há porta a abrir.
+    /// Sobe o monitor na primeira batida com `tokio` por perto, e passa a ouvir as cópias. Fora
+    /// dele (os testes síncronos do serviço), não há porta a abrir.
     fn garantir_monitor(&mut self, config: &Config) {
         if self.monitor.is_some() || tokio::runtime::Handle::try_current().is_err() {
             return;
@@ -169,6 +194,7 @@ impl Vigilancia {
                 }
             }
         });
+        copia::ouvir(self.avisos.subscribe(), Arc::clone(&self.entregar));
         self.monitor = Some(Monitor::iniciar(
             self.identidade.clone(),
             &self.nome,
@@ -188,45 +214,46 @@ impl Vigilancia {
                 self.mesa.par_desconectado();
                 self.par_na_mesa = false;
                 // O pedido morreu com a sessão; a próxima recebe um novo.
-                self.pedindo = false;
+                self.pedido = None;
             }
             _ => {}
         }
     }
 
-    /// Com painel assinando e par que entende, pede a amostra dele — renovando, porque ele a
-    /// esquece sem renovação. Sem assinante, desfaz o pedido uma vez.
-    fn pedir_ao_par(&mut self, sessao: &impl Sessao) -> Vec<Input> {
-        let entende = sessao.par().is_some_and(|(_, entende)| entende);
-        let quer = self.assinantes > 0 && entende;
-        let renovar = !self.pedindo || self.batidas.is_multiple_of(RENOVAR_A_CADA);
-        let desfazer = !quer && self.pedindo && entende;
-        self.pedindo = quer;
-        if quer && renovar {
-            vec![Input::WatchPeerUsage(true)]
-        } else if desfazer {
-            vec![Input::WatchPeerUsage(false)]
-        } else {
-            Vec::new()
+    /// A coleta só existe enquanto alguém a quer: um painel assinando, ou o par pedindo. E mede
+    /// dos processos o que os dois juntos querem.
+    pub(crate) fn ajustar_vigia(&mut self) {
+        let precisa = self.assinantes > 0 || self.par_quer.is_some();
+        if precisa != self.vigia.is_some() {
+            if precisa {
+                self.ligar_vigia();
+            } else {
+                self.vigia = None;
+                tracing::info!("ninguém olhando: a coleta de uso parou");
+            }
+        }
+        let mut interesse = self.dos_paineis[0].clone();
+        if let Some((_, do_par)) = &self.par_quer {
+            interesse = interesse.juntar(do_par);
+        }
+        if let Some(vigia) = &self.vigia
+            && interesse != self.na_vigia
+        {
+            vigia.interessar(interesse.clone());
+            self.na_vigia = interesse;
         }
     }
 
-    /// A coleta só existe enquanto alguém a quer: um painel assinando, ou o par pedindo.
-    pub(crate) fn ajustar_vigia(&mut self) {
-        let precisa = self.assinantes > 0 || self.par_quer_ate.is_some();
-        if precisa == self.vigia.is_some() {
-            return;
-        }
-        if !precisa {
-            self.vigia = None;
-            tracing::info!("ninguém olhando: a coleta de uso parou");
-            return;
-        }
+    fn ligar_vigia(&mut self) {
         let entregar = Arc::clone(&self.entregar);
-        match Vigia::iniciar(move |amostra| entregar(Evento::Amostra(amostra))) {
+        match Vigia::iniciar(move |amostra, processos| {
+            entregar(Evento::Amostra(amostra, processos))
+        }) {
             Ok(vigia) => {
                 tracing::info!("um painel está olhando: a coleta de uso começou");
                 self.vigia = Some(vigia);
+                // A vigia nova não mede processo nenhum até ouvir o interesse.
+                self.na_vigia = InteresseEmProcessos::default();
             }
             Err(erro) => tracing::warn!(%erro, "a coleta de uso não começou"),
         }
@@ -236,6 +263,12 @@ impl Vigilancia {
     #[must_use]
     pub fn quadro(&self) -> ir_monitor::Quadro {
         self.mesa.quadro(Instant::now())
+    }
+
+    /// Os detalhes de agora: a cópia e os processos.
+    #[must_use]
+    pub fn detalhes(&self) -> ir_monitor::Detalhes {
+        self.mesa.detalhes(Instant::now())
     }
 
     /// Se a coleta está ligada agora.

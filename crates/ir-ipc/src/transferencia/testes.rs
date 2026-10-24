@@ -205,3 +205,39 @@ fn a_recusa_diz_onde_do_ponto_de_vista_de_quem_le() {
             .contains("neste computador")
     );
 }
+
+#[test]
+fn a_primeira_medida_nao_inventa_velocidade() {
+    let mut velocimetro = super::Velocimetro::default();
+    assert_eq!(velocimetro.medir(1024, std::time::Instant::now()), None);
+}
+
+#[test]
+fn dez_megabytes_em_um_segundo_e_a_media_movel() {
+    let inicio = std::time::Instant::now();
+    let segundo = std::time::Duration::from_secs(1);
+    let mut velocimetro = super::Velocimetro::default();
+    velocimetro.medir(0, inicio);
+    let mb = 1024.0 * 1024.0;
+    // A média em ponto flutuante não fecha no byte; um byte de folga é nada numa tela de MB/s.
+    let perto =
+        |medida: Option<f64>, esperado: f64| medida.is_some_and(|m| (m - esperado).abs() < 1.0);
+    assert!(perto(
+        velocimetro.medir(30 * 1024 * 1024, inicio + segundo),
+        30.0 * mb
+    ));
+    // Um segundo parado: a média cai, mas não para zero de uma vez.
+    assert!(perto(
+        velocimetro.medir(30 * 1024 * 1024, inicio + segundo * 2),
+        20.0 * mb
+    ));
+}
+
+#[test]
+fn outra_copia_no_mesmo_velocimetro_nao_vira_taxa_negativa() {
+    let inicio = std::time::Instant::now();
+    let mut velocimetro = super::Velocimetro::default();
+    velocimetro.medir(50 * 1024 * 1024, inicio);
+    let taxa = velocimetro.medir(1024, inicio + std::time::Duration::from_secs(1));
+    assert_eq!(taxa, None, "sem medida anterior válida, nada a mostrar");
+}

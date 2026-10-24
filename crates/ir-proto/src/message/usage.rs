@@ -1,8 +1,8 @@
 //! A amostra de uso de uma máquina: o que o painel no Android mostra
 //! ([12](../../../../docs/12-painel-android.md)).
 //!
-//! Viaja em dois lugares, com a mesma forma: de um computador ao par, pelo canal 0
-//! ([`Control::Usage`](super::Control::Usage), desde a versão 11), e do computador que agrega ao
+//! Viaja em dois lugares, com a mesma forma: de um computador ao par, dentro do recado do painel
+//! ([`Control::Panel`](super::Control::Panel), desde a versão 11), e do computador que agrega ao
 //! painel, pelo enlace do painel (`ir-monitor`). Por isso mora aqui, com vetores gravados.
 //!
 //! Tudo é inteiro e em ponto fixo: a amostra sai uma vez por segundo, e o `postcard` codifica

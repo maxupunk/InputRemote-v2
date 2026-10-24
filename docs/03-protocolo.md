@@ -233,8 +233,7 @@ Nomes definitivos vivem em `ir-proto`. Este é o contrato.
 | `Reclaim` | quem envia retoma o controle: o teclado ou o mouse dele foi usado enquanto o par o controlava, e o par para de mandar. Também é a resposta a um `EnterScreen` que quem envia não aceita. Desde a versão 6 ([ADR-0014](adr/0014-controle-simetrico.md)) |
 | `CopyPaste{enabled, chosen_at}` | se "copiar e colar" está ligado em quem envia, e quando foi escolhido. Uma escolha dos dois computadores: os dois anunciam ao estabelecer e a cada troca, e se divergirem vale a mais recente — no empate, desligado. Só vai para um par da versão 9 ([log 64](logs/64-copiar-e-colar-nos-dois.md)) |
 | `CancelCopy` | pare a cópia de arquivos que está saindo daí para cá: quem **recebe** pede, porque só quem envia sabe parar de ler. O cancelamento segue o caminho de sempre (`BulkMessage::Cancel`), e os dois lados descartam o que já foi. Só vai para um par da versão 10 ([log 67](logs/67-cancelar-a-copia-de-qualquer-lado.md)) |
-| `WatchUsage{watch}` | mande, ou pare de mandar, a sua amostra de uso a cada segundo: é o computador que tem um painel no Android olhando. Quem recebe **esquece o pedido em 5 s sem renovação**, e quem pede renova a cada 2 s — um pedido de parar perdido não deixa ninguém coletando. Só vai para um par da versão 11 ([ADR-0018](adr/0018-painel-no-android.md)) |
-| `Usage(UsageSample)` | a amostra de uso de quem envia: processador em milésimos, memória e disco em KiB, tráfego em bytes/s, bateria, até 8 temperaturas em centésimos de grau. `None` é "não sei ler", e não zero. Quem recebe a põe nos tetos (`bounded`) antes de mostrar. Só vai para um par da versão 11 |
+| `Panel(bytes)` | um recado do painel no Android entre os computadores, opaco para a sessão: o pedido da amostra de uso e dos processos, e a resposta a cada segundo (`ir_monitor::EntrePcs`, com vetores próprios). Até `MAX_PANEL_MESSAGE` = 440 bytes, para caber num quadro do rádio. Quem recebe **esquece o pedido em 5 s sem renovação**, e quem pede renova a cada 2 s — um pedido de parar perdido não deixa ninguém coletando. Só vai para um par da versão 11 ([ADR-0018](adr/0018-painel-no-android.md), [log 70](logs/70-processos-e-copia-no-painel.md)) |
 
 ### Canal 1 — Entrada confiável
 
@@ -334,8 +333,11 @@ A versão 9 acrescentou `CopyPaste` ao canal 0, com portão pelo mesmo motivo
 antes.
 
 A versão 10 acrescentou `CancelCopy` ao canal 0, com o mesmo portão (`version::supports_cancel_copy`).
-A versão 11 acrescentou `WatchUsage` e `Usage`, para o painel no Android, com o portão
-`version::supports_usage`: com um par mais antigo, o painel mostra só o computador que agrega.
+A versão 11 acrescentou `Panel`, o recado do painel no Android, com o portão
+`version::supports_panel`: com um par mais antigo, o painel mostra só o computador que agrega. Ela
+nasceu com `WatchUsage` e `Usage` e virou o recado opaco antes de sair da branch, pela exceção de
+pré-lançamento ([log 70](logs/70-processos-e-copia-no-painel.md)): o que o painel pede ao par muda
+no `ir-monitor`, sem nova versão do protocolo.
 Com um par da 9, quem recebe não tem como parar a cópia; quem envia, sim, como antes.
 
 Regra deliberadamente estrita: **mensagem desconhecida em canal confiável derruba o

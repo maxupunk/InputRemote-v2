@@ -9,7 +9,11 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 /// A versão deste vocabulário. Independe da versão do protocolo entre os computadores: o painel e
 /// o par não conversam, e um não precisa esperar o outro para mudar.
-pub const VERSAO: u16 = 1;
+///
+/// Versão 2: [`DoPainel::Interesse`] e [`ParaPainel::Detalhes`] — os processos e a cópia em curso
+/// ([log 70](../../../docs/logs/70-processos-e-copia-no-painel.md)). Acrescentadas no fim: um
+/// aplicativo da versão 1 nunca as recebe, porque não diz interesse.
+pub const VERSAO: u16 = 2;
 
 /// O maior nome que uma apresentação carrega, em bytes — o mesmo teto do nome de máquina.
 pub const NOME_MAXIMO: usize = ir_proto::limits::MAX_MACHINE_NAME;
@@ -23,6 +27,8 @@ pub enum DoPainel {
     /// Comece (`true`) ou pare de mandar o quadro a cada segundo. O painel pede ao aparecer na tela
     /// e desfaz ao sair dela.
     Assinar(bool),
+    /// O que o painel quer além do quadro: os processos vigiados e a lista aberta. Desde a versão 2.
+    Interesse(crate::detalhes::Interesse),
 }
 
 /// O que o computador diz ao painel.
@@ -32,6 +38,9 @@ pub enum ParaPainel {
     Ola(Apresentacao),
     /// O quadro deste segundo.
     Quadro(Quadro),
+    /// A cópia em curso e os processos, ao lado do quadro. Desde a versão 2, e só a quem disse
+    /// [`DoPainel::Interesse`].
+    Detalhes(crate::detalhes::Detalhes),
 }
 
 /// Quem fala, e em que versão.
@@ -49,7 +58,7 @@ impl Apresentacao {
     pub fn desta_ponta(nome: &str) -> Self {
         Self {
             versao: VERSAO,
-            nome: cortar(nome, NOME_MAXIMO).to_owned(),
+            nome: crate::processos::cortar(nome, NOME_MAXIMO).to_owned(),
         }
     }
 }
@@ -127,15 +136,6 @@ pub fn decodificar<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, postcard::Err
     } else {
         Err(postcard::Error::DeserializeBadEncoding)
     }
-}
-
-/// O maior prefixo de `texto` com até `maximo` bytes, sem partir um caractere.
-fn cortar(texto: &str, maximo: usize) -> &str {
-    let mut fim = texto.len().min(maximo);
-    while !texto.is_char_boundary(fim) {
-        fim -= 1;
-    }
-    texto.get(..fim).unwrap_or("")
 }
 
 #[cfg(test)]

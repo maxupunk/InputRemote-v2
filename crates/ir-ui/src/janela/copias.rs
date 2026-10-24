@@ -39,7 +39,10 @@ impl Contexto {
             velocimetro.zerar();
             return String::new();
         }
-        velocimetro.medir(copia.bytes_feitos, std::time::Instant::now())
+        velocimetro
+            .medir(copia.bytes_feitos, std::time::Instant::now())
+            .map(crate::historico::por_segundo)
+            .unwrap_or_default()
     }
 
     /// Guarda a cópia que terminou na lista das últimas.
