@@ -104,6 +104,7 @@ pub fn vectors() -> Vec<Vector> {
     let mut all = control_vectors();
     all.extend(control_vectors_v4());
     all.extend(crate::copiar_e_colar::control_vectors_v9());
+    all.extend(crate::uso::control_vectors_v11());
     all.extend(session_vectors());
     all.extend(input_vectors());
     all.extend(pointer_vectors());

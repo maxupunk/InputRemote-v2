@@ -80,7 +80,10 @@ impl Session {
     }
 
     /// Se há sessão e o par negociou uma versão que entende a mensagem que `desde` protege.
-    fn peer_understands(&self, desde: fn(ir_proto::version::ProtocolVersion) -> bool) -> bool {
+    pub(super) fn peer_understands(
+        &self,
+        desde: fn(ir_proto::version::ProtocolVersion) -> bool,
+    ) -> bool {
         self.phase.is_established() && self.peer.as_ref().is_some_and(|peer| desde(peer.version))
     }
 }

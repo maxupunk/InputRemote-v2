@@ -123,6 +123,18 @@ pub enum Notice {
     /// Quem recebe a cópia que sai daqui pediu que ela pare. O serviço a cancela como se o pedido
     /// fosse daqui.
     PeerCancelledCopy,
+    /// O par passou a querer (`true`), ou deixou de querer, a amostra de uso desta máquina a cada
+    /// segundo. O serviço liga ou desliga a coleta.
+    PeerWatchesUsage(bool),
+    /// A amostra de uso do par, já dentro dos tetos do protocolo.
+    PeerUsage(ir_proto::message::UsageSample),
+    /// Uma volta medida por um portador só — a latência daquela rota, para o painel.
+    RouteLatency {
+        /// Por onde o `Pong` chegou.
+        carrier: ir_proto::carrier::Carrier,
+        /// O tempo de ida e volta.
+        rtt: crate::time::Millis,
+    },
 }
 
 /// Por que um portador foi escolhido.

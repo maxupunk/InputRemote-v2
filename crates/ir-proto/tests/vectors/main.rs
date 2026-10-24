@@ -40,6 +40,7 @@ mod copiar_e_colar;
 mod dados;
 mod pasta;
 mod table;
+mod uso;
 
 use ir_proto::carrier::Carrier;
 use ir_proto::channel::ChannelId;

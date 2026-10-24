@@ -37,6 +37,9 @@ impl Session {
         // não há o que adotar: o único quadro admitido sem rota é o aperto de mão de um par novo,
         // e quem abre a rota por ele — quem ouve primeiro, responde — é `incarnation`.
         self.widen_route(carrier, out);
+        // A volta de cada rota se mede aqui, antes da detecção de repetição descartar o `Pong`
+        // que chega pelo portador mais lento (`usage`).
+        Self::measure_route(now, carrier, &frame, out);
 
         // A confirmação vem antes de qualquer despacho: ela libera janela do nosso lado, e
         // fazê-lo primeiro impede que uma rajada encha a janela enquanto é processada.
@@ -152,6 +155,10 @@ impl Session {
                 self.on_copy_paste(crate::config::CopyPaste { enabled, chosen_at }, out);
             }
             Control::CancelCopy => out.push(Command::Notify(Notice::PeerCancelledCopy)),
+            Control::WatchUsage { watch } => {
+                out.push(Command::Notify(Notice::PeerWatchesUsage(watch)));
+            }
+            Control::Usage(sample) => Self::on_peer_usage(sample, out),
             // Só quem aceita ser controlado gera Ctrl+Alt+Del a pedido do par. Quem gera, e decide
             // se pode, é a periferia daqui.
             Control::SecureAttention if self.config.policy.receives() => {

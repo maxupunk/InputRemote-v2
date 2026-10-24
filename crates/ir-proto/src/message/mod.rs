@@ -14,6 +14,7 @@ pub mod control;
 pub mod data;
 pub mod input_msg;
 pub mod pasta;
+pub mod usage;
 
 pub use clipboard::{ClipId, ClipKind, ClipboardMessage, DeclineReason};
 pub use control::{Control, DisconnectReason, ErrorCode, Greeting, NetworkPowerSaving};
@@ -26,6 +27,7 @@ pub use pasta::{
     DeclineFolder, Entry, EntryId, EntryKind, FolderId, FolderMessage, KnownFolder, OpId, OpResult,
     RangeFailure, RangeId, Refusal, Role, changes_messages, validate_folder_message,
 };
+pub use usage::{Battery, Occupancy, Sensor, Temperature, Traffic, UsageSample};
 
 use serde::{Deserialize, Serialize};
 
