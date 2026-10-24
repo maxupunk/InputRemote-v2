@@ -16,6 +16,9 @@ tracing.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-util", "time"] }
+# A bancada (`examples/bancada.rs`): a coleta de verdade e a mesa, para o aplicativo ter o que mostrar.
+ir-proto.workspace = true
+ir-telemetria.workspace = true
 
 [lints]
 workspace = true

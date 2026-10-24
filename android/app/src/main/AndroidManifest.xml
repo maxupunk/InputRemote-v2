@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  O painel pede uma permissão só: a rede local. Não usa câmera, localização nem roda em segundo
+  plano — a ligação existe enquanto a tela está à vista (docs/12, §5.1).
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Tema.Painel">
+
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:exported="true"
+            android:theme="@style/Tema.Painel">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          O protetor de tela: o próprio Android mostra o painel "ao carregar" ou "na base", sem
+          permissão especial. É o caminho que sobra desde o Android 8, que não entrega mais o
+          aviso de carregador a um aplicativo pelo manifesto (docs/12, §5.3).
+        -->
+        <service
+            android:name=".PainelDream"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.dream"
+                android:resource="@xml/protetor" />
+        </service>
+    </application>
+</manifest>

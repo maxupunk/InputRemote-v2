@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- As preferências do protetor de tela abrem o próprio aplicativo: é lá que se pareia. -->
+<dream xmlns:android="http://schemas.android.com/apk/res/android"
+    android:settingsActivity="io.github.inputremote.painel/.MainActivity" />

@@ -13,3 +13,10 @@
 # Certificado autoassinado de teste. A chave privada fica na loja do usuario, nunca em arquivo,
 # mas o .cer exportado tambem nao precisa ser versionado.
 /empacotar/certificado
+
+# O aplicativo Android: o que o Gradle gera e o caminho do SDK desta máquina.
+/android/.gradle
+/android/build
+/android/app/build
+/android/local.properties
+/android/.kotlin
