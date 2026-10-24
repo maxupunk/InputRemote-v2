@@ -2,7 +2,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use ir_ipc::{ParaInterface, codec};
+use ir_ipc::{ParaInterface, TextoDoClipboard, codec};
 
 use super::*;
 
@@ -71,7 +71,13 @@ fn copiar_de_dentro_da_pasta_compartilhada_nao_manda_arquivos() {
         ..Mentira::default()
     };
     let mut saida = Vec::new();
-    oferecer(&mut saida, &mut clip, &mut Eco::nova(), &pastas);
+    oferecer(
+        &mut saida,
+        &mut clip,
+        &mut Eco::nova(),
+        &pastas,
+        Gatilho::Travessia,
+    );
     assert_eq!(
         pedidos(&saida),
         vec![Pedido::Pasta(ir_ipc::pastas::ComandoDePasta::Copiado {
@@ -88,7 +94,13 @@ fn arquivos_no_clipboard_viram_pedido_de_envio() {
         ..Mentira::default()
     };
     let mut saida = Vec::new();
-    oferecer(&mut saida, &mut clip, &mut Eco::nova(), &nenhuma());
+    oferecer(
+        &mut saida,
+        &mut clip,
+        &mut Eco::nova(),
+        &nenhuma(),
+        Gatilho::Travessia,
+    );
     assert_eq!(
         pedidos(&saida),
         vec![Pedido::EnviarArquivos {
@@ -108,7 +120,13 @@ fn a_mesma_copia_nao_sai_duas_vezes() {
     let mut eco = Eco::nova();
     let mut saida = Vec::new();
     for _ in 0..5 {
-        oferecer(&mut saida, &mut clip, &mut eco, &nenhuma());
+        oferecer(
+            &mut saida,
+            &mut clip,
+            &mut eco,
+            &nenhuma(),
+            Gatilho::Travessia,
+        );
     }
     assert_eq!(pedidos(&saida).len(), 1);
 }
@@ -120,7 +138,13 @@ fn texto_no_clipboard_vira_oferta_de_texto() {
         ..Mentira::default()
     };
     let mut saida = Vec::new();
-    oferecer(&mut saida, &mut clip, &mut Eco::nova(), &nenhuma());
+    oferecer(
+        &mut saida,
+        &mut clip,
+        &mut Eco::nova(),
+        &nenhuma(),
+        Gatilho::Travessia,
+    );
     // Canônico em LF, qualquer que seja o sistema: é o que o protocolo leva.
     assert_eq!(
         pedidos(&saida),
@@ -139,7 +163,13 @@ fn texto_grande_demais_nao_sai_e_nao_fica_marcado() {
     };
     let mut eco = Eco::nova();
     let mut saida = Vec::new();
-    oferecer(&mut saida, &mut clip, &mut eco, &nenhuma());
+    oferecer(
+        &mut saida,
+        &mut clip,
+        &mut eco,
+        &nenhuma(),
+        Gatilho::Travessia,
+    );
     assert!(pedidos(&saida).is_empty());
     assert!(eco.oferecer(&grande), "ficou marcado sem ter ido");
 }
@@ -152,7 +182,13 @@ fn texto_que_chega_vai_para_o_clipboard_e_nao_volta() {
     assert_eq!(clip.publicado, vec![Conteudo::texto("do outro lado")]);
 
     let mut saida = Vec::new();
-    oferecer(&mut saida, &mut clip, &mut eco, &nenhuma());
+    oferecer(
+        &mut saida,
+        &mut clip,
+        &mut eco,
+        &nenhuma(),
+        Gatilho::Travessia,
+    );
     assert!(pedidos(&saida).is_empty(), "o eco voltou para o par");
 }
 
@@ -178,7 +214,13 @@ fn o_que_chega_vai_para_o_clipboard_e_nao_volta() {
     );
 
     let mut saida = Vec::new();
-    oferecer(&mut saida, &mut clip, &mut eco, &nenhuma());
+    oferecer(
+        &mut saida,
+        &mut clip,
+        &mut eco,
+        &nenhuma(),
+        Gatilho::Travessia,
+    );
     assert!(pedidos(&saida).is_empty(), "o eco voltou para o par");
 }
 
@@ -208,7 +250,13 @@ fn um_envio_que_falhou_pode_ser_repetido_pela_mesma_copia() {
     };
     let mut eco = Eco::nova();
     let mut saida = Vec::new();
-    oferecer(&mut saida, &mut clip, &mut eco, &nenhuma());
+    oferecer(
+        &mut saida,
+        &mut clip,
+        &mut eco,
+        &nenhuma(),
+        Gatilho::Travessia,
+    );
     let falhou = Transferencia {
         sentido: Sentido::Enviando,
         nome: "x".to_owned(),
@@ -217,7 +265,13 @@ fn um_envio_que_falhou_pode_ser_repetido_pela_mesma_copia() {
         fase: Fase::Parada(ir_ipc::transferencia::Motivo::CanalCaiu),
     };
     reagir(&falhou, &mut clip, &mut eco);
-    oferecer(&mut saida, &mut clip, &mut eco, &nenhuma());
+    oferecer(
+        &mut saida,
+        &mut clip,
+        &mut eco,
+        &nenhuma(),
+        Gatilho::Travessia,
+    );
     assert_eq!(
         pedidos(&saida).len(),
         2,
@@ -234,7 +288,13 @@ fn uma_imagem_atravessa_como_arquivo_e_chega_como_imagem() {
         ..Mentira::default()
     };
     let mut saida = Vec::new();
-    oferecer(&mut saida, &mut clip, &mut Eco::nova(), &nenhuma());
+    oferecer(
+        &mut saida,
+        &mut clip,
+        &mut Eco::nova(),
+        &nenhuma(),
+        Gatilho::Travessia,
+    );
     let saiu = pedidos(&saida);
     let [Pedido::EnviarArquivos { caminhos }] = saiu.as_slice() else {
         panic!("a imagem tinha de virar um envio");
@@ -267,7 +327,13 @@ fn uma_imagem_atravessa_como_arquivo_e_chega_como_imagem() {
 
     // E a leitura seguinte não devolve a imagem ao par.
     let mut volta = Vec::new();
-    oferecer(&mut volta, &mut outro, &mut eco, &nenhuma());
+    oferecer(
+        &mut volta,
+        &mut outro,
+        &mut eco,
+        &nenhuma(),
+        Gatilho::Travessia,
+    );
     assert!(
         pedidos(&volta).is_empty(),
         "o eco da imagem voltou para o par"
@@ -289,103 +355,5 @@ fn um_quadro_que_nao_decodifica_e_versao_diferente_e_um_canal_que_cai_nao() {
     assert!(!servico::e_incompativel(&erro), "{erro:?}");
 }
 
-fn chegando(nome: &str, fase: Fase) -> Transferencia {
-    Transferencia {
-        sentido: Sentido::Recebendo,
-        nome: nome.to_owned(),
-        bytes_feitos: 10,
-        bytes_total: 100,
-        fase,
-    }
-}
-
-fn aviso_de_chegada(nome: &str) -> ir_ipc::Chegando {
-    ir_ipc::Chegando {
-        nome: nome.to_owned(),
-        montagem: "C:/ProgramData/InputRemote/recebidos/.parcial-7".to_owned(),
-        publicada_em: "C:/ProgramData/InputRemote/recebidos".to_owned(),
-        itens: vec![
-            ir_ipc::ItemChegando {
-                caminho: nome.to_owned(),
-                tamanho: 0,
-                pasta: true,
-            },
-            ir_ipc::ItemChegando {
-                caminho: format!("{nome}/a.png"),
-                tamanho: 3,
-                pasta: false,
-            },
-        ],
-    }
-}
-
-#[test]
-fn arquivos_que_comecam_a_chegar_sao_prometidos_no_clipboard() {
-    // Colar antes de a cópia chegar: o clipboard já tem os arquivos, lidos à medida que chegam.
-    let mut clip = Mentira::default();
-    prometer(&aviso_de_chegada("Jogo eletronica 2"), &mut clip);
-    let prometido = clip.prometido.expect("prometeu");
-    assert_eq!(prometido.itens.len(), 2);
-    assert_eq!(
-        prometido.itens.get(1).map(|item| item.caminho.as_str()),
-        Some("Jogo eletronica 2/a.png")
-    );
-    assert_eq!(
-        prometido.montagem,
-        PathBuf::from("C:/ProgramData/InputRemote/recebidos/.parcial-7")
-    );
-    assert!(
-        clip.publicado.is_empty(),
-        "o que chegou só é publicado no fim"
-    );
-}
-
-#[test]
-fn a_imagem_que_chega_nao_e_prometida_como_arquivo() {
-    let mut clip = Mentira::default();
-    let nome = format!("{}20261002.png", imagem::PREFIXO);
-    prometer(&aviso_de_chegada(&nome), &mut clip);
-    assert_eq!(
-        clip.promessas, 0,
-        "ela vira imagem no clipboard, e não arquivo"
-    );
-}
-
-#[test]
-fn o_andamento_sozinho_nao_promete_nada() {
-    // A promessa precisa da lista de itens, que vem no aviso de chegada.
-    let mut clip = Mentira::default();
-    reagir(
-        &chegando("Jogo eletronica 2", Fase::Andando),
-        &mut clip,
-        &mut Eco::nova(),
-    );
-    assert_eq!(clip.promessas, 0);
-}
-
-#[test]
-fn a_copia_que_para_desfaz_a_promessa() {
-    let mut clip = Mentira::default();
-    let parada = Fase::Parada(ir_ipc::transferencia::Motivo::CanalCaiu);
-    reagir(
-        &chegando("Jogo eletronica 2", parada),
-        &mut clip,
-        &mut Eco::nova(),
-    );
-    assert_eq!(
-        clip.desfeitas, 1,
-        "quem estava colando não fica esperando para sempre"
-    );
-}
-
-#[test]
-fn a_copia_que_espera_a_conexao_mantem_a_promessa() {
-    // Ela pode recomeçar: desfazer agora faria colar trazer o conteúdo velho de novo.
-    let mut clip = Mentira::default();
-    reagir(
-        &chegando("Jogo eletronica 2", Fase::AguardandoConexao),
-        &mut clip,
-        &mut Eco::nova(),
-    );
-    assert_eq!((clip.promessas, clip.desfeitas), (0, 0));
-}
+mod promessa;
+mod travessia;

@@ -118,10 +118,14 @@ impl Bandeja {
         // Pausar sem abrir a janela: é o que se quer quando o outro computador vai ser usado por
         // outra pessoa, ou para uma apresentação.
         let pausar = MenuItem::new("Pausar o compartilhamento", true, None);
+        // Parar a cópia sem abrir a janela: a que saiu sem querer — um arquivo grande copiado
+        // para colar aqui mesmo — ou a que chega sem ter sido pedida. Apagado sem cópia em curso.
+        let cancelar = MenuItem::new(ir_recado::Acao::CancelarCopia.rotulo(), false, None);
         let sair = MenuItem::new("Sair", true, None);
         let menu = Menu::new();
         menu.append(&abrir).ok()?;
         menu.append(&pausar).ok()?;
+        menu.append(&cancelar).ok()?;
         menu.append(&PredefinedMenuItem::separator()).ok()?;
         menu.append(&sair).ok()?;
 
@@ -140,6 +144,7 @@ impl Bandeja {
         let itens = Itens {
             abrir: abrir.id().clone(),
             pausar,
+            cancelar,
             sair: sair.id().clone(),
         };
         let mut vitrine = Vitrine {
@@ -152,7 +157,7 @@ impl Bandeja {
         batida.start(slint::TimerMode::Repeated, BATIDA, move || {
             let Some(janela) = alvo.upgrade() else { return };
             atender(&janela, &marca, &itens);
-            vitrine.atualizar(&janela, &itens.pausar);
+            vitrine.atualizar(&janela, &itens);
         });
         Some(Self {
             _icone: icone,
@@ -166,6 +171,7 @@ impl Bandeja {
 struct Itens {
     abrir: tray_icon::menu::MenuId,
     pausar: tray_icon::menu::MenuItem,
+    cancelar: tray_icon::menu::MenuItem,
     sair: tray_icon::menu::MenuId,
 }
 
@@ -183,13 +189,18 @@ struct Vitrine {
     /// O que acontece vira quadro: a mesma decisão do Linux.
     decisao: ir_recado::bandeja::Vitrine,
     /// A última dica e o estado do menu, para não repor os mesmos a cada batida.
-    dica: Option<(String, bool, bool)>,
+    dica: Option<Menu>,
 }
+
+/// O que a batida põe na dica e no menu: o texto da dica, pausado, conectado e se há cópia que se
+/// pode cancelar.
+#[cfg(windows)]
+type Menu = (String, bool, bool, bool);
 
 #[cfg(windows)]
 impl Vitrine {
     /// Uma batida: o quadro e a dica, pelo que a janela sabe agora.
-    fn atualizar(&mut self, janela: &Janela, pausar: &tray_icon::menu::MenuItem) {
+    fn atualizar(&mut self, janela: &Janela, itens: &Itens) {
         use ir_recado::bandeja::aparencia::{Aparencia, Retrato};
         use slint::ComponentHandle;
 
@@ -226,9 +237,12 @@ impl Vitrine {
             crate::ponte::dica_da_bandeja(&estado.enlace, &segunda),
             estado.pausado,
             estado.conectado,
+            dados.get_tem_copia() && copia.cancelavel,
         );
         if self.dica.as_ref() != Some(&dica) {
             let _ = self.icone.set_tooltip(Some(&dica.0));
+            let pausar = &itens.pausar;
+            itens.cancelar.set_enabled(dica.3);
             pausar.set_text(if estado.pausado {
                 "Retomar o compartilhamento"
             } else {
@@ -267,6 +281,11 @@ fn atender(janela: &Janela, marca: &Marca, itens: &Itens) {
         if escolha.id == itens.sair {
             let _ = slint::quit_event_loop();
             return;
+        }
+        if escolha.id == *itens.cancelar.id() {
+            janela
+                .global::<crate::gerado::Acoes>()
+                .invoke_cancelar_copia();
         }
         if escolha.id == *itens.pausar.id() {
             let acoes = janela.global::<crate::gerado::Acoes>();

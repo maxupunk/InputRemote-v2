@@ -54,7 +54,7 @@ fn state() -> InputState {
 ///
 /// A versão é parâmetro, e não `version::CURRENT`: o vetor de cada versão fica gravado com o
 /// número dela, e subir a versão acrescenta um vetor em vez de reescrever o antigo.
-fn greeting(version: ProtocolVersion) -> Greeting {
+pub fn greeting(version: ProtocolVersion) -> Greeting {
     Greeting {
         version,
         machine: MachineId([
@@ -79,7 +79,7 @@ pub fn v(name: &'static str, frame: Frame, hex: &'static str) -> Vector {
     Vector { name, frame, hex }
 }
 
-fn control(message: Control, seq: u32) -> Frame {
+pub fn control(message: Control, seq: u32) -> Frame {
     Frame::new(Message::Control(message), Sequence(seq))
 }
 
@@ -103,6 +103,7 @@ fn feedback(message: Feedback, seq: u32) -> Frame {
 pub fn vectors() -> Vec<Vector> {
     let mut all = control_vectors();
     all.extend(control_vectors_v4());
+    all.extend(crate::copiar_e_colar::control_vectors_v9());
     all.extend(session_vectors());
     all.extend(input_vectors());
     all.extend(pointer_vectors());
@@ -209,23 +210,6 @@ fn control_vectors_v4() -> Vec<Vector> {
             // Versão 8: a pasta compartilhada. A saudação só muda no número.
             control(Control::Hello(greeting(ProtocolVersion(8))), 26),
             "0000080102030405060708090a0b0c0d0e0f100762616e63616461010101010200001a0000",
-        ),
-        v(
-            "hello_v9",
-            // Versão 9: copiar e colar valendo para os dois. A saudação só muda no número.
-            control(Control::Hello(greeting(ProtocolVersion(9))), 27),
-            "0000090102030405060708090a0b0c0d0e0f100762616e63616461010101010200001b0000",
-        ),
-        v(
-            "copy_paste",
-            control(
-                Control::CopyPaste {
-                    enabled: false,
-                    chosen_at: 1_759_500_000_000,
-                },
-                28,
-            ),
-            "00130080b6fdd29a331c0000",
         ),
     ]
 }

@@ -63,11 +63,7 @@ impl Daemon {
                     .pastas
                     .as_ref()
                     .is_some_and(|pastas| pastas.comando(comando, quem.as_deref()));
-                if entregue {
-                    Resposta::Feito
-                } else {
-                    Resposta::Falha(Falha::SemAjudanteDasPastas)
-                }
+                Resposta::feito_ou(entregue, Falha::SemAjudanteDasPastas)
             }
             // O curinga cobre variantes futuras do contrato ainda não tratadas aqui.
             _ => Resposta::Falha(Falha::ForaDeContexto),

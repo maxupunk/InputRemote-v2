@@ -11,6 +11,9 @@
 //! conta com os valores trocados, então exatamente uma cede.
 //!
 //! A mensagem é da versão 9: um par mais antigo não a recebe, e cada lado segue com a sua.
+//!
+//! Aqui também o pedido de parar a cópia que o par manda ([`Control::CancelCopy`], versão 10): é a
+//! outra conversa da sessão sobre copiar e colar.
 
 use ir_proto::message::{Control, Message};
 use ir_proto::version;
@@ -37,11 +40,7 @@ impl Session {
 
     /// Conta ao par a escolha daqui, se há sessão e o par entende.
     pub(super) fn announce_copy_paste(&mut self, now: Timestamp, out: &mut CommandBatch) {
-        let entende = self
-            .peer
-            .as_ref()
-            .is_some_and(|peer| version::supports_copy_paste(peer.version));
-        if !self.phase.is_established() || !entende {
+        if !self.peer_understands(version::supports_copy_paste) {
             return;
         }
         let CopyPaste { enabled, chosen_at } = self.config.copy_paste;
@@ -61,6 +60,28 @@ impl Session {
         // O horário do par, e não o de agora: senão esta ponta venceria a próxima comparação.
         self.config.copy_paste = theirs;
         out.push(Command::Notify(Notice::CopyPasteAdopted(theirs)));
+    }
+}
+
+impl Session {
+    /// Se o par entende o pedido de parar a cópia que ele manda: há sessão, e ele é da versão 10.
+    ///
+    /// Exposta para o serviço dizer "não deu" na hora, em vez de pedir ao vento a um par antigo.
+    #[must_use]
+    pub fn can_cancel_peer_copy(&self) -> bool {
+        self.peer_understands(version::supports_cancel_copy)
+    }
+
+    /// Pede ao par que pare a cópia que está mandando para cá ([`Control::CancelCopy`]).
+    pub(super) fn request_peer_cancel_copy(&mut self, now: Timestamp, out: &mut CommandBatch) {
+        if self.can_cancel_peer_copy() {
+            self.send(now, Message::Control(Control::CancelCopy), out);
+        }
+    }
+
+    /// Se há sessão e o par negociou uma versão que entende a mensagem que `desde` protege.
+    fn peer_understands(&self, desde: fn(ir_proto::version::ProtocolVersion) -> bool) -> bool {
+        self.phase.is_established() && self.peer.as_ref().is_some_and(|peer| desde(peer.version))
     }
 }
 

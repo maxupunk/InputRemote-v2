@@ -24,7 +24,7 @@ pub fn copia_ui(copia: &Transferencia, velocidade: String) -> CopiaUi {
         progresso: copia.progresso(),
         estado: estado(copia),
         velocidade: velocidade.into(),
-        cancelavel: copia.sentido == ir_ipc::transferencia::Sentido::Enviando && !copia.terminou(),
+        cancelavel: copia.cancelavel(),
         recebida: copia.sentido == ir_ipc::transferencia::Sentido::Recebendo
             && copia.terminou()
             && !copia.falhou(),
@@ -92,6 +92,22 @@ mod tests {
         let ui = copia_ui(&copia(Fase::AguardandoConexao), String::new());
         assert_eq!(ui.titulo, "Esperando a conexão voltar");
         assert!(ui.cancelavel);
+    }
+
+    #[test]
+    fn a_copia_que_chega_tambem_pode_ser_cancelada_ate_terminar() {
+        let chegando = Transferencia {
+            sentido: Sentido::Recebendo,
+            ..copia(Fase::Andando)
+        };
+        assert!(copia_ui(&chegando, String::new()).cancelavel);
+        let chegou = Transferencia {
+            fase: Fase::Concluida {
+                destino: "/tmp/x".to_owned(),
+            },
+            ..chegando
+        };
+        assert!(!copia_ui(&chegou, String::new()).cancelavel);
     }
 
     #[test]

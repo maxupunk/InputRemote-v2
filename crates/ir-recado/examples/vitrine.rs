@@ -100,7 +100,10 @@ impl Mostrador {
             #[cfg(windows)]
             vitrine: ir_recado::bandeja::Vitrine::default(),
             #[cfg(target_os = "linux")]
-            bandeja: ir_recado::linux::bandeja::Bandeja::abrir(|| println!("clicou no ícone")),
+            bandeja: ir_recado::linux::bandeja::Bandeja::abrir(
+                || println!("clicou no ícone"),
+                |acao| println!("escolheu {}", acao.rotulo()),
+            ),
             #[cfg(target_os = "linux")]
             doca: ir_recado::linux::doca::Doca::abrir(),
         }
@@ -115,7 +118,11 @@ impl Mostrador {
                 doca.andamento(copia.em_curso().then(|| copia.progresso()));
             }
             if let Some(bandeja) = &self.bandeja {
-                bandeja.retratar(self.retrato, &copia.detalhe());
+                bandeja.retratar(
+                    self.retrato,
+                    &copia.detalhe(),
+                    ir_recado::Acao::da_copia(copia),
+                );
             }
         }
     }

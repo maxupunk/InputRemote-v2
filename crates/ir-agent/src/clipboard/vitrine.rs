@@ -14,7 +14,7 @@
 use ir_ipc::Estado;
 use ir_ipc::pastas::{ResumoDePasta, SituacaoDaPasta};
 use ir_ipc::transferencia::Transferencia;
-use ir_recado::Tom;
+use ir_recado::{Acao, Tom};
 
 /// O que o ícone conta, e onde.
 #[derive(Debug, Default)]
@@ -31,16 +31,22 @@ pub(crate) struct Vitrine {
     copia: Option<Tom>,
     /// A frase da cópia, enquanto ela anda ou quando ela não atravessou.
     frase_da_copia: Option<String>,
+    /// A ação que a cópia oferece no menu: parar, enquanto ela acontece.
+    acao: Option<Acao>,
     /// A frase do estado da conexão.
     resumo: String,
 }
 
 impl Vitrine {
-    /// Põe os ícones. Sem barramento da sessão, fica sem eles, e o resto segue.
-    pub(crate) fn abrir() -> Self {
+    /// Põe os ícones. Sem barramento da sessão, fica sem eles, e o resto segue. `agir` atende a
+    /// ação escolhida no menu da bandeja.
+    #[cfg_attr(not(target_os = "linux"), allow(clippy::needless_pass_by_value))]
+    pub(crate) fn abrir(agir: impl Fn(Acao) + Send + Sync + 'static) -> Self {
+        #[cfg(not(target_os = "linux"))]
+        let _ = agir;
         Self {
             #[cfg(target_os = "linux")]
-            bandeja: ir_recado::linux::bandeja::Bandeja::abrir(abrir_a_janela),
+            bandeja: ir_recado::linux::bandeja::Bandeja::abrir(abrir_a_janela, agir),
             #[cfg(target_os = "linux")]
             doca: ir_recado::linux::doca::Doca::abrir(),
             parado: true,
@@ -69,6 +75,7 @@ impl Vitrine {
         self.copia = Some(tom);
         self.frase_da_copia =
             (tom != Tom::Feito).then(|| format!("{}: {}", copia.titulo(), copia.detalhe()));
+        self.acao = Acao::da_copia(copia);
         #[cfg(target_os = "linux")]
         if let Some(doca) = &mut self.doca {
             doca.andamento(copia.em_curso().then(|| copia.progresso()));
@@ -90,6 +97,7 @@ impl Vitrine {
             bandeja.retratar(
                 retrato,
                 self.frase_da_copia.as_ref().unwrap_or(&self.resumo),
+                self.acao,
             );
         }
     }

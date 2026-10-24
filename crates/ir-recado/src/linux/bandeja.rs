@@ -10,6 +10,10 @@
 //! janela é outro processo, e quase sempre está fechada. Clicar no ícone, ou abrir o menu dele, é
 //! o "vi" — e o menu mostra, no alto, a frase do que houve.
 //!
+//! **A ação da cópia fica no menu.** Enquanto uma cópia acontece, "Cancelar a cópia" aparece logo
+//! abaixo da frase — a mesma ação do botão da notificação do Windows ([`crate::Acao`]). No GNOME a
+//! notificação só aparece no fim, então é aqui que se para uma cópia sem abrir a janela.
+//!
 //! **Sem quem mostre, espera.** Com a extensão desligada não há `StatusNotifierWatcher`; o ícone
 //! fica pronto e aparece sozinho no instante em que alguém liga a extensão — sem reiniciar nada.
 
@@ -20,6 +24,7 @@ use std::time::{Duration, Instant};
 
 use ksni::blocking::TrayMethods as _;
 
+use crate::Acao;
 use crate::bandeja::Vitrine;
 use crate::bandeja::aparencia::Retrato;
 use crate::bandeja::quadros;
@@ -27,8 +32,11 @@ use crate::bandeja::quadros;
 /// O compasso do ícone.
 const BATIDA: Duration = Duration::from_millis(250);
 
-/// O que a bandeja mostra agora: o que acontece, e a frase da dica.
-type Agora = (Retrato, String);
+/// O que a bandeja mostra agora: o que acontece, a frase da dica e a ação que o menu oferece.
+type Agora = (Retrato, String, Option<Acao>);
+
+/// O que o menu faz com a ação escolhida.
+type Agir = Arc<dyn Fn(Acao) + Send + Sync>;
 
 /// O ícone na bandeja. Some quando este valor cai.
 #[derive(Debug)]
@@ -39,17 +47,23 @@ pub struct Bandeja {
 }
 
 impl Bandeja {
-    /// Põe o ícone e começa a batida. `abrir` é o que o clique e o menu fazem: abrir a janela.
+    /// Põe o ícone e começa a batida. `abrir` é o que o clique e o menu fazem: abrir a janela;
+    /// `agir`, o que o menu faz com a ação da cópia.
     ///
     /// `None` sem barramento da sessão, ou sem os quadros.
-    pub fn abrir(abrir: impl Fn() + Send + Sync + 'static) -> Option<Self> {
+    pub fn abrir(
+        abrir: impl Fn() + Send + Sync + 'static,
+        agir: impl Fn(Acao) + Send + Sync + 'static,
+    ) -> Option<Self> {
         let quadros = Arc::new(quadros_argb()?);
         let visto = Arc::new(AtomicBool::new(false));
         let item = Item {
             quadro: 0,
             dica: String::new(),
+            acao: None,
             quadros,
             abrir: Arc::new(abrir),
+            agir: Arc::new(agir),
             visto: Arc::clone(&visto),
         };
         let ponteiro = item.assume_sni_available(true).spawn().ok()?;
@@ -61,6 +75,7 @@ impl Bandeja {
                 janela_visivel: false,
             },
             String::new(),
+            None,
         )));
         let (fim, acabou) = mpsc::channel();
         let compartilhado = Arc::clone(&agora);
@@ -71,10 +86,10 @@ impl Bandeja {
         Some(Self { agora, _fim: fim })
     }
 
-    /// O que está acontecendo agora, e a frase da dica.
-    pub fn retratar(&self, retrato: Retrato, dica: &str) {
+    /// O que está acontecendo agora, a frase da dica e a ação que o menu oferece.
+    pub fn retratar(&self, retrato: Retrato, dica: &str, acao: Option<Acao>) {
         let mut agora = self.agora.lock().unwrap_or_else(PoisonError::into_inner);
-        *agora = (retrato, dica.to_owned());
+        *agora = (retrato, dica.to_owned(), acao);
     }
 }
 
@@ -88,7 +103,9 @@ fn bater(
     let mut vitrine = Vitrine::default();
     let mut dica_posta = None;
     while let Err(RecvTimeoutError::Timeout) = acabou.recv_timeout(BATIDA) {
-        let (mut retrato, dica) = agora.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        let (mut retrato, dica, acao) =
+            agora.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        let dica = (dica, acao);
         retrato.janela_visivel = visto.swap(false, Ordering::Relaxed);
         let quadro = vitrine.passo(&retrato, Instant::now()).quadro;
         let dica_nova = (dica_posta.as_ref() != Some(&dica)).then_some(dica);
@@ -99,8 +116,9 @@ fn bater(
             if let Some(quadro) = quadro {
                 item.quadro = quadro;
             }
-            if let Some(dica) = &dica_nova {
+            if let Some((dica, acao)) = &dica_nova {
                 item.dica.clone_from(dica);
+                item.acao = *acao;
             }
         });
         if dica_nova.is_some() {
@@ -147,8 +165,11 @@ fn argb(rgba: &[u8]) -> Vec<u8> {
 struct Item {
     quadro: usize,
     dica: String,
+    /// A ação da cópia em curso, que o menu oferece.
+    acao: Option<Acao>,
     quadros: Arc<Vec<Vec<ksni::Icon>>>,
     abrir: Arc<dyn Fn() + Send + Sync>,
+    agir: Agir,
     /// A pessoa mexeu no ícone: o que ele contava foi visto.
     visto: Arc<AtomicBool>,
 }
@@ -196,6 +217,16 @@ impl ksni::Tray for Item {
                 }
                 .into(),
             );
+            if let Some(acao) = self.acao {
+                menu.push(
+                    ksni::menu::StandardItem {
+                        label: acao.rotulo().to_owned(),
+                        activate: Box::new(move |item: &mut Self| (item.agir)(acao)),
+                        ..Default::default()
+                    }
+                    .into(),
+                );
+            }
             menu.push(ksni::MenuItem::Separator);
         }
         menu.push(

@@ -36,6 +36,7 @@
 // propagar erro: a mensagem *é* o diagnóstico.
 #![allow(clippy::expect_used)]
 
+mod copiar_e_colar;
 mod dados;
 mod pasta;
 mod table;

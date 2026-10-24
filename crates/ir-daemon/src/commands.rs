@@ -66,6 +66,10 @@ impl Daemon {
             // escolhidos aqui já foram gravados antes de chegar à sessão.
             Notice::EdgeAdopted { edge, chosen_at } => self.adotar_borda(*edge, *chosen_at),
             Notice::CopyPasteAdopted(escolha) => self.adotar_copiar_e_colar(*escolha),
+            // Quem recebe a cópia que sai daqui pediu que ela pare.
+            Notice::PeerCancelledCopy => {
+                let _ = self.arquivos.cancelar();
+            }
             // O controle saiu desta máquina: o que está no clipboard daqui vai junto. É o gatilho
             // que funciona onde o sistema não avisa mudança de clipboard — o GNOME não avisa
             // (ADR-0011).
@@ -227,6 +231,7 @@ fn log_notice(notice: &Notice) {
             );
         }
         Notice::ControlReclaimed { here } => info!(here, "controle retomado sem atravessar"),
+        Notice::PeerCancelledCopy => info!("o outro computador pediu para parar a cópia"),
         _ => {}
     }
 }

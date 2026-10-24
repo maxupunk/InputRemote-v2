@@ -38,9 +38,6 @@ const GRUPO: &str = "inputremote";
 /// O ícone que a central mostra ao lado do nome.
 const ICONE: &[u8] = include_bytes!("../../../recursos/icone-128.png");
 
-/// O recado com andamento: o título em cima, a barra, e o detalhe embaixo dela.
-const COM_ANDAMENTO: &str = r#"<toast><visual><binding template="ToastGeneric"><text>{titulo}</text><progress value="{andamento}" valueStringOverride=" " status="{corpo}"/></binding></visual><audio silent="true"/></toast>"#;
-
 /// A central de notificações, pronta para mostrar recados do InputRemote.
 pub struct Notificacoes {
     notificador: ToastNotifier,
@@ -74,6 +71,19 @@ impl Notificacoes {
             notificador,
             sequencia: 0,
         })
+    }
+
+    /// Como [`Self::abrir`], e este executável passa a atender os botões dos recados
+    /// ([`registrar_acoes`]). Só para a interface: o "Cancelar" da notificação abre
+    /// `inputremote:cancelar-copia`, e é ela quem o leva ao serviço.
+    #[must_use]
+    pub fn da_interface() -> Option<Self> {
+        if let Ok(executavel) = std::env::current_exe()
+            && let Err(erro) = registrar_acoes(&executavel)
+        {
+            eprintln!("os botões das notificações não vão funcionar: {erro}");
+        }
+        Self::abrir()
     }
 
     /// Se a pessoa desligou as notificações do InputRemote, ou todas, nas Configurações.
@@ -132,10 +142,10 @@ impl Notificacoes {
     }
 }
 
-/// O XML do recado: com barra enquanto anda; com "Abrir a pasta" no que chegou.
+/// O XML do recado: com barra (e "Cancelar") enquanto anda; com "Abrir a pasta" no que chegou.
 fn xml(recado: &Recado) -> String {
     if recado.andamento.is_some() {
-        return COM_ANDAMENTO.to_owned();
+        return com_andamento(recado);
     }
     let (abrir, botao) = recado.pasta.as_deref().map_or_else(
         || (String::new(), String::new()),
@@ -164,6 +174,51 @@ fn xml(recado: &Recado) -> String {
     format!(
         r#"<toast{abrir}><visual><binding template="ToastGeneric"><text>{{titulo}}</text><text>{{corpo}}</text>{miniatura}</binding></visual>{botao}{som}</toast>"#
     )
+}
+
+/// O recado com andamento: o título em cima, a barra, o detalhe embaixo dela — e o botão da ação,
+/// quando há uma.
+///
+/// O botão só **abre** o endereço da ação, pelo próprio Windows: atende quem estiver registrado para
+/// ele ([`registrar_acoes`]), mesmo que a pessoa clique no recado que ficou na central.
+fn com_andamento(recado: &Recado) -> String {
+    let botao = recado.acao.map_or_else(String::new, |acao| {
+        format!(
+            r#"<actions><action content="{}" activationType="protocol" arguments="{}"/></actions>"#,
+            atributo(acao.rotulo_curto()),
+            atributo(&acao.endereco())
+        )
+    });
+    format!(
+        r#"<toast><visual><binding template="ToastGeneric"><text>{{titulo}}</text><progress value="{{andamento}}" valueStringOverride=" " status="{{corpo}}"/></binding></visual>{botao}<audio silent="true"/></toast>"#
+    )
+}
+
+/// Faz `executavel` atender os botões dos recados: o Windows o abre com
+/// `--acao <endereço>` ([`crate::acao::ARGUMENTO`]) quando a pessoa clica em um.
+///
+/// Por usuário, e refeito a cada abertura, como o nome na central: depois de uma atualização o
+/// caminho continua certo. Só a interface chama — um exemplo ou um teste que registrasse o próprio
+/// executável roubaria o botão dela.
+///
+/// # Errors
+///
+/// Quando o registro recusa a escrita. Aí os botões não fazem nada, e o "Cancelar" segue na
+/// bandeja e na janela.
+pub fn registrar_acoes(executavel: &Path) -> windows::core::Result<()> {
+    let chave = windows_registry::CURRENT_USER
+        .create(format!(r"Software\Classes\{}", crate::acao::ESQUEMA))?;
+    chave.set_string("", "URL:InputRemote")?;
+    chave.set_string("URL Protocol", "")?;
+    chave.create(r"shell\open\command")?.set_string(
+        "",
+        format!(
+            r#""{}" {} "%1""#,
+            executavel.display(),
+            crate::acao::ARGUMENTO
+        ),
+    )?;
+    Ok(())
 }
 
 /// Registra o nome e o ícone do InputRemote na central de notificações, para este usuário.
@@ -225,7 +280,22 @@ mod tests {
             andamento,
             pasta: pasta.map(str::to_owned),
             recebido: pasta.map(|p| format!("{p}\\foto.jpg")),
+            acao: andamento.map(|_| crate::Acao::CancelarCopia),
         }
+    }
+
+    #[test]
+    fn a_copia_que_anda_tem_o_botao_cancelar_que_abre_o_endereco_da_acao() {
+        let andando = xml(&recado(Tom::Andamento, Some(0.3), None));
+        assert!(
+            andando.contains(
+                r#"<action content="Cancelar" activationType="protocol" arguments="inputremote:cancelar-copia"/>"#
+            ),
+            "{andando}"
+        );
+        assert!(andando.contains("<progress"), "{andando}");
+        let terminou = xml(&recado(Tom::Feito, None, None));
+        assert!(!terminou.contains("Cancelar"), "{terminou}");
     }
 
     #[test]

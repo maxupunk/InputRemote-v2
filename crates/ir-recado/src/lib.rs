@@ -32,6 +32,7 @@
     )
 )]
 
+pub mod acao;
 pub mod bandeja;
 #[cfg(windows)]
 pub mod central;
@@ -39,6 +40,7 @@ pub mod central;
 pub mod linux;
 mod ritmo;
 
+pub use acao::Acao;
 pub use ritmo::{Ritmo, Vez};
 
 use std::path::Path;
@@ -88,6 +90,8 @@ pub struct Recado {
     /// O que chegou, com o caminho inteiro: a miniatura de uma imagem, e o gerenciador de arquivos
     /// abrindo a pasta com ele já selecionado.
     pub recebido: Option<String>,
+    /// O botão que o recado oferece enquanto o que ele conta acontece — parar a cópia.
+    pub acao: Option<Acao>,
 }
 
 impl Recado {
@@ -111,6 +115,7 @@ impl Recado {
             andamento: copia.em_curso().then(|| copia.progresso()),
             pasta,
             recebido,
+            acao: Acao::da_copia(copia),
         }
     }
 
@@ -185,6 +190,7 @@ impl Recado {
             andamento: None,
             pasta: None,
             recebido: None,
+            acao: None,
         }
     }
 }
@@ -221,6 +227,16 @@ mod tests {
         let parada = Recado::da_copia(&copia(Sentido::Enviando, Fase::Parada(Motivo::CanalCaiu)));
         assert_eq!(parada.tom, Tom::Problema);
         assert_eq!(parada.andamento, None);
+    }
+
+    #[test]
+    fn a_copia_que_anda_oferece_cancelar_nos_dois_sentidos_e_a_que_terminou_nao() {
+        for sentido in [Sentido::Enviando, Sentido::Recebendo] {
+            let andando = Recado::da_copia(&copia(sentido, Fase::Andando));
+            assert_eq!(andando.acao, Some(Acao::CancelarCopia), "{sentido:?}");
+        }
+        let parada = Recado::da_copia(&copia(Sentido::Recebendo, Fase::Parada(Motivo::Cancelada)));
+        assert_eq!(parada.acao, None);
     }
 
     #[test]

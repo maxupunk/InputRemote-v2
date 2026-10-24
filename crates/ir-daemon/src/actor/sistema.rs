@@ -165,4 +165,19 @@ mod tests {
             "o controlado não tranca quem digita"
         );
     }
+    #[test]
+    fn cancelar_sem_copia_e_sem_par_diz_que_nao_havia_o_que_parar() {
+        let mut bancada = Bancada::nova();
+        assert_eq!(
+            bancada.daemon.tratar(
+                ir_ipc::Pedido::CancelarCopia,
+                ir_transferencia::Leitor::Proprio
+            ),
+            ir_ipc::Resposta::Falha(ir_ipc::Falha::ForaDeContexto)
+        );
+        assert!(
+            bancada.rede.feitos().is_empty(),
+            "sem sessão, nada vai ao par"
+        );
+    }
 }

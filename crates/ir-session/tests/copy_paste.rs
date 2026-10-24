@@ -89,3 +89,34 @@ fn escolha_igual_nos_dois_nao_gera_aviso() {
     assert!(adotadas(&pair, Side::Server).is_empty());
     assert!(adotadas(&pair, Side::Client).is_empty());
 }
+
+fn cancelamentos(pair: &Pair, side: Side) -> usize {
+    pair.notices(side)
+        .iter()
+        .filter(|notice| matches!(notice, Notice::PeerCancelledCopy))
+        .count()
+}
+
+/// Quem recebe uma cópia grande que não pediu precisa poder pará-la; só quem envia sabe parar.
+#[test]
+fn quem_recebe_pede_e_quem_envia_e_avisado_para_parar() {
+    let mut pair = com(CopyPaste::DEFAULT, CopyPaste::DEFAULT);
+    pair.connect(Carrier::Udp);
+    pair.clear_log();
+    assert!(pair.client.can_cancel_peer_copy());
+
+    pair.feed(Side::Client, Input::CancelPeerCopy);
+    pair.advance(50);
+
+    assert_eq!(cancelamentos(&pair, Side::Server), 1);
+    assert_eq!(cancelamentos(&pair, Side::Client), 0, "o pedido não volta");
+}
+
+#[test]
+fn sem_sessao_nao_ha_a_quem_pedir() {
+    let mut pair = com(CopyPaste::DEFAULT, CopyPaste::DEFAULT);
+    assert!(!pair.client.can_cancel_peer_copy());
+    pair.feed(Side::Client, Input::CancelPeerCopy);
+    pair.advance(50);
+    assert_eq!(cancelamentos(&pair, Side::Server), 0);
+}

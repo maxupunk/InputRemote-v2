@@ -232,6 +232,7 @@ Nomes definitivos vivem em `ir-proto`. Este é o contrato.
 | `LockScreen` | bloqueie a tela aí: quem envia bloqueou a própria, e a outra não pode ficar aberta. Só com "bloquear juntos" ligado, e só obedecido por quem aceita ser controlado |
 | `Reclaim` | quem envia retoma o controle: o teclado ou o mouse dele foi usado enquanto o par o controlava, e o par para de mandar. Também é a resposta a um `EnterScreen` que quem envia não aceita. Desde a versão 6 ([ADR-0014](adr/0014-controle-simetrico.md)) |
 | `CopyPaste{enabled, chosen_at}` | se "copiar e colar" está ligado em quem envia, e quando foi escolhido. Uma escolha dos dois computadores: os dois anunciam ao estabelecer e a cada troca, e se divergirem vale a mais recente — no empate, desligado. Só vai para um par da versão 9 ([log 64](logs/64-copiar-e-colar-nos-dois.md)) |
+| `CancelCopy` | pare a cópia de arquivos que está saindo daí para cá: quem **recebe** pede, porque só quem envia sabe parar de ler. O cancelamento segue o caminho de sempre (`BulkMessage::Cancel`), e os dois lados descartam o que já foi. Só vai para um par da versão 10 ([log 67](logs/67-cancelar-a-copia-de-qualquer-lado.md)) |
 
 ### Canal 1 — Entrada confiável
 
@@ -329,6 +330,9 @@ aceitas para todo o resto, e o par antigo só não vê a pasta.
 A versão 9 acrescentou `CopyPaste` ao canal 0, com portão pelo mesmo motivo
 (`version::supports_copy_paste`). Com um par da 8, cada computador segue com a própria escolha, como
 antes.
+
+A versão 10 acrescentou `CancelCopy` ao canal 0, com o mesmo portão (`version::supports_cancel_copy`).
+Com um par da 9, quem recebe não tem como parar a cópia; quem envia, sim, como antes.
 
 Regra deliberadamente estrita: **mensagem desconhecida em canal confiável derruba o
 enlace**; campo desconhecido não é ignorado. Um KVM que age sob ambiguidade digita a

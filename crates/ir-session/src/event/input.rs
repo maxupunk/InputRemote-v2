@@ -122,6 +122,9 @@ pub enum Input {
     /// O usuário ligou ou desligou "copiar e colar" aqui. Vale dos dois lados: a sessão conta ao
     /// par, que adota a escolha (`session/copy_paste.rs`).
     SetCopyPaste(crate::config::CopyPaste),
+    /// A pessoa pediu, daqui, que pare a cópia que o par está mandando para cá. Só quem envia sabe
+    /// parar; a sessão leva o pedido (`session/copy_paste.rs`).
+    CancelPeerCopy,
 }
 
 /// Por que um portador caiu, do ponto de vista local.

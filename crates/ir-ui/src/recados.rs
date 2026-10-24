@@ -44,7 +44,7 @@ impl Recados {
         Self {
             ritmo: Ritmo::novo(INTERVALO),
             #[cfg(windows)]
-            central: ir_recado::central::Notificacoes::abrir(),
+            central: ir_recado::central::Notificacoes::da_interface(),
         }
     }
 

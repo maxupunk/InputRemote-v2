@@ -162,6 +162,16 @@ impl Transferencia {
             Fase::Anunciada | Fase::Andando | Fase::AguardandoConexao
         )
     }
+
+    /// Se a pessoa pode parar esta cópia agora: enquanto ela acontece, **dos dois lados**.
+    ///
+    /// A regra de todos os botões de "Cancelar" — a janela, a notificação, as duas bandejas —, num
+    /// lugar só. Quem envia para aqui mesmo; quem recebe pede ao par (`Pedido::CancelarCopia`).
+    /// Antes só quem enviava podia, e a cópia grande que chegava sem ser pedida ia até o fim.
+    #[must_use]
+    pub const fn cancelavel(&self) -> bool {
+        self.em_curso()
+    }
 }
 
 impl Transferencia {

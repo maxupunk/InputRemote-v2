@@ -11,7 +11,7 @@
 
 use ir_ipc::Aviso;
 use ir_ipc::transferencia::Transferencia;
-use ir_recado::Recado;
+use ir_recado::{Acao, Recado};
 
 use super::vitrine::Vitrine;
 
@@ -22,10 +22,11 @@ pub(crate) struct Notificador {
 }
 
 impl Notificador {
-    /// Pronto para contar; no Linux, com o ícone na bandeja e o andamento no dock.
-    pub(crate) fn abrir() -> Self {
+    /// Pronto para contar; no Linux, com o ícone na bandeja e o andamento no dock. `agir` é o que
+    /// acontece quando a pessoa escolhe a ação da cópia no menu da bandeja.
+    pub(crate) fn abrir(agir: impl Fn(Acao) + Send + Sync + 'static) -> Self {
         Self {
-            vitrine: Vitrine::abrir(),
+            vitrine: Vitrine::abrir(agir),
         }
     }
 

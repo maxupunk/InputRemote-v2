@@ -59,6 +59,9 @@ fn ler_avisos(mut leitura: Box<dyn Read + Send>, eventos: &Sender<Evento>) {
                     return;
                 }
             }
+            // Só o cancelar responde assim — não havia cópia a parar —, e não é uma oferta recusada:
+            // tomá-la por uma faria a cópia que a pessoa acabou de cancelar ir de novo.
+            ParaInterface::Resposta(Resposta::Falha(Falha::ForaDeContexto)) => {}
             ParaInterface::Resposta(Resposta::Falha(falha)) => {
                 if falha == Falha::SemPermissao {
                     warn!(

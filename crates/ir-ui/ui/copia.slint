@@ -67,7 +67,7 @@ component Barra inherits Rectangle {
 /// O bloco que conta a cópia, na janela.
 export component CartaoDeCopia inherits VerticalLayout {
     in property <CopiaUi> copia;
-    /// Parar a cópia que está saindo daqui.
+    /// Parar a cópia, saindo daqui ou chegando: a que chega, o serviço pede ao outro que pare.
     callback cancelar();
     /// Abrir a pasta onde a cópia recebida está.
     callback abrir();
@@ -120,7 +120,8 @@ export component CartaoDeCopia inherits VerticalLayout {
         cor: Copia.cor(root.copia.estado);
     }
 
-    // As duas ações que a cópia pede: parar a que está saindo daqui, e achar a que chegou. Uma
+    // As duas ações que a cópia pede: parar a que está acontecendo (de qualquer lado), e achar a
+    // que chegou. Uma
     // cópia que parou não tem botão de repetir — quem sabe o que copiar é o Ctrl+C —, e o detalhe
     // já diz o motivo e o que fazer.
     if root.copia.cancelavel || root.copia.recebida: HorizontalLayout {

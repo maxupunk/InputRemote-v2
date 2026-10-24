@@ -27,6 +27,13 @@ use ir_ui::simulado::ServicoSimulado;
 ///
 /// Repassa a falha do Slint quando não há backend gráfico disponível.
 fn main() -> Result<(), slint::PlatformError> {
+    // O botão de um recado (o "Cancelar" da notificação da cópia): o Windows abre a interface só
+    // para levar o pedido ao serviço. Sem janela, e antes da marca de instância única — a interface
+    // da bandeja está de pé, e esta não disputa o lugar dela.
+    if let Some(acao) = ir_recado::Acao::da_linha_de_comando() {
+        let _ = ServicoReal::local().pedir(acao.pedido());
+        return Ok(());
+    }
     // Uma interface por sessão. A demonstração fica de fora, para poder rodar ao lado da de
     // verdade; ela nunca fala com o serviço.
     let marca = if pediu_simulado() {

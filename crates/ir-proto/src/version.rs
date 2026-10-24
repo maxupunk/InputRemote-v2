@@ -45,7 +45,23 @@ use crate::error::{ProtoError, Result};
 /// Versão 9: `Control::CopyPaste`, a escolha "copiar e colar" valendo para os dois computadores
 /// ([log 64](../../../docs/logs/64-copiar-e-colar-nos-dois.md)). Como a 8, acrescenta mensagem que
 /// um par antigo receberia: só sai para quem negociou a 9 ([`supports_copy_paste`]).
-pub const CURRENT: ProtocolVersion = ProtocolVersion(9);
+///
+/// Versão 10: `Control::CancelCopy`, quem recebe uma cópia pedindo a quem envia que pare
+/// ([log 67](../../../docs/logs/67-cancelar-a-copia-de-qualquer-lado.md)). Só sai para quem negociou
+/// a 10 ([`supports_cancel_copy`]).
+pub const CURRENT: ProtocolVersion = ProtocolVersion(10);
+
+/// A primeira versão em que quem recebe uma cópia pode pedir que ela pare.
+pub const CANCEL_COPY_SINCE: ProtocolVersion = ProtocolVersion(10);
+
+/// Se a versão acordada com o par permite mandar [`Control::CancelCopy`](crate::message::Control).
+///
+/// O mesmo portão de [`supports_copy_paste`]: mensagem desconhecida derrubaria a sessão do par
+/// antigo.
+#[must_use]
+pub fn supports_cancel_copy(agreed: ProtocolVersion) -> bool {
+    agreed >= CANCEL_COPY_SINCE
+}
 
 /// A primeira versão que conhece a pasta compartilhada.
 pub const FOLDERS_SINCE: ProtocolVersion = ProtocolVersion(8);

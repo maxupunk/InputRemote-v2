@@ -125,6 +125,7 @@ mod tests {
             andamento: None,
             pasta: Some("/home/ana/Recebidos".to_owned()),
             recebido: Some("/home/ana/Recebidos/captura.png".to_owned()),
+            acao: None,
         };
         let args = linha(&comando(&recado));
         assert!(args.contains(&"--action=abrir=Abrir a pasta".to_owned()));

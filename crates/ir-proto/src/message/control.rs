@@ -158,6 +158,14 @@ pub enum Control {
         /// nunca foi mudado (o padrão, ligado).
         chosen_at: u64,
     },
+    /// Pare a cópia de arquivos que está saindo daí para cá. Desde a versão 10, e só para quem a
+    /// negociou ([`crate::version::supports_cancel_copy`]).
+    ///
+    /// Quem recebe também precisa poder parar: a cópia grande que chega sem ter sido pedida aqui —
+    /// o cursor só passou por este computador — ocupa o disco e o canal até o fim. Só quem envia
+    /// sabe parar de ler, então quem recebe pede; o cancelamento segue o caminho de sempre, e os
+    /// dois lados descartam o que já foi.
+    CancelCopy,
 }
 
 /// A economia de energia do Wi-Fi de uma máquina.

@@ -121,15 +121,26 @@ impl Daemon {
             Pedido::PermitirTelaDeBloqueio { permitir, .. } => {
                 self.permitir_tela_de_bloqueio(permitir)
             }
-            Pedido::CancelarCopia => {
-                if self.arquivos.cancelar() {
-                    Resposta::Feito
-                } else {
-                    Resposta::Falha(Falha::ForaDeContexto)
-                }
-            }
+            Pedido::CancelarCopia => self.cancelar_copia(),
             outro => self.tratar_pasta(outro, &leitor),
         }
+    }
+
+    /// Para a cópia, de qualquer lado que se esteja.
+    ///
+    /// A que sai daqui para aqui mesmo. A que chega só quem envia sabe parar: o pedido vai ao par
+    /// pela sessão, e o cancelamento volta pelo caminho de sempre — o par avisa, e este lado apaga
+    /// o que já gravou. Com as duas acontecendo ao mesmo tempo, para só a daqui: é a que este botão
+    /// conhece de perto.
+    pub(super) fn cancelar_copia(&mut self) -> Resposta {
+        if self.arquivos.cancelar() {
+            return Resposta::Feito;
+        }
+        let ha_a_quem_pedir = self.session.can_cancel_peer_copy();
+        if ha_a_quem_pedir {
+            self.drive(ir_session::Input::CancelPeerCopy);
+        }
+        Resposta::feito_ou(ha_a_quem_pedir, Falha::ForaDeContexto)
     }
 
     /// Leva o texto copiado ao par, pelo canal 4 da sessão.
@@ -154,11 +165,7 @@ impl Daemon {
             return Resposta::Falha(Falha::SemPermissao);
         }
         let caminhos = caminhos.into_iter().map(std::path::PathBuf::from).collect();
-        if self.arquivos.enviar(caminhos, leitor) {
-            Resposta::Feito
-        } else {
-            Resposta::Falha(Falha::SemConexao)
-        }
+        Resposta::feito_ou(self.arquivos.enviar(caminhos, leitor), Falha::SemConexao)
     }
 
     /// Procura quem está por perto — rede e rádio — e conta à janela quando terminar.

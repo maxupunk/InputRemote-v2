@@ -39,15 +39,19 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use ir_clip::{Clipboard, Conteudo, Eco};
-use ir_ipc::transferencia::{Fase, Sentido, Transferencia};
-use ir_ipc::{Aviso, Pedido, TextoDoClipboard};
+use ir_ipc::transferencia::{Fase, Motivo, Sentido, Transferencia};
+use ir_ipc::{Aviso, Pedido};
 use tracing::{debug, info, warn};
 
+use grande::Gatilho;
+
 pub(crate) mod atualizacao;
+mod grande;
 mod imagem;
 pub(crate) mod instancia;
 mod notificacao;
 mod pasta;
+mod pedido;
 mod rede;
 mod servico;
 mod vitrine;
@@ -78,6 +82,8 @@ enum Evento {
     Mudou,
     /// O serviço disse algo.
     Aviso(Aviso),
+    /// A pessoa escolheu uma ação fora da janela — o "Cancelar a cópia" da bandeja do Linux.
+    Agir(ir_recado::Acao),
     /// O serviço recusou um pedido: a cópia que ele levava não atravessou.
     Recusado,
     /// A conexão com o serviço caiu.
@@ -124,7 +130,7 @@ pub(crate) fn servir() -> Result<()> {
     }
 
     let mut eco = Eco::nova();
-    let mut notificador = notificacao::Notificador::abrir();
+    let mut notificador = notificador(&eventos);
     let endereco = ir_ipc::endereco::do_controle();
     loop {
         match servico::conectar(&endereco, &eventos) {
@@ -163,6 +169,14 @@ pub(crate) fn servir() -> Result<()> {
     }
 }
 
+/// O que conta à pessoa o que acontece, com a ação escolhida na bandeja voltando como evento.
+fn notificador(eventos: &Sender<Evento>) -> notificacao::Notificador {
+    let eventos = eventos.clone();
+    notificacao::Notificador::abrir(move |acao| {
+        let _ = eventos.send(Evento::Agir(acao));
+    })
+}
+
 /// O que o laço de uma conexão precisa. Juntos porque são a mesma coisa: a sessão do usuário.
 struct Partes<'a> {
     eventos: &'a Receiver<Evento>,
@@ -193,8 +207,13 @@ fn atender(partes: Partes<'_>) -> Fim {
             notificador.aviso(aviso);
         }
         match evento {
-            Evento::Mudou | Evento::Aviso(Aviso::LerClipboard) if ligado => {
-                oferecer(escrita, clip, eco, &pastas);
+            Evento::Mudou if ligado => oferecer(escrita, clip, eco, &pastas, Gatilho::Copia),
+            Evento::Aviso(Aviso::LerClipboard) if ligado => {
+                oferecer(escrita, clip, eco, &pastas, Gatilho::Travessia);
+            }
+            // Quem decide se há o que parar é o serviço; a resposta, se não havia, é ignorada.
+            Evento::Agir(acao) => {
+                let _ = servico::pedir(escrita, &acao.pedido());
             }
             Evento::Aviso(Aviso::EstadoMudou(estado)) => ligado = estado.copiar_e_colar,
             Evento::Aviso(Aviso::PastasMudaram(lista)) => pastas.atualizar(&lista),
@@ -219,12 +238,14 @@ fn atender(partes: Partes<'_>) -> Fim {
     Fim::Caiu
 }
 
-/// Lê o clipboard e, se ele mudou de verdade, oferece ao par.
+/// Lê o clipboard e, se ele mudou de verdade, oferece ao par — a cópia grande, só na travessia
+/// ([`grande`]).
 fn oferecer(
     escrita: &mut dyn Write,
     clip: &mut dyn Clipboard,
     eco: &mut Eco,
     pastas: &pasta::Pastas,
+    gatilho: Gatilho,
 ) {
     let conteudo = match clip.ler() {
         Ok(Some(conteudo)) => conteudo,
@@ -234,7 +255,7 @@ fn oferecer(
             return;
         }
     };
-    let Some(pedido) = pastas.pedido(&conteudo, pedido_para) else {
+    let Some(pedido) = pastas.pedido(&conteudo, pedido::pedido_para) else {
         // Não marcado como oferecido: se um dia houver caminho, a mesma cópia tem de ir.
         debug!(
             tipo = conteudo.tipo().name(),
@@ -243,12 +264,20 @@ fn oferecer(
         );
         return;
     };
+    // Antes da guarda de eco, para a cópia que espera não ficar marcada: a travessia a leva.
+    if grande::espera_a_travessia(&pedido, gatilho) {
+        debug!(
+            tipo = conteudo.tipo().name(),
+            "cópia grande: vai quando o cursor atravessar"
+        );
+        return;
+    }
     if !eco.oferecer(&conteudo) {
         return;
     }
     // Só depois da guarda de eco: trazer uma pasta de rede para perto pode ser demorado, e não pode
     // se repetir a cada aviso de mudança do mesmo clipboard.
-    let pedido = trazer_da_rede(pedido);
+    let pedido = pedido::trazer_da_rede(pedido);
     if let Pedido::EnviarArquivos { caminhos } = &pedido {
         pasta::anotar(&caminhos.iter().map(PathBuf::from).collect::<Vec<_>>());
     }
@@ -260,49 +289,6 @@ fn oferecer(
     );
     if servico::pedir(escrita, &pedido).is_err() {
         eco.oferta_falhou();
-    }
-}
-
-/// Troca o que está numa pasta de rede por uma cópia local, que o serviço consegue ler.
-fn trazer_da_rede(pedido: Pedido) -> Pedido {
-    match pedido {
-        Pedido::EnviarArquivos { caminhos } => {
-            let originais: Vec<PathBuf> = caminhos.iter().map(PathBuf::from).collect();
-            let perto = rede::trazer_para_perto(&originais, &imagem::pasta_temporaria());
-            Pedido::EnviarArquivos {
-                caminhos: perto
-                    .iter()
-                    .map(|caminho| caminho.to_string_lossy().into_owned())
-                    .collect(),
-            }
-        }
-        outro => outro,
-    }
-}
-
-/// O pedido que leva este conteúdo, se ele tem caminho.
-fn pedido_para(conteudo: &Conteudo) -> Option<Pedido> {
-    match conteudo {
-        Conteudo::Arquivos(caminhos) => Some(Pedido::EnviarArquivos {
-            caminhos: caminhos
-                .iter()
-                .map(|caminho| caminho.to_string_lossy().into_owned())
-                .collect(),
-        }),
-        Conteudo::Texto(texto) => TextoDoClipboard::new(texto.clone()).map(Pedido::OferecerTexto),
-        // A imagem vai como arquivo PNG, pelo canal de dados; o outro lado a reconhece pelo nome.
-        Conteudo::Imagem(png) => {
-            match imagem::gravar_para_enviar(png, &imagem::pasta_temporaria()) {
-                Ok(caminho) => Some(Pedido::EnviarArquivos {
-                    caminhos: vec![caminho.to_string_lossy().into_owned()],
-                }),
-                Err(erro) => {
-                    warn!(%erro, "não consegui guardar a imagem copiada para enviar");
-                    None
-                }
-            }
-        }
-        _ => None,
     }
 }
 
@@ -322,6 +308,9 @@ fn reagir(transferencia: &Transferencia, clip: &mut dyn Clipboard, eco: &mut Eco
             }
         }
         (Sentido::Recebendo, Fase::Parada(_)) => clip.desfazer_promessa(),
+        // Cancelada — pela pessoa, ou porque ela copiou outra coisa —, fica como está: a próxima
+        // travessia não pode mandar de novo o que a pessoa acabou de parar.
+        (Sentido::Enviando, Fase::Parada(Motivo::Cancelada)) => {}
         // Não chegou do outro lado: a próxima cópia igual tem de ir de novo.
         (Sentido::Enviando, Fase::Parada(_)) => eco.oferta_falhou(),
         _ => {}

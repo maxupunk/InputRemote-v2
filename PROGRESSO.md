@@ -530,6 +530,10 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       GNOME guardá-la), e a tela bloqueada é esperada, para não gastá-la. No notebook, os `wl-copy`
       foram de 7 para 0. Falta aprovar o diálogo diante dele e copiar e colar nos dois sentidos
       ([ADR-0017](docs/adr/0017-clipboard-do-gnome-pelo-portal.md), [log 66](docs/logs/66-o-clipboard-do-gnome-pelo-portal.md))
+- [~] Cancelar a cópia de qualquer lado — o botão na notificação do Windows, o item nas duas bandejas e
+      a janela, também para a cópia que chega (protocolo 10, `Control::CancelCopy`); a cancelada não
+      volta na travessia seguinte. E a cópia acima de 100 MB espera a travessia, em vez de sair no
+      Ctrl+C. Falta a prova com as duas máquinas na versão 10 ([log 67](docs/logs/67-cancelar-a-copia-de-qualquer-lado.md))
 
 ## Etapa 9 — Interface
 

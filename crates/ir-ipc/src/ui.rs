@@ -237,6 +237,19 @@ pub enum Resposta {
     Pastas(Vec<crate::pastas::ResumoDePasta>),
 }
 
+impl Resposta {
+    /// [`Self::Feito`] se deu certo; senão, a falha que diz por quê. A forma de quase toda ação do
+    /// serviço, escrita uma vez.
+    #[must_use]
+    pub const fn feito_ou(deu_certo: bool, falha: Falha) -> Self {
+        if deu_certo {
+            Self::Feito
+        } else {
+            Self::Falha(falha)
+        }
+    }
+}
+
 /// Uma mensagem do serviço para a interface, no fluxo de bytes do canal de controle.
 ///
 /// O canal carrega dois tipos de coisa misturados: a resposta a um pedido, e um aviso que o

@@ -7,6 +7,12 @@
 > ajudante usa o portal `org.freedesktop.portal.Clipboard`, com o diálogo de consentimento que este
 > ADR recusou. O `wl-clipboard` sem `data-control` enchia o dock de ícones. Com o portal o GNOME
 > avisa a mudança, e a travessia passa a ser o segundo gatilho ali também. O resto deste ADR vale.
+>
+> **Revisto em 2026-10-23 ([log 67](../logs/67-cancelar-a-copia-de-qualquer-lado.md)):** no aviso
+> de cópia, arquivos acima de 100 MB **não** saem — vão na travessia. Copiar um arquivo grande para
+> colar no próprio computador punha a rede e o disco do outro para trabalhar por minutos, por nada.
+> Texto, imagem e arquivo pequeno continuam saindo na hora. E toda cópia em curso pode ser parada
+> dos dois lados: na notificação, na bandeja e na janela.
 
 Duas decisões que nasceram juntas, de três fatos medidos na bancada.
 

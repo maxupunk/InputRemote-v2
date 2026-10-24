@@ -120,6 +120,9 @@ pub enum Notice {
     /// O par ligou ou desligou "copiar e colar", e esta ponta passou a valer o mesmo. O serviço
     /// grava — com o horário do par, para esta ponta não vencer a próxima comparação — e avisa.
     CopyPasteAdopted(crate::config::CopyPaste),
+    /// Quem recebe a cópia que sai daqui pediu que ela pare. O serviço a cancela como se o pedido
+    /// fosse daqui.
+    PeerCancelledCopy,
 }
 
 /// Por que um portador foi escolhido.
