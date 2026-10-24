@@ -1,8 +1,8 @@
 //! O que a interface precisa de um serviço — e nada além disso.
 //!
 //! A interface fala com um `dyn Servico`, não com um socket. Assim a janela é desenvolvida,
-//! avaliada e testada contra [`crate::simulado::ServicoSimulado`], e roda de verdade contra
-//! [`crate::real::ServicoReal`], sem que nada nela mude.
+//! avaliada e testada contra [`crate::simulado::ServicoSimulado`], e roda de verdade contra o
+//! `ServicoReal` da `ir-ui`, sem que nada nela mude.
 //!
 //! O contrato é pequeno de propósito. Se ele crescer, é sinal de que lógica de produto está
 //! vazando para cá — que é exatamente como o v1 acabou com 10.491 linhas no crate da interface.

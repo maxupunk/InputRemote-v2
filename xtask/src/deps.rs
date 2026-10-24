@@ -150,7 +150,9 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // A interface não conhece o produto. É a fronteira que impede o v1 de acontecer de novo,
     // e também o que mantém a licença do Slint contida num binário só
     // (`docs/adr/0007-ui-slint-processo-separado.md`).
-    ("ir-ui", &["ir-ipc", "ir-recado"]),
+    ("ir-ui", &["ir-ipc", "ir-recado", "ir-ui-servico"]),
+    // O serviço visto pela janela: o contrato e o simulado. Só o vocabulário, como a janela.
+    ("ir-ui-servico", &["ir-ipc"]),
     // O recado fora da janela: a notificação do sistema e o ícone da bandeja. Só o vocabulário.
     ("ir-recado", &["ir-ipc"]),
 ];

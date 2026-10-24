@@ -30,6 +30,7 @@ members = [
     "crates/ir-daemon",
     "crates/ir-agent",
     "crates/ir-ui",
+    "crates/ir-ui-servico",
     "crates/ir-recado",
     "crates/ir-telemetria",
     "crates/ir-monitor",
@@ -75,6 +76,7 @@ ir-configuracao = { path = "crates/ir-configuracao", version = "0.1.0-dev" }
 ir-servico = { path = "crates/ir-servico", version = "0.1.0-dev" }
 ir-painel = { path = "crates/ir-painel", version = "0.1.0-dev" }
 ir-recado = { path = "crates/ir-recado", version = "0.1.0-dev" }
+ir-ui-servico = { path = "crates/ir-ui-servico", version = "0.1.0-dev" }
 ir-telemetria = { path = "crates/ir-telemetria", version = "0.1.0-dev" }
 ir-monitor = { path = "crates/ir-monitor", version = "0.1.0-dev" }
 ir-monitor-rede = { path = "crates/ir-monitor-rede", version = "0.1.0-dev" }

@@ -16,6 +16,8 @@ path = "src/main.rs"
 
 [dependencies]
 ir-ipc.workspace = true
+# O contrato com o serviço, e o serviço simulado que a demonstração e os testes usam.
+ir-ui-servico.workspace = true
 # A notificação do sistema e o ícone da bandeja com estados.
 ir-recado.workspace = true
 slint = "1.14"

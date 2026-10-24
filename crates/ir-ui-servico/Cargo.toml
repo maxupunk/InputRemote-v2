@@ -1,0 +1,15 @@
+[package]
+name = "ir-ui-servico"
+description = "O serviço visto pela janela: o contrato `Servico` e o serviço simulado para desenvolver e testar."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ir-ipc.workspace = true
+
+[lints]
+workspace = true

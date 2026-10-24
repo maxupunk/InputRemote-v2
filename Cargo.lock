@@ -3078,12 +3078,20 @@ version = "0.1.0-dev"
 dependencies = [
  "ir-ipc",
  "ir-recado",
+ "ir-ui-servico",
  "rfd",
  "slint",
  "slint-build",
  "tray-icon",
  "windows-sys 0.61.2",
  "winresource",
+]
+
+[[package]]
+name = "ir-ui-servico"
+version = "0.1.0-dev"
+dependencies = [
+ "ir-ipc",
 ]
 
 [[package]]

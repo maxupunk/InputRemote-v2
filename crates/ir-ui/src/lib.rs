@@ -56,6 +56,6 @@ pub mod janela;
 pub mod ponte;
 pub mod real;
 pub(crate) mod recados;
-pub mod servico;
-pub mod simulado;
+pub use ir_ui_servico::servico;
+pub use ir_ui_servico::simulado;
 pub mod trafego;
