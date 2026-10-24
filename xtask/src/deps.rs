@@ -84,6 +84,8 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ),
     // A economia de energia do Wi-Fi: ler e desligar. Não conhece nada do produto.
     ("ir-energia", &["ir-processo"]),
+    // A amostra de uso para o painel: lê o sistema e escreve no formato do protocolo, e só.
+    ("ir-telemetria", &["ir-proto"]),
     // O que a máquina guarda em disco: configuração e identidade.
     ("ir-configuracao", &["ir-proto", "ir-crypto", "ir-session"]),
     // O processo visto pelo sistema operacional: SCM, registro, sinais e `logind`. Não conhece o

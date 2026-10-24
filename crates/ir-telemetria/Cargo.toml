@@ -1,0 +1,37 @@
+[package]
+name = "ir-telemetria"
+description = "A amostra de uso desta máquina para o painel: processador, memória, disco, rede, bateria e temperaturas."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ir-proto.workspace = true
+tracing.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# O espaço do disco do sistema (`statvfs`). O resto vem de `/proc` e `/sys`, sem chamada nenhuma.
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# Processador, memória, disco, rede e bateria: uma chamada do Windows para cada, sem driver.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_SystemInformation",
+    "Win32_System_Power",
+    "Win32_Storage_FileSystem",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_NetworkManagement_Ndis",
+    "Win32_Networking_WinSock",
+] }
+# As temperaturas: a zona térmica do ACPI e, se estiver rodando, o LibreHardwareMonitor. As duas
+# só pelo WMI; o mesmo `windows` 0.62 que o resto do workspace já usa (ADR-0018).
+wmi = { version = "0.18", default-features = false }
+serde.workspace = true
+
+[lints]
+workspace = true
