@@ -86,6 +86,8 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ("ir-energia", &["ir-processo"]),
     // A amostra de uso para o painel: lê o sistema e escreve no formato do protocolo, e só.
     ("ir-telemetria", &["ir-proto"]),
+    // O enlace com o painel no Android, sem E/S: as duas pontas o usam, o serviço e o aplicativo.
+    ("ir-monitor", &["ir-proto", "ir-crypto"]),
     // O que a máquina guarda em disco: configuração e identidade.
     ("ir-configuracao", &["ir-proto", "ir-crypto", "ir-session"]),
     // O processo visto pelo sistema operacional: SCM, registro, sinais e `logind`. Não conhece o
@@ -148,6 +150,7 @@ const PURE: &[&str] = &[
     "ir-area",
     "ir-session",
     "ir-pasta",
+    "ir-monitor",
 ];
 
 /// Dependências que denunciam E/S ou relógio.

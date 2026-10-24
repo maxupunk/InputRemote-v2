@@ -1,0 +1,23 @@
+[package]
+name = "ir-monitor"
+description = "O enlace com o painel no Android: as mensagens, a conversa cifrada sem E/S, o quadro que o painel mostra e os níveis de alerta."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ir-proto.workspace = true
+ir-crypto.workspace = true
+postcard.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+# O contrato JSON da vista com o aplicativo, conferido nos testes.
+serde_json = "1"
+
+[lints]
+workspace = true

@@ -2883,6 +2883,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ir-monitor"
+version = "0.1.0-dev"
+dependencies = [
+ "ir-crypto",
+ "ir-proto",
+ "postcard",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "ir-net"
 version = "0.1.0-dev"
 dependencies = [
