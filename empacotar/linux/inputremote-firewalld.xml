@@ -12,4 +12,6 @@
   <port protocol="udp" port="52525"/>
   <port protocol="tcp" port="52525"/>
   <port protocol="udp" port="52524"/>
+  <!-- O painel no Android (docs/12): aberta pelo servico so com painel pareado ou pareamento aberto. -->
+  <port protocol="tcp" port="52527"/>
 </service>

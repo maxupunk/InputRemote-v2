@@ -17,6 +17,7 @@ A ordem abaixo é a ordem de leitura. Cada documento pressupõe o anterior.
 | 09 | [Padrões de código](09-padroes-de-codigo.md) | regras que o CI faz cumprir |
 | 10 | [Testes e validação](10-testes-e-validacao.md) | como se prova que funciona |
 | 11 | [Nada de legado](11-nao-legado.md) | o que está proibido, e o que é antigo mas correto |
+| 12 | [Painel no Android](12-painel-android.md) | o uso dos dois computadores numa tela à parte |
 
 ## Decisões arquiteturais (ADR)
 
@@ -42,6 +43,7 @@ Uma decisão só muda por um ADR novo que substitua o anterior — não por edi�
 | [0015](adr/0015-pastas-compartilhadas.md) | Pastas compartilhadas: origem, réplica e o ajudante que grava |
 | [0016](adr/0016-dependencias-da-pasta-compartilhada.md) | As dependências da pasta compartilhada |
 | [0017](adr/0017-clipboard-do-gnome-pelo-portal.md) | No GNOME, o clipboard vai pelo portal, e não pelo `wl-clipboard` |
+| [0018](adr/0018-painel-no-android.md) | O painel no Android: um par que só lê |
 
 ## Registro do que foi feito
 

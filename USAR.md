@@ -158,6 +158,34 @@ Arquivos de pastas compartilhadas, como os copiados, só atravessam pela rede; o
 leva arquivo. Os dois computadores precisam desta versão do InputRemote; com um mais antigo do outro
 lado, a tela diz para atualizar.
 
+### Painel no celular
+
+Um tablet ou celular Android mostra, numa tela sempre acesa, o uso dos dois computadores —
+processador, memória, disco, rede, bateria, temperaturas — e quanto cada rota (Bluetooth e rede)
+está atrasando. Ele só olha: não digita, não copia e não recebe arquivo.
+
+1. Instale o **InputRemote Painel** no aparelho (o APK sai de `android/`, ver abaixo).
+2. No computador, na tela inicial, **Painel no celular** → **Parear aparelho**.
+3. No aparelho, o computador aparece na lista (mesmo Wi-Fi); toque em **Parear**. Se a rede isola os
+   aparelhos, digite o IP do computador.
+4. Os dois mostram o mesmo código de seis dígitos: **São iguais** nos dois.
+
+Das próximas vezes o aplicativo abre direto no painel, e acha o computador mesmo com outro IP. Para
+o painel aparecer sozinho ao carregar, escolha **InputRemote Painel** em *Configurações → Tela →
+Protetor de tela* do Android. O menu ⋮ escurece a tela, pareia outro computador ou esquece este; na
+janela do computador, **Esquecer** desliga o aparelho na hora.
+
+Custa quase nada aos computadores: eles só leem o uso enquanto o painel está à vista. Os dois
+precisam desta versão do InputRemote; com um mais antigo do outro lado, o cartão dele pede para
+atualizar. No Windows, as temperaturas vêm do ACPI e, se estiver aberto, do LibreHardwareMonitor;
+sem nenhum dos dois, aparece "—".
+
+Para compilar o aplicativo: `cd android && ./gradlew assembleRelease` (precisa do SDK do Android com
+o NDK 27, e de `cargo install cargo-ndk` com os alvos `aarch64-linux-android`,
+`armv7-linux-androideabi` e `x86_64-linux-android`). Para desenvolvê-lo sem o serviço instalado,
+`cargo run -p ir-monitor-rede --example bancada` sobe um computador de mentira com os números desta
+máquina — no emulador, ele é o `10.0.2.2`.
+
 ### Tela de bloqueio
 
 Os dois controlam um ao outro também na tela de bloqueio, sem configurar nada: dá para digitar a
@@ -194,6 +222,8 @@ A lista honesta, do [log 45](docs/logs/45-a-varredura-implementada.md):
 - imagens no clipboard entre as duas máquinas (a conversão e o clipboard do Windows foram provados
   aqui; o Wayland e a travessia, não);
 - a suspensão e a volta das duas máquinas com a conexão de pé;
+- o painel no celular com o serviço **instalado** e um aparelho de verdade: foi provado no emulador,
+  contra a bancada ([log 68](docs/logs/68-o-painel-no-android.md));
 - nas pastas compartilhadas, o Word de verdade salvando dentro de uma pasta sob demanda (o
   LibreOffice foi provado; [log 59](docs/logs/59-a-pasta-sob-demanda.md)). O resto foi provado entre
   este Windows e o notebook Fedora, numa sessão GNOME, e com o instalador.

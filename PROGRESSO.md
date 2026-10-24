@@ -626,3 +626,26 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       ([log 60](docs/logs/60-a-copia-e-a-pasta.md))
 - [x] Linux: o Nautilus vê na hora o que a sincronia muda — sem F5 —, pela montagem; e a montagem
       não trava com programas esperando a rede ([log 60](docs/logs/60-a-copia-e-a-pasta.md))
+
+## Etapa 12 — Painel no Android ([12](docs/12-painel-android.md), [ADR-0018](docs/adr/0018-painel-no-android.md))
+
+- [x] Protocolo 11: `WatchUsage` e `Usage` com portão de versão e vetores gravados; a latência de
+      cada rota medida pelo `Pong` antes da detecção de repetição ([log 68](docs/logs/68-o-painel-no-android.md))
+- [x] `ir-telemetria`: as seis fontes nos dois sistemas, cada uma na sua cadência, coleta só com
+      alguém olhando; provada com `--example amostra` no Windows e no Fedora 44 ([log 68](docs/logs/68-o-painel-no-android.md))
+- [x] `ir-monitor`: a conversa cifrada com as duas confirmações, o vocabulário do painel com
+      vetores, a mesa e os níveis ([log 68](docs/logs/68-o-painel-no-android.md))
+- [x] `ir-monitor-rede` e `ir-vigilancia`: a porta 52527, a janela de pareamento, a assinatura que
+      expira, o esquecer que derruba; testes em TCP de verdade ([log 68](docs/logs/68-o-painel-no-android.md))
+- [x] A janela do PC: cartão, tela, código e lista, conferidos em `--simulado` ([log 68](docs/logs/68-o-painel-no-android.md))
+- [x] O aplicativo Android: núcleo em Rust por JNI, Compose, protetor de tela; no emulador de
+      tablet contra a bancada — descoberta, código igual nas duas telas, em pé e deitado, volta
+      sem código ([log 68](docs/logs/68-o-painel-no-android.md))
+- [ ] `[H]` Bancada com o serviço **instalado** nos dois computadores e um aparelho de verdade: o
+      par da versão 11 respondendo, as duas rotas medidas, o par antigo pedindo atualização
+- [ ] `[H]` O orçamento de [12, §3.4](docs/12-painel-android.md): CPU e memória do serviço com um
+      painel olhando por 5 minutos, nos dois sistemas
+- [ ] `[H]` Temperatura no Windows como serviço (`SYSTEM`): a zona do ACPI, e o LibreHardwareMonitor
+      aberto
+- [ ] `[H]` Uma noite inteira no protetor de tela, no carregador
+- [ ] Distribuição do APK: onde publicar e a chave de assinatura

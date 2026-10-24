@@ -101,6 +101,12 @@ crates/
 ├── ir-configuracao/ configuração e identidade persistentes da máquina
 ├── ir-canais/     os canais locais do serviço: controle (interface) e agente
 ├── ir-recado/     o recado fora da janela: notificação do sistema e ícone da bandeja
+├── ir-telemetria/ a amostra de uso desta máquina, só enquanto alguém olha
+├── ir-monitor/    o enlace com o painel no Android: conversa, vocabulário, mesa .. PURO, sem E/S
+├── ir-monitor-rede/ o serviço atendendo o painel: a porta 52527 e as conexões
+├── ir-vigilancia/ o painel visto pelo serviço: quando coletar, o que pedir ao par
+├── ir-monitor-android/ o núcleo do aplicativo Android, exposto por JNI
+├── ir-ui-servico/ o serviço visto pela janela: o contrato e o simulado
 ├── ir-daemon/     binário do serviço
 ├── ir-agent/      binário do agente
 └── ir-ui/         interface (Slint): biblioteca testável + binário fino
@@ -122,7 +128,12 @@ ir-daemon ──► ir-session ──► ir-proto ──► (nada)
 ir-agent  ──► ir-ipc, ir-input, ir-clip, ir-geometry, ir-sincronia, ir-recado
 ir-sincronia ──► ir-pasta, ir-acervo, ir-nuvem, ir-ipc, ir-proto, ir-recado
 ir-acervo    ──► ir-pasta, ir-nuvem, ir-proto
-ir-ui     ──► ir-ipc, ir-recado   (e mais nada — a interface não conhece o produto)
+ir-ui     ──► ir-ipc, ir-recado, ir-ui-servico   (e mais nada — a interface não conhece o produto)
+ir-ui-servico ──► ir-ipc
+
+ir-daemon ──► ir-vigilancia ──► ir-monitor-rede ──► ir-monitor ──► ir-crypto, ir-proto
+                      └──────► ir-telemetria ──► ir-proto
+ir-monitor-android ──► ir-monitor, ir-net (só a descoberta)
 ir-recado ──► ir-ipc          (só o vocabulário: sabe dar recado, e não o que acontece)
 ```
 

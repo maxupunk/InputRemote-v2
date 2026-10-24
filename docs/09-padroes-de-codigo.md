@@ -71,6 +71,8 @@ dentro do núcleo.
 | `ir-input` | `windows::sendinput`, `windows::hooks`, `windows::rawinput`, `linux::uinput`, `linux::evdev` |
 | `ir-bt` | `windows::winsock` |
 | `ir-daemon` | `windows::service`, `windows::spawn_agent` |
+| `ir-telemetria` | `windows::sistema`, `linux::sys` ([ADR-0018](adr/0018-painel-no-android.md)) |
+| `ir-monitor-android` | `jni` — só `#[unsafe(no_mangle)]` ([ADR-0018](adr/0018-painel-no-android.md)) |
 
 Dentro deles:
 
