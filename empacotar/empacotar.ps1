@@ -337,7 +337,18 @@ function Empacotar-Linux {
     # o workspace inteiro com LTO e um rustc por thread, a VM do WSL cresce ate paginar, e a maquina
     # inteira trava junto -- aconteceu, com o Docker parando de responder. Com teto, faltar memoria
     # mata um rustc e a construcao falha com motivo, que e melhor que um computador parado.
-    $nucleos = [Math]::Max(2, [Math]::Floor([Environment]::ProcessorCount / 2))
+    # O teto de CPUs precisa respeitar o total do daemon do Docker (no Docker Desktop / WSL2 costuma
+    # ser menor que o do host Windows). Passar mais CPUs do que o Docker tem causa erro de daemon.
+    $cpusDocker = 0
+    try {
+        $saidaCpus = (& docker info --format '{{.NCPU}}' 2>$null) | Out-String
+        if ($saidaCpus.Trim() -match '^\d+$') {
+            $cpusDocker = [int]$matches[0]
+        }
+    } catch { }
+
+    $cpusDisponiveis = if ($cpusDocker -gt 0) { $cpusDocker } else { [Environment]::ProcessorCount }
+    $nucleos = [Math]::Max(1, [Math]::Min($cpusDisponiveis, [Math]::Max(2, [Math]::Floor($cpusDisponiveis / 2))))
     & docker run --rm `
         --cpus $nucleos `
         --memory 12g `
