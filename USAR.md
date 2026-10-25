@@ -19,6 +19,10 @@ libera o firewall e sobe o ajudante de clipboard na sessão aberta. O serviço l
 no prompt de elevação, a máquina precisa confiar no certificado que assinou o pacote
 ([05, §4.4](docs/05-windows.md)).
 
+**Android (o painel):** o `.apk` de `dist/` vai para o aparelho (cabo, ou `adb install`). A chave é
+de teste, gerada uma vez em `empacotar/certificado`: um aparelho com o painel de outra chave precisa
+desinstalar antes, e desinstalar apaga o pareamento e os cards.
+
 **Linux (Fedora 44):**
 
 ```bash
@@ -164,7 +168,8 @@ Um tablet ou celular Android mostra, numa tela sempre acesa, o uso dos dois comp
 processador, memória, disco, rede, bateria, temperaturas — e quanto cada rota (Bluetooth e rede)
 está atrasando. Ele só olha: não digita, não copia e não recebe arquivo.
 
-1. Instale o **InputRemote Painel** no aparelho (o APK sai de `android/`, ver abaixo).
+1. Instale o **InputRemote Painel** no aparelho: o `dist/InputRemote-Painel-*.apk`, que o
+   `empacotar.ps1` gera junto com os outros (`-Alvo Android` para gerar só ele).
 2. No computador, na tela inicial, **Painel no celular** → **Parear aparelho**.
 3. No aparelho, o computador aparece na lista (mesmo Wi-Fi); toque em **Parear**. Se a rede isola os
    aparelhos, digite o IP do computador.

@@ -21,8 +21,23 @@ android {
         versionName = "0.1.0"
     }
 
+    // A chave do release vem de fora (`empacotar/empacotar.ps1` a passa com -P): nenhuma senha mora
+    // no repositório. Sem ela, o release sai sem assinatura, e o Android não o instala.
+    val chave = providers.gradleProperty("painel.chave").orNull
+    signingConfigs {
+        if (chave != null) {
+            create("painel") {
+                storeFile = file(chave)
+                storePassword = providers.gradleProperty("painel.senha").get()
+                keyAlias = providers.gradleProperty("painel.apelido").get()
+                keyPassword = storePassword
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfigs.findByName("painel")?.let { signingConfig = it }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

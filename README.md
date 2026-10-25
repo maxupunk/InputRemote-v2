@@ -86,17 +86,19 @@ As regras de código estão em [docs/09-padroes-de-codigo.md](docs/09-padroes-de
 
 ## Como gerar os instaladores
 
-Um comando, os dois sistemas:
+Um comando, os dois sistemas e o painel no Android:
 
 ```powershell
 .\empacotar\empacotar.ps1
 ```
 
-Sai em `dist/`: o `.msi` do Windows, assinado, e o `.rpm` do Fedora 44. O RPM é construído dentro
+Sai em `dist/`: o `.msi` do Windows, assinado, o `.rpm` do Fedora 44 e o `.apk` do painel,
+assinado com uma chave de teste gerada uma vez em `empacotar/certificado` (precisa de um JDK no
+`PATH` e do SDK do Android). O RPM é construído dentro
 de um container do Fedora — não por compilação cruzada —, porque o gerador de dependências do RPM
 precisa ler o ELF no próprio sistema de destino para acertar os `Requires`.
 
-`-Alvo Windows` ou `-Alvo Linux` fazem só um lado. Detalhes e o que ainda **não** entra no pacote:
+`-Alvo Windows`, `-Alvo Linux` ou `-Alvo Android` fazem só um. Detalhes e o que ainda **não** entra no pacote:
 [docs/logs/11-instaladores.md](docs/logs/11-instaladores.md).
 
 > A assinatura é autoassinada, para teste e uso local. Ela não substitui um certificado de

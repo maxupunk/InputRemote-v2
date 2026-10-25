@@ -10,6 +10,7 @@ Produz:
 
     dist\InputRemote-<versao>-x64.msi            instalador do Windows, assinado
     dist\inputremote-<versao>.fc44.x86_64.rpm    pacote do Fedora 44
+    dist\InputRemote-Painel-<versao>.apk         o painel no Android, assinado
     dist\MANIFESTO.txt                           o que saiu, com impressao digital
 
 O RPM sai de dentro de um container do Fedora 44, e nao de compilacao cruzada. Um pacote que
@@ -19,8 +20,12 @@ gerador de dependencias do RPM precisa ler o ELF no proprio Fedora para acertar 
 A assinatura e autoassinada, para teste e uso local. Nao substitui certificado de verdade, e o
 manifesto diz isso em letras maiusculas.
 
+O APK e o release do aplicativo do painel (android/), com o nucleo em Rust compilado pelo
+`cargo ndk` do proprio Gradle. A chave e de teste, gerada uma vez em empacotar\certificado:
+quem instalou um APK de uma chave so atualiza com a mesma chave.
+
 .PARAMETER Alvo
-Tudo (padrao), Windows ou Linux.
+Tudo (padrao), Windows, Linux ou Android.
 
 .PARAMETER PularCompilacao
 No lado Windows, reaproveita o que ja estiver em target/release.
@@ -29,7 +34,7 @@ No lado Windows, reaproveita o que ja estiver em target/release.
 Nao assina. O MSI sai, e o manifesto registra a ausencia.
 #>
 param(
-    [ValidateSet('Tudo', 'Windows', 'Linux')]
+    [ValidateSet('Tudo', 'Windows', 'Linux', 'Android')]
     [string]$Alvo = 'Tudo',
 
     [switch]$PularCompilacao,
@@ -55,6 +60,7 @@ $imagemDoFedora = 'inputremote-fedora44:latest'
 # retorno viraria um vetor com o ruido das ferramentas junto.
 $script:msiGerado = $null
 $script:rpmGerado = $null
+$script:apkGerado = $null
 
 $componentes = @(
     @{ Arquivo = 'inputremote-daemon.exe'; Papel = 'servico privilegiado'; Obrigatorio = $true },
@@ -351,6 +357,67 @@ function Empacotar-Linux {
 }
 
 # =================================================================================================
+# Android
+# =================================================================================================
+
+function Garantir-Chave-Do-Painel {
+    # Uma chave de teste, como o certificado do MSI: gerada na primeira vez, guardada fora do
+    # repositorio (empacotar\certificado e ignorado), e reaproveitada depois. Trocar de chave obriga
+    # a desinstalar o aplicativo -- e desinstalar apaga o pareamento e os cards de quem usa.
+    $pasta = Join-Path $PSScriptRoot 'certificado'
+    $chave = Join-Path $pasta 'painel-teste.jks'
+    $arquivoDaSenha = Join-Path $pasta 'painel-teste.senha'
+    if ((Test-Path $chave) -and (Test-Path $arquivoDaSenha)) {
+        return @{ Chave = $chave; Senha = (Get-Content $arquivoDaSenha -Raw).Trim() }
+    }
+
+    $keytool = Get-Command keytool -ErrorAction SilentlyContinue
+    if (-not $keytool) { throw 'keytool nao encontrado: e preciso um JDK no PATH para gerar a chave do APK' }
+
+    Escrever-Passo 'gerando a chave de teste do APK (uma vez so)'
+    New-Item -ItemType Directory -Force -Path $pasta | Out-Null
+    $senha = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 32 | ForEach-Object { [char]$_ })
+    Executar-Ferramenta -Nome 'keytool' -Programa $keytool.Source -Argumentos @(
+        '-genkeypair', '-keystore', $chave, '-storetype', 'PKCS12', '-alias', 'painel',
+        '-keyalg', 'RSA', '-keysize', '3072', '-validity', '10000',
+        '-storepass', $senha, '-dname', 'CN=InputRemote Painel (teste)'
+    ) | Out-Null
+    Escrever-Texto -Caminho $arquivoDaSenha -Linhas @($senha)
+    return @{ Chave = $chave; Senha = $senha }
+}
+
+function Empacotar-Android([string]$versao) {
+    Escrever-Titulo 'Android'
+
+    $android = Join-Path $raiz 'android'
+    $argumentos = @('assembleRelease', '--console=plain', '-q')
+    if (-not $SemAssinatura) {
+        $chave = Garantir-Chave-Do-Painel
+        $argumentos += @("-Ppainel.chave=$($chave.Chave)", "-Ppainel.senha=$($chave.Senha)", '-Ppainel.apelido=painel')
+    } else {
+        Escrever-Aviso 'assinatura desligada a pedido: o Android nao instala um APK sem assinatura'
+    }
+
+    Escrever-Passo 'compilando o release (nucleo em Rust pelo cargo ndk, e o aplicativo)'
+    Push-Location $android
+    try {
+        Executar-Ferramenta -Nome 'gradle' -Programa (Join-Path $android 'gradlew.bat') -Argumentos $argumentos | Out-Null
+    } finally {
+        Pop-Location
+    }
+
+    $saida = Join-Path $android 'app\build\outputs\apk\release'
+    $gerado = Get-ChildItem $saida -Filter '*.apk' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $gerado) { throw "o Gradle terminou sem produzir .apk em $saida" }
+
+    New-Item -ItemType Directory -Force -Path $dist | Out-Null
+    $apk = Join-Path $dist "InputRemote-Painel-$versao.apk"
+    Copy-Item $gerado.FullName -Destination $apk -Force
+    Escrever-Passo "APK: $apk"
+    $script:apkGerado = $apk
+}
+
+# =================================================================================================
 
 $versao = Ler-Versao
 $commit = Ler-Commit
@@ -362,12 +429,14 @@ New-Item -ItemType Directory -Force -Path $dist | Out-Null
 $padroes = @()
 if ($Alvo -in @('Tudo', 'Windows')) { $padroes += '*.msi' }
 if ($Alvo -in @('Tudo', 'Linux')) { $padroes += '*.rpm' }
+if ($Alvo -in @('Tudo', 'Android')) { $padroes += '*.apk' }
 foreach ($padrao in $padroes) {
     Get-ChildItem $dist -Filter $padrao -ErrorAction SilentlyContinue | Remove-Item -Force
 }
 
 if ($Alvo -in @('Tudo', 'Windows')) { Empacotar-Windows -versao $versao -commit $commit }
 if ($Alvo -in @('Tudo', 'Linux')) { Empacotar-Linux }
+if ($Alvo -in @('Tudo', 'Android')) { Empacotar-Android -versao $versao }
 
 # --- Manifesto de dist ----------------------------------------------------------------------------
 
@@ -376,7 +445,7 @@ Escrever-Titulo 'Resultado'
 # Lista o que esta em dist/, e nao so o que esta rodada produziu: quem roda `-Alvo Windows` em
 # cima de um RPM existente precisa de um manifesto que descreva a pasta de verdade.
 $saidas = @(Get-ChildItem $dist -File -ErrorAction SilentlyContinue |
-    Where-Object { $_.Extension -in @('.msi', '.rpm') } |
+    Where-Object { $_.Extension -in @('.msi', '.rpm', '.apk') } |
     Sort-Object Name | ForEach-Object { $_.FullName })
 
 $resumo = New-Object System.Collections.Generic.List[string]
@@ -389,6 +458,7 @@ foreach ($saida in $saidas) {
     $tamanho = [math]::Round((Get-Item $saida).Length / 1MB, 2)
     $resumo.Add("$(Split-Path -Leaf $saida)  ($tamanho MB)")
     if ($saida -like '*.msi') { $resumo.Add("  $(Descrever-Assinatura $saida)") }
+    if ($saida -like '*.apk') { $resumo.Add('  assinado com a chave de TESTE do painel (empacotar\certificado)') }
     $resumo.Add("  sha256 $hash")
 }
 $resumo.Add('')
