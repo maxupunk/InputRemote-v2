@@ -2,6 +2,7 @@ package io.github.inputremote.painel.ui.telas
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -20,9 +21,15 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -186,12 +193,71 @@ private fun CardEnlaceCompacto(
     }
 }
 
+private data class DetalhesCopia(
+    val taxa: String?,
+    val tempoRestante: String?,
+    val nomeArquivo: String,
+)
+
+private fun extrairDetalhesCopia(detalhe: String?): DetalhesCopia? {
+    if (detalhe.isNullOrBlank()) return null
+    val partes = detalhe.split("·").map { it.trim() }
+    return if (partes.size >= 3) {
+        DetalhesCopia(
+            taxa = partes[0],
+            tempoRestante = partes[1],
+            nomeArquivo = partes.drop(2).joinToString("·"),
+        )
+    } else if (partes.size == 2) {
+        DetalhesCopia(
+            taxa = partes[0],
+            tempoRestante = null,
+            nomeArquivo = partes[1],
+        )
+    } else {
+        DetalhesCopia(
+            taxa = null,
+            tempoRestante = null,
+            nomeArquivo = detalhe,
+        )
+    }
+}
+
+private data class RegistroDeCopia(
+    val nome: String,
+    val direcao: String,
+    val horario: String,
+    val taxa: String? = null,
+)
+
+private enum class ModoTrafegoRede {
+    GRAFICO,
+    NUMERICO,
+}
+
 @Composable
 private fun CardCopiaCompacto(
     copia: Bloco?,
     series: Map<String, List<Float>>,
     modifier: Modifier = Modifier,
 ) {
+    var ultimoRegistro by remember { mutableStateOf<RegistroDeCopia?>(null) }
+
+    LaunchedEffect(copia?.detalhe, copia?.valor) {
+        if (copia != null) {
+            val info = extrairDetalhesCopia(copia.detalhe)
+            val nome = info?.nomeArquivo ?: "Arquivo"
+            val direcao = if (copia.rotulo.contains("enviando", ignoreCase = true)) "Enviado" else "Recebido"
+            val agora = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+            ultimoRegistro = RegistroDeCopia(
+                nome = nome,
+                direcao = direcao,
+                horario = agora,
+                taxa = info?.taxa,
+            )
+        }
+    }
+
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = Cores.superficie),
@@ -201,15 +267,47 @@ private fun CardCopiaCompacto(
             Modifier.padding(horizontal = 10.dp, vertical = 8.dp).fillMaxHeight(),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(
-                "Transferência de Arquivos",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Cores.texto,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Transferência de Arquivos",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Cores.texto,
+                )
+                if (copia != null) {
+                    val direcao = if (copia.rotulo.contains("enviando", ignoreCase = true)) "Enviando" else "Recebendo"
+                    Text(
+                        direcao,
+                        color = Cores.bom,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Cores.fundo)
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                } else if (ultimoRegistro != null) {
+                    Text(
+                        "Concluído",
+                        color = Cores.textoFraco,
+                        fontSize = 11.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Cores.fundo)
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
+            }
+
             if (copia != null) {
                 val cor = copia.nivel.cor()
                 val serie = series[Historico.chave(Historico.ENLACE, copia.chave)].orEmpty()
+                val info = extrairDetalhesCopia(copia.detalhe)
+
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -217,56 +315,170 @@ private fun CardCopiaCompacto(
                         .clip(RoundedCornerShape(10.dp))
                         .background(Cores.fundo)
                         .padding(horizontal = 10.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.SpaceBetween,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
+                    // Nome do arquivo e porcentagem
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(copia.rotulo, color = Cores.textoFraco, fontSize = 12.sp)
-                        Text(copia.valor, style = numeros, fontSize = 22.sp, color = Cores.bom)
-                    }
-                    copia.detalhe?.let {
                         Text(
-                            it,
+                            info?.nomeArquivo ?: copia.rotulo,
                             color = Cores.texto,
-                            fontSize = 12.sp,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f).padding(end = 8.dp),
+                        )
+                        Text(
+                            copia.valor,
+                            style = numeros,
+                            fontSize = 20.sp,
+                            color = Cores.bom,
                         )
                     }
-                    copia.fracao?.let { Barra(it, Cores.bom, 5.dp) }
+
+                    // Barra de progresso com altura padronizada
+                    copia.fracao?.let { Barra(it, Cores.bom, 6.dp) }
+
+                    // Métricas: Taxa e tempo restante lado a lado
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        info?.taxa?.let {
+                            Text(
+                                "⚡ $it",
+                                color = Cores.texto,
+                                fontSize = 12.sp,
+                                style = numeros,
+                            )
+                        }
+                        info?.tempoRestante?.let {
+                            Text(
+                                "⏱ $it",
+                                color = Cores.textoFraco,
+                                fontSize = 12.sp,
+                            )
+                        }
+                    }
+
+                    // Gráfico da taxa de cópia, se houver histórico
                     if (serie.size > 1) {
-                        MiniGrafico(serie, cor, Modifier.fillMaxWidth().height(18.dp))
+                        MiniGrafico(serie, cor, Modifier.fillMaxWidth().height(26.dp))
+                    } else {
+                        Spacer(Modifier.height(4.dp))
+                    }
+                }
+
+                // Quando houver espaço no card e histórico anterior
+                ultimoRegistro?.let { hist ->
+                    if (hist.nome != (info?.nomeArquivo ?: "")) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Cores.fundo.copy(alpha = 0.6f))
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Text("✓", color = Cores.bom, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                "Anterior: ${hist.nome} (${hist.direcao} às ${hist.horario})",
+                                color = Cores.textoFraco,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
             } else {
-                Box(
+                // Estado sem cópia ativa no momento
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Cores.fundo)
-                        .padding(10.dp),
-                    contentAlignment = Alignment.Center,
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    val hist = ultimoRegistro
+                    if (hist != null) {
+                        // Exibe card com a última transferência concluída (histórico preservado)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Cores.fundo)
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    Text("✓", color = Cores.bom, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        "Última Transferência",
+                                        color = Cores.textoFraco,
+                                        fontSize = 11.sp,
+                                    )
+                                }
+                                Text(
+                                    hist.horario,
+                                    color = Cores.textoFraco,
+                                    fontSize = 11.sp,
+                                    style = numeros,
+                                )
+                            }
+                            Text(
+                                hist.nome,
+                                color = Cores.texto,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "${hist.direcao} com sucesso",
+                                    color = Cores.bom,
+                                    fontSize = 11.sp,
+                                )
+                                hist.taxa?.let {
+                                    Text("· $it", color = Cores.textoFraco, fontSize = 11.sp, style = numeros)
+                                }
+                            }
+                        }
+                    }
+
+                    // Aviso explicativo discreto
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Cores.fundo.copy(alpha = 0.5f))
+                            .padding(8.dp),
+                        contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            "Nenhuma cópia no momento",
+                            if (hist != null) "Aguardando próxima transferência…" else "Nenhuma cópia no momento. Ao transferir arquivos entre os computadores, os detalhes aparecerão aqui.",
                             color = Cores.textoFraco,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                        )
-                        Text(
-                            "Ao transferir arquivos entre os computadores, o progresso e velocidade aparecerão aqui.",
-                            color = Cores.textoFraco,
-                            fontSize = 11.sp,
+                            fontSize = 12.sp,
                             textAlign = TextAlign.Center,
-                            lineHeight = 15.sp,
+                            lineHeight = 16.sp,
                         )
                     }
                 }
@@ -281,6 +493,8 @@ private fun CardTrafegoRedeCompacto(
     series: Map<String, List<Float>>,
     modifier: Modifier = Modifier,
 ) {
+    var modo by remember { mutableStateOf(ModoTrafegoRede.GRAFICO) }
+
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = Cores.superficie),
@@ -290,29 +504,75 @@ private fun CardTrafegoRedeCompacto(
             Modifier.padding(horizontal = 10.dp, vertical = 8.dp).fillMaxHeight(),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(
-                "Tráfego de Rede por Máquina",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Cores.texto,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Tráfego de Rede",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Cores.texto,
+                )
+                // Seletor de modo elegante (Gráfico vs Numérico)
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Cores.fundo)
+                        .padding(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    val selecionadoGrafico = modo == ModoTrafegoRede.GRAFICO
+                    Text(
+                        "Gráfico",
+                        fontSize = 11.sp,
+                        fontWeight = if (selecionadoGrafico) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (selecionadoGrafico) Cores.texto else Cores.textoFraco,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (selecionadoGrafico) Cores.superficie else Color.Transparent)
+                            .clickable { modo = ModoTrafegoRede.GRAFICO }
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                    )
+                    val selecionadoNumerico = modo == ModoTrafegoRede.NUMERICO
+                    Text(
+                        "Numérico",
+                        fontSize = 11.sp,
+                        fontWeight = if (selecionadoNumerico) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (selecionadoNumerico) Cores.texto else Cores.textoFraco,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (selecionadoNumerico) Cores.superficie else Color.Transparent)
+                            .clickable { modo = ModoTrafegoRede.NUMERICO }
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                    )
+                }
+            }
+
             Column(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 vista.maquinas.forEach { maquina ->
                     val rede = maquina.blocos.firstOrNull { it.chave == "rede" }
-                    Row(
+                    val serie = series[Historico.chave(maquina.nome, "rede")].orEmpty()
+
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
                             .clip(RoundedCornerShape(10.dp))
                             .background(Cores.fundo)
                             .padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        // Cabeçalho da máquina com nome e valores atuais
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Text(
                                 maquina.nome,
                                 color = Cores.texto,
@@ -321,24 +581,88 @@ private fun CardTrafegoRedeCompacto(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            rede?.detalhe?.let {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
                                 Text(
-                                    it,
-                                    color = Cores.textoFraco,
-                                    fontSize = 11.sp,
+                                    rede?.valor ?: "—",
                                     style = numeros,
+                                    fontSize = 13.sp,
+                                    color = Cores.bom,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
                                 )
+                                rede?.detalhe?.let {
+                                    Text(
+                                        it,
+                                        style = numeros,
+                                        fontSize = 12.sp,
+                                        color = Cores.textoFraco,
+                                        maxLines = 1,
+                                    )
+                                }
                             }
                         }
-                        Text(
-                            rede?.valor ?: "—",
-                            style = numeros,
-                            fontSize = 18.sp,
-                            color = Cores.texto,
-                            maxLines = 1,
-                        )
+
+                        if (modo == ModoTrafegoRede.GRAFICO) {
+                            // Modo Gráfico: Sparkline padronizado de 28dp preenchendo o espaço uniformemente
+                            if (serie.size > 1) {
+                                MiniGrafico(serie, Cores.bom, Modifier.fillMaxWidth().height(28.dp))
+                            } else {
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .height(28.dp)
+                                        .background(Cores.borda.copy(alpha = 0.2f), RoundedCornerShape(4.dp)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text("aguardando dados de rede…", fontSize = 10.sp, color = Cores.textoFraco)
+                                }
+                            }
+                        } else {
+                            // Modo Numérico: Cards dedicados lado a lado para Download e Upload
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(36.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Cores.superficie)
+                                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                                    verticalArrangement = Arrangement.Center,
+                                ) {
+                                    Text("Entrada (Download)", fontSize = 9.sp, color = Cores.textoFraco)
+                                    Text(
+                                        rede?.valor?.removePrefix("↓ ") ?: "—",
+                                        style = numeros,
+                                        fontSize = 14.sp,
+                                        color = Cores.bom,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Cores.superficie)
+                                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                                    verticalArrangement = Arrangement.Center,
+                                ) {
+                                    Text("Saída (Upload)", fontSize = 9.sp, color = Cores.textoFraco)
+                                    Text(
+                                        rede?.detalhe?.removePrefix("↑ ") ?: "—",
+                                        style = numeros,
+                                        fontSize = 14.sp,
+                                        color = Cores.texto,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }

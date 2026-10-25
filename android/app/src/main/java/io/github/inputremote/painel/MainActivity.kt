@@ -9,7 +9,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -46,8 +48,13 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(escuro) { aplicarBrilho(escuro) }
             LaunchedEffect(deitado) { aplicarOrientacao(deitado) }
             // Os cards de processo são o pedido ao computador: o que está nos painéis é o que ele mede.
-            val processos = remember(paineis) {
-                paineis.flatMap { it.arranjo.processos() }.distinct().take(io.github.inputremote.painel.dados.Arranjo.MAX_PROCESSOS)
+            // Se houver vagas (até 4), inclui processos populares como chrome ou o processo pesquisado.
+            var processoPesquisado by remember { mutableStateOf<String?>(null) }
+            val processos = remember(paineis, processoPesquisado) {
+                val dosPaineis = paineis.flatMap { it.arranjo.processos() }.distinct()
+                val pesquisa = listOfNotNull(processoPesquisado?.takeIf { it.isNotBlank() })
+                val populares = listOf("chrome", "code", "docker", "wsl")
+                (pesquisa + dosPaineis + populares).distinct().take(io.github.inputremote.painel.dados.Arranjo.MAX_PROCESSOS)
             }
             LaunchedEffect(processos) { controlador.acompanhar(processos) }
             Painel(
@@ -58,6 +65,8 @@ class MainActivity : ComponentActivity() {
                     confirmar = controlador::confirmar,
                     esquecer = controlador::esquecer,
                     abrirLista = controlador::abrirLista,
+                    acompanhar = controlador::acompanhar,
+                    pesquisarProcesso = { processoPesquisado = it },
                 ),
                 Aparelho(
                     arranjo = arranjo,

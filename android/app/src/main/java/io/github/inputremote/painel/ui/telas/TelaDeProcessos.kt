@@ -21,6 +21,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.inputremote.painel.dados.LinhaDeProcesso
 import io.github.inputremote.painel.dados.ListaEstavel
 import io.github.inputremote.painel.dados.Ordem
 import io.github.inputremote.painel.dados.VistaDaMaquina
@@ -47,12 +49,17 @@ fun TelaDeProcessos(
     aoMudarMaquina: (Int) -> Unit,
     ordemInicial: Ordem,
     aparelho: Aparelho,
+    aoPesquisar: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var ordem by rememberSaveable(ordemInicial) { mutableStateOf(ordemInicial) }
     var filtroTexto by rememberSaveable { mutableStateOf("") }
     var outro by remember { mutableStateOf(false) }
     val estavel = remember { ListaEstavel() }
+
+    LaunchedEffect(filtroTexto) {
+        aoPesquisar(filtroTexto.trim().lowercase())
+    }
 
     val maquina = maquinas.getOrNull(maquinaIndex) ?: maquinas.firstOrNull()
     if (maquina == null) {
@@ -131,13 +138,13 @@ fun TelaDeProcessos(
                 }
             }
 
-            // Atalhos rápidos populares
+            // Atalhos rápidos populares (sem duplicidade wsl / vmmem)
             Row(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Atalhos:", fontSize = 12.sp, color = Cores.textoFraco)
-                listOf("docker", "wsl", "vmmem", "chrome", "code").forEach { atalho ->
+                listOf("chrome", "code", "docker", "wsl").forEach { atalho ->
                     SuggestionChip(
                         onClick = { filtroTexto = atalho },
                         label = { Text(atalho, fontSize = 12.sp) },
@@ -151,14 +158,54 @@ fun TelaDeProcessos(
                 }
             }
 
+            // Combina os processos mais pesados com os processos vigiados do computador (ex: chrome medido pelo daemon)
+            val vigiadosNaLista = maquina.blocos
+                .filter { it.chave.startsWith("proc:") }
+                .mapNotNull { bloco ->
+                    val nomeProc = bloco.chave.removePrefix("proc:")
+                    val detalhe = bloco.detalhe.orEmpty()
+                    if (detalhe == "não está rodando") {
+                        null
+                    } else {
+                        val partes = detalhe.split("·").map { it.trim() }
+                        val memoriaStr = partes.getOrNull(0) ?: "--"
+                        val instStr = partes.getOrNull(1)?.filter { it.isDigit() } ?: "1"
+                        val memoriaKib = runCatching {
+                            val num = memoriaStr.replace(",", ".").filter { it.isDigit() || it == '.' }.toDoubleOrNull() ?: 0.0
+                            when {
+                                memoriaStr.contains("GB", ignoreCase = true) -> (num * 1024 * 1024).toLong()
+                                memoriaStr.contains("MB", ignoreCase = true) -> (num * 1024).toLong()
+                                memoriaStr.contains("KB", ignoreCase = true) -> num.toLong()
+                                else -> 0L
+                            }
+                        }.getOrDefault(0L)
+                        LinhaDeProcesso(
+                            chave = bloco.chave,
+                            nome = if (bloco.rotulo.isNotBlank()) bloco.rotulo else nomeProc,
+                            instancias = instStr.toIntOrNull() ?: 1,
+                            cpu = bloco.valor.ifEmpty { "0 %" },
+                            memoria = memoriaStr,
+                            cpuPermille = ((bloco.fracao ?: 0f) * 1000).toInt(),
+                            memoriaKib = memoriaKib,
+                            nivel = bloco.nivel,
+                        )
+                    }
+                }
+
             val linhasBrutas = maquina.processos
-            if (linhasBrutas == null) {
+            val todasAsLinhas = if (linhasBrutas == null && vigiadosNaLista.isEmpty()) {
+                null
+            } else {
+                (vigiadosNaLista + linhasBrutas.orEmpty()).distinctBy { it.nome.lowercase() }
+            }
+
+            if (todasAsLinhas == null) {
                 Medindo()
             } else {
                 val linhasFiltradas = if (filtroTexto.isBlank()) {
-                    linhasBrutas
+                    todasAsLinhas
                 } else {
-                    linhasBrutas.filter { it.nome.contains(filtroTexto, ignoreCase = true) }
+                    todasAsLinhas.filter { it.nome.contains(filtroTexto, ignoreCase = true) }
                 }
 
                 val ordenadas = estavel.arrumar(linhasFiltradas, ordem, System.currentTimeMillis())

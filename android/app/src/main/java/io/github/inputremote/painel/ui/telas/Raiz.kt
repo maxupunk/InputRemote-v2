@@ -21,6 +21,10 @@ data class Acoes(
     val esquecer: () -> Unit,
     /** Abre a lista de processos do computador nesta posição do quadro, ou a fecha (nulo). */
     val abrirLista: (Int?) -> Unit = {},
+    /** Informa os processos que devem ser acompanhados pelo computador. */
+    val acompanhar: (List<String>) -> Unit = {},
+    /** Notifica a pesquisa de processo ativa na tela de processos para acompanhamento dinâmico. */
+    val pesquisarProcesso: (String) -> Unit = {},
 )
 
 /**

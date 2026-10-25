@@ -251,6 +251,7 @@ fun TelaDoPainel(painel: Tela.Painel, acoes: Acoes, aparelho: Aparelho) {
                                 },
                                 ordemInicial = ordem,
                                 aparelho = aparelho,
+                                aoPesquisar = acoes.pesquisarProcesso,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
