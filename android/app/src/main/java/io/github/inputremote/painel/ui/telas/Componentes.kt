@@ -65,33 +65,65 @@ fun BlocoDeMetrica(
     val cor = bloco.nivel.cor()
     val descricao = listOfNotNull(bloco.rotulo, bloco.valor, bloco.detalhe, bloco.nivel.rotulo().ifEmpty { null })
         .joinToString(", ")
-    val respiro = if (destaque) 14.dp else 10.dp
+    val respiro = if (destaque) 12.dp else 7.dp
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
             .background(Cores.fundo)
-            .padding(horizontal = respiro, vertical = if (destaque) 11.dp else 6.dp)
+            .padding(horizontal = respiro, vertical = if (destaque) 7.dp else 4.dp)
             .semantics(mergeDescendants = true) { contentDescription = descricao },
-        verticalArrangement = Arrangement.spacedBy(if (destaque) 4.dp else 2.dp),
+        verticalArrangement = Arrangement.spacedBy(if (destaque) 2.dp else 1.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(bloco.rotulo, color = Cores.textoFraco, fontSize = 13.sp, maxLines = 1, modifier = Modifier.weight(1f))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(bloco.rotulo, color = Cores.textoFraco, fontSize = 12.sp, maxLines = 1, modifier = Modifier.weight(1f))
             val alerta = bloco.nivel.rotulo()
-            if (alerta.isNotEmpty()) Text(alerta, color = cor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            informar?.let { BotaoDeInformacao("Processos por trás de ${bloco.rotulo}", it) }
+            if (alerta.isNotEmpty()) {
+                Text(
+                    alerta,
+                    color = cor,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(end = if (informar != null) 2.dp else 0.dp),
+                )
+            }
+            if (informar != null) {
+                BotaoDeInformacao("Processos por trás de ${bloco.rotulo}", informar)
+            } else if (destaque) {
+                Spacer(Modifier.size(32.dp))
+            }
         }
         if (destaque) {
-            Valor(bloco, 36.sp)
-            bloco.detalhe?.let { Detalhe(it) }
-            bloco.fracao?.let { Barra(it, cor, 6.dp) }
-            if (serie.size > 1) MiniGrafico(serie, cor, Modifier.fillMaxWidth().height(30.dp))
+            Valor(bloco, 32.sp)
+            Box(
+                modifier = Modifier.fillMaxWidth().height(16.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                bloco.detalhe?.let { Detalhe(it) }
+            }
+            Box(modifier = Modifier.fillMaxWidth().height(5.dp)) {
+                bloco.fracao?.let { Barra(it, cor, 5.dp) }
+            }
+            if (serie.size > 1) {
+                MiniGrafico(serie, cor, Modifier.fillMaxWidth().height(22.dp))
+            } else {
+                Spacer(Modifier.height(22.dp))
+            }
         } else {
             // O valor nunca é cortado: quem encolhe, com reticências, é o detalhe.
-            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Valor(bloco, 20.sp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Valor(bloco, 18.sp)
                 bloco.detalhe?.let { Detalhe(it, Modifier.weight(1f, fill = false)) }
             }
-            bloco.fracao?.let { Barra(it, cor, 3.dp) }
+            Box(modifier = Modifier.fillMaxWidth().height(3.dp)) {
+                bloco.fracao?.let { Barra(it, cor, 3.dp) }
+            }
         }
     }
 }

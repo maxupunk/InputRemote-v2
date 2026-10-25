@@ -9,6 +9,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -40,10 +41,14 @@ class MainActivity : ComponentActivity() {
             val escuro by preferencias.escurecer.collectAsStateWithLifecycle()
             val deitado by preferencias.sempreDeitado.collectAsStateWithLifecycle()
             val arranjo by preferencias.arranjo.collectAsStateWithLifecycle()
+            val paineis by preferencias.paineis.collectAsStateWithLifecycle()
+            val painelAtivoId by preferencias.painelAtivoId.collectAsStateWithLifecycle()
             LaunchedEffect(escuro) { aplicarBrilho(escuro) }
             LaunchedEffect(deitado) { aplicarOrientacao(deitado) }
-            // Os cards de processo são o pedido ao computador: o que está no arranjo é o que ele mede.
-            val processos = arranjo.processos()
+            // Os cards de processo são o pedido ao computador: o que está nos painéis é o que ele mede.
+            val processos = remember(paineis) {
+                paineis.flatMap { it.arranjo.processos() }.distinct().take(io.github.inputremote.painel.dados.Arranjo.MAX_PROCESSOS)
+            }
             LaunchedEffect(processos) { controlador.acompanhar(processos) }
             Painel(
                 tela,
@@ -61,6 +66,13 @@ class MainActivity : ComponentActivity() {
                     alternarEscurecer = preferencias::alternarEscurecer,
                     sempreDeitado = deitado,
                     alternarDeitado = preferencias::alternarDeitado,
+                    paineis = paineis,
+                    painelAtivoId = painelAtivoId,
+                    aoSelecionarPainel = preferencias::selecionarPainel,
+                    aoCriarPainel = { preferencias.criarPainel(it) },
+                    aoRenomearPainel = preferencias::renomearPainel,
+                    aoExcluirPainel = preferencias::excluirPainel,
+                    aoTrocarLadoMaquinas = preferencias::trocarLadoMaquinas,
                 ),
             )
         }

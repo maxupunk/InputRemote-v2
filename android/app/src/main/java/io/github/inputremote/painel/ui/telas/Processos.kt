@@ -115,7 +115,7 @@ fun ListaDeProcessos(maquina: VistaDaMaquina, ordemInicial: Ordem, aparelho: Apa
 
 /** Enquanto a primeira lista não chega — e, se não chega nunca, por quê. */
 @Composable
-private fun Medindo() {
+internal fun Medindo() {
     val demorou by produceState(false) {
         delay(PACIENCIA_MS)
         value = true
@@ -136,7 +136,7 @@ private fun Medindo() {
 }
 
 @Composable
-private fun Linhas(linhas: List<LinhaDeProcesso>, ordem: Ordem, aparelho: Aparelho) {
+internal fun Linhas(linhas: List<LinhaDeProcesso>, ordem: Ordem, aparelho: Aparelho) {
     if (linhas.isEmpty()) {
         Text("Nenhum processo para mostrar.", color = Cores.textoFraco, fontSize = 15.sp)
         return
@@ -148,7 +148,7 @@ private fun Linhas(linhas: List<LinhaDeProcesso>, ordem: Ordem, aparelho: Aparel
 
 /** Uma linha: o nome e quantos são, os dois números, a barra da coluna escolhida e o botão. */
 @Composable
-private fun Linha(linha: LinhaDeProcesso, ordem: Ordem, fracao: Float, aparelho: Aparelho) {
+internal fun Linha(linha: LinhaDeProcesso, ordem: Ordem, fracao: Float, aparelho: Aparelho) {
     val quantos = if (linha.instancias == 1) "1 processo" else "${linha.instancias} processos"
     Row(
         Modifier

@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import io.github.inputremote.painel.dados.Arranjo
 import io.github.inputremote.painel.dados.ComputadorAchado
+import io.github.inputremote.painel.dados.PainelPersonalizado
 import io.github.inputremote.painel.ui.Tela
 import io.github.inputremote.painel.ui.tema.Cores
 import io.github.inputremote.painel.ui.tema.TemaDoPainel
@@ -36,7 +37,18 @@ data class Aparelho(
     val alternarDeitado: () -> Unit,
     /** Se dá para mexer: no protetor de tela, um toque só acorda o aparelho. */
     val editavel: Boolean = true,
-)
+    /** Painéis personalizados configurados no aparelho. */
+    val paineis: List<PainelPersonalizado> = listOf(PainelPersonalizado("painel_principal", "Painel", arranjo)),
+    val painelAtivoId: String = "painel_principal",
+    val aoSelecionarPainel: (String) -> Unit = {},
+    val aoCriarPainel: (String) -> Unit = {},
+    val aoRenomearPainel: (String, String) -> Unit = { _, _ -> },
+    val aoExcluirPainel: (String) -> Unit = {},
+    val aoTrocarLadoMaquinas: (String, List<String>) -> Unit = { _, _ -> },
+) {
+    val painelAtivo: PainelPersonalizado
+        get() = paineis.firstOrNull { it.id == painelAtivoId } ?: paineis.firstOrNull() ?: PainelPersonalizado.PADRAO
+}
 
 /** A tela do momento, com o deslocamento contra marca na tela. */
 @Composable

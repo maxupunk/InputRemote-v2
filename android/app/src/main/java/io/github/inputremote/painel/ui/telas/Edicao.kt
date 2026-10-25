@@ -3,17 +3,21 @@ package io.github.inputremote.painel.ui.telas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -88,41 +92,176 @@ private fun Controle(simbolo: String, nome: String, cor: androidx.compose.ui.gra
 }
 
 /**
- * A barra da edição: pôr de volta um card tirado, voltar ao arranjo de fábrica, e concluir.
- *
- * @param rotulos o nome de cada card que existe agora — o que não existe nesta máquina (uma bateria
- * num desktop) não é oferecido.
+ * A barra da edição: gerenciar abas de painéis (criar, renomear, excluir),
+ * inverter lados das máquinas, adicionar cards, acompanhar processos e concluir.
  */
 @Composable
-fun BarraDeEdicao(aparelho: Aparelho, rotulos: Map<String, String>, concluir: () -> Unit) {
+fun BarraDeEdicao(
+    aparelho: Aparelho,
+    rotulos: Map<String, String>,
+    aoInverterLados: (() -> Unit)? = null,
+    concluir: () -> Unit,
+) {
     var escolhendo by remember { mutableStateOf(false) }
     var processo by remember { mutableStateOf(false) }
+    var renomeando by remember { mutableStateOf(false) }
+    var criandoPainel by remember { mutableStateOf(false) }
+    var confirmandoExclusao by remember { mutableStateOf(false) }
+
+    val painelAtual = aparelho.painelAtivo
+
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            "Toque ◀ ▶ para mudar a ordem, ★ para destacar, ✕ para tirar. Vale para os dois computadores. " +
-                "O \"i\" do processador e da memória mostra os processos.",
-            color = Cores.textoFraco,
-            fontSize = 13.sp,
-        )
         Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Text(
+                text = "Editando \"${painelAtual.nome}\": toque ◀ ▶ na ordem, ★ no destaque, ✕ para tirar.",
+                color = Cores.textoFraco,
+                fontSize = 12.sp,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            Button(
+                onClick = concluir,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+            ) {
+                Text("Concluir", fontSize = 12.sp)
+            }
+        }
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OutlinedButton(onClick = { renomeando = true }) { Text("✏️ Renomear") }
+            OutlinedButton(onClick = { criandoPainel = true }) { Text("+ Novo painel") }
+            if (aparelho.paineis.size > 1) {
+                OutlinedButton(onClick = { confirmandoExclusao = true }) { Text("🗑️ Excluir") }
+            }
+            if (aoInverterLados != null) {
+                OutlinedButton(onClick = aoInverterLados) { Text("⇄ Inverter lados") }
+            }
+            OutlinedButton(onClick = { escolhendo = true }) { Text("Adicionar card") }
+            OutlinedButton(onClick = { processo = true }) { Text("Acompanhar processo") }
             TextButton(onClick = { aparelho.editarArranjo { Arranjo.PADRAO.conhecer(it.conhecidas) } }) {
                 Text("Restaurar padrão")
             }
-            OutlinedButton(onClick = { processo = true }) { Text("Acompanhar processo") }
-            OutlinedButton(onClick = { escolhendo = true }) { Text("Adicionar card") }
             Button(onClick = concluir) { Text("Concluir") }
         }
     }
+
+    if (renomeando) {
+        DialogoRenomearPainel(
+            nomeAtual = painelAtual.nome,
+            aoConfirmar = { novoNome ->
+                aparelho.aoRenomearPainel(painelAtual.id, novoNome)
+                renomeando = false
+            },
+            aoFechar = { renomeando = false },
+        )
+    }
+
+    if (criandoPainel) {
+        DialogoCriarPainel(
+            numeroSugerido = aparelho.paineis.size + 1,
+            aoConfirmar = { nome ->
+                aparelho.aoCriarPainel(nome)
+                criandoPainel = false
+            },
+            aoFechar = { criandoPainel = false },
+        )
+    }
+
+    if (confirmandoExclusao) {
+        AlertDialog(
+            onDismissRequest = { confirmandoExclusao = false },
+            title = { Text("Excluir painel") },
+            text = { Text("Tem certeza que deseja excluir o painel \"${painelAtual.nome}\"? Esta ação não pode ser desfeita.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        aparelho.aoExcluirPainel(painelAtual.id)
+                        confirmandoExclusao = false
+                    },
+                ) { Text("Excluir", color = Cores.ruim) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmandoExclusao = false }) { Text("Cancelar") }
+            },
+        )
+    }
+
     if (escolhendo) {
         EscolherCard(aparelho, rotulos) { escolhendo = false }
     }
     if (processo) {
         AcompanharProcesso(aparelho, sugestoes = emptyList()) { processo = false }
     }
+}
+
+@Composable
+private fun DialogoRenomearPainel(
+    nomeAtual: String,
+    aoConfirmar: (String) -> Unit,
+    aoFechar: () -> Unit,
+) {
+    var nome by remember { mutableStateOf(nomeAtual) }
+    AlertDialog(
+        onDismissRequest = aoFechar,
+        title = { Text("Renomear painel") },
+        text = {
+            OutlinedTextField(
+                value = nome,
+                onValueChange = { nome = it.take(24) },
+                label = { Text("Nome do painel") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = { if (nome.isNotBlank()) aoConfirmar(nome) },
+                enabled = nome.isNotBlank(),
+            ) { Text("Salvar") }
+        },
+        dismissButton = {
+            TextButton(onClick = aoFechar) { Text("Cancelar") }
+        },
+    )
+}
+
+@Composable
+private fun DialogoCriarPainel(
+    numeroSugerido: Int,
+    aoConfirmar: (String) -> Unit,
+    aoFechar: () -> Unit,
+) {
+    var nome by remember { mutableStateOf("Painel $numeroSugerido") }
+    AlertDialog(
+        onDismissRequest = aoFechar,
+        title = { Text("Novo painel") },
+        text = {
+            OutlinedTextField(
+                value = nome,
+                onValueChange = { nome = it.take(24) },
+                label = { Text("Nome do painel") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = { if (nome.isNotBlank()) aoConfirmar(nome) },
+                enabled = nome.isNotBlank(),
+            ) { Text("Criar") }
+        },
+        dismissButton = {
+            TextButton(onClick = aoFechar) { Text("Cancelar") }
+        },
+    )
 }
 
 @Composable
