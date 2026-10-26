@@ -360,9 +360,25 @@ fn reencontrar(cofre: &mut Cofre, computador: &mut Computador) -> Result<TcpStre
     Ok(socket)
 }
 
+/// A frase de quando o computador não atende, com o que fazer — e não o erro do sistema, que
+/// quem segura o tablet não tem como ler ("Connection refused (os error 111)").
+fn por_que_nao_atendeu(endereco: SocketAddr, erro: &std::io::Error) -> String {
+    let ip = endereco.ip();
+    match erro.kind() {
+        ErrorKind::ConnectionRefused => format!(
+            "O computador {ip} não atendeu o painel. Confira se o InputRemote dele está atualizado \
+             e aceitando aparelhos novos (\"Painel no celular\", na janela dele)."
+        ),
+        ErrorKind::TimedOut | ErrorKind::WouldBlock => {
+            format!("O computador {ip} não respondeu. Confira se ele está ligado e no mesmo Wi-Fi.")
+        }
+        _ => format!("Não deu para falar com o computador {ip}: {erro}."),
+    }
+}
+
 fn conectar(endereco: SocketAddr) -> Result<TcpStream, String> {
     let socket = TcpStream::connect_timeout(&endereco, PRAZO_DE_CONEXAO)
-        .map_err(|e| format!("o computador não atendeu em {endereco}: {e}"))?;
+        .map_err(|e| por_que_nao_atendeu(endereco, &e))?;
     let _ = socket.set_nodelay(true);
     socket
         .set_read_timeout(Some(PASSO))

@@ -14,6 +14,26 @@ impl Vigilancia {
         config: &mut Config,
         gravador: &Gravador,
     ) -> Resposta {
+        // Uma preferência gravada: vale com o monitor de pé ou não.
+        match comando {
+            ComandoDePainel::AceitarPedidos(aceita) => {
+                if config.painel_aceita_pedidos != aceita {
+                    config.painel_aceita_pedidos = aceita;
+                    gravador.gravar(config);
+                }
+                if let Some(monitor) = &self.monitor {
+                    monitor.comandar(Comando::AceitarPedidos(aceita));
+                }
+                self.avisar(painel(AvisoDoPainel::AceitaPedidos(aceita)));
+                return Resposta::Feito;
+            }
+            ComandoDePainel::ComoEstaoOsPedidos => {
+                let aceita = config.painel_aceita_pedidos;
+                self.avisar(painel(AvisoDoPainel::AceitaPedidos(aceita)));
+                return Resposta::Feito;
+            }
+            _ => {}
+        }
         let Some(monitor) = &self.monitor else {
             return Resposta::Falha(Falha::ForaDeContexto);
         };
@@ -29,6 +49,7 @@ impl Vigilancia {
                 gravador.gravar(config);
                 self.avisar_lista(config);
             }
+            ComandoDePainel::AceitarPedidos(_) | ComandoDePainel::ComoEstaoOsPedidos => {}
         }
         Resposta::Feito
     }

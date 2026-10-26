@@ -342,3 +342,28 @@ fn a_copia_chega_aos_detalhes_com_a_velocidade() {
     assert_eq!(segunda.feitos, 60);
     assert!(segunda.por_segundo.is_some_and(|v| v > 0));
 }
+
+/// O interruptor dos pedidos vale sem o monitor de pé, fica gravado e é contado à janela.
+#[test]
+fn aceitar_pedidos_grava_e_avisa_a_janela() {
+    let mut bancada = Bancada::nova("pedidos");
+    assert!(bancada.config.painel_aceita_pedidos, "ligado por padrão");
+    let resposta = bancada.vigilancia.comando(
+        ComandoDePainel::AceitarPedidos(false),
+        &mut bancada.config,
+        &bancada.gravador,
+    );
+    assert_eq!(resposta, Resposta::Feito);
+    assert!(!bancada.config.painel_aceita_pedidos);
+    let _ = bancada.vigilancia.comando(
+        ComandoDePainel::ComoEstaoOsPedidos,
+        &mut bancada.config,
+        &bancada.gravador,
+    );
+    let avisos = bancada.avisos();
+    let pedidos: Vec<&Aviso> = avisos
+        .iter()
+        .filter(|a| matches!(a, Aviso::Painel(AvisoDoPainel::AceitaPedidos(false))))
+        .collect();
+    assert_eq!(pedidos.len(), 2, "{avisos:?}");
+}

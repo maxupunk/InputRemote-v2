@@ -13,7 +13,7 @@
 //!
 //! No emulador do Android, o computador é o `10.0.2.2`: digite-o em "IP do computador".
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use ir_crypto::Identity;
 use ir_monitor::{Copia, FaseDaCopia, InteresseEmProcessos, Mesa, Processos, Rota};
@@ -30,9 +30,10 @@ const COPIA_A_CADA: u64 = 60;
 async fn main() -> std::io::Result<()> {
     let (avisos_tx, mut avisos) = mpsc::unbounded_channel();
     let monitor = Monitor::iniciar(Identity::generate(), "bancada", Vec::new(), avisos_tx);
-    monitor.comandar(Comando::AbrirPareamento);
+    // Como o serviço de verdade: o aparelho pede, e o código aparece — aqui, confirmado sozinho.
+    monitor.comandar(Comando::AceitarPedidos(true));
     println!(
-        "monitor na porta {}; pareamento aberto enquanto a bancada roda",
+        "monitor na porta {}; aparelhos novos podem pedir para parear",
         ir_monitor::PORTA
     );
 
@@ -44,12 +45,9 @@ async fn main() -> std::io::Result<()> {
     let mut mesa = Mesa::nova("bancada");
     mesa.par_conectado("notebook (simulado)", true);
     let inicio = Instant::now();
-    // A janela fecha em 3 minutos; numa bancada ela fica aberta enquanto a bancada roda.
-    let mut reabrir = tokio::time::interval(Duration::from_secs(120));
 
     loop {
         tokio::select! {
-            _ = reabrir.tick() => monitor.comandar(Comando::AbrirPareamento),
             Some(aviso) = avisos.recv() => match aviso {
                 Aviso::Codigo(digitos) => {
                     println!("código {digitos:?} — confirmando sozinho");

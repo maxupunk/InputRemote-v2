@@ -16,6 +16,8 @@ pub(super) struct PainelSimulado {
     tique: u32,
     /// Em que passo o código aparece, com um pareamento pedido.
     codigo_em: Option<u32>,
+    /// Se um aparelho novo pode pedir para parear por conta própria.
+    aceita_pedidos: bool,
 }
 
 impl PainelSimulado {
@@ -29,6 +31,7 @@ impl PainelSimulado {
             }],
             tique: 0,
             codigo_em: None,
+            aceita_pedidos: true,
         }
     }
 
@@ -59,6 +62,13 @@ impl PainelSimulado {
                     return Resposta::Falha(Falha::ForaDeContexto);
                 }
                 fila.push(painel(AvisoDoPainel::Lista(self.lista())));
+            }
+            ComandoDePainel::AceitarPedidos(aceita) => {
+                self.aceita_pedidos = aceita;
+                fila.push(painel(AvisoDoPainel::AceitaPedidos(aceita)));
+            }
+            ComandoDePainel::ComoEstaoOsPedidos => {
+                fila.push(painel(AvisoDoPainel::AceitaPedidos(self.aceita_pedidos)));
             }
         }
         Resposta::Feito

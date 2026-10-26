@@ -210,6 +210,8 @@ export global Dados {
     in property <EtapaDoPainel> painel-etapa: EtapaDoPainel.parado;
     /// Os seis dígitos do pareamento do aparelho, um por posição.
     in property <[string]> painel-digitos: ["", "", "", "", "", ""];
+    /// Se um aparelho novo pode pedir para parear por conta própria.
+    in property <bool> painel-aceita-pedidos: true;
 }
 
 export global Acoes {
@@ -281,6 +283,8 @@ export global Acoes {
     callback cancelar-painel();
     /// Esquecer o aparelho desta posição da lista.
     callback esquecer-painel(int);
+    /// Aceitar, ou não, que um aparelho novo peça para parear sem "Parear aparelho".
+    callback aceitar-pedidos-de-paineis(bool);
     /// Aceitar a oferta desta posição da lista.
     callback aceitar-pasta(int);
     /// Recusar a oferta desta posição.

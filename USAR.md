@@ -170,10 +170,14 @@ está atrasando. Ele só olha: não digita, não copia e não recebe arquivo.
 
 1. Instale o **InputRemote Painel** no aparelho: o `dist/InputRemote-Painel-*.apk`, que o
    `empacotar.ps1` gera junto com os outros (`-Alvo Android` para gerar só ele).
-2. No computador, na tela inicial, **Painel no celular** → **Parear aparelho**.
-3. No aparelho, o computador aparece na lista (mesmo Wi-Fi); toque em **Parear**. Se a rede isola os
-   aparelhos, digite o IP do computador.
-4. Os dois mostram o mesmo código de seis dígitos: **São iguais** nos dois.
+2. No aparelho, o computador aparece na lista (mesmo Wi-Fi); toque em **Parear**. Se a rede isola
+   os aparelhos, digite o IP do computador.
+3. A janela do InputRemote aparece sozinha no computador com um código de seis dígitos, o mesmo do
+   aparelho: **São iguais** nos dois.
+
+Pareie com **um** computador só: o outro aparece junto, pela conexão que os dois já têm. Para que
+ninguém da rede possa pedir, em **Painel no celular → Aparelhos novos**, escolha **Só pelo botão**:
+aí o pareamento volta a começar por **Parear aparelho** no computador.
 
 Das próximas vezes o aplicativo abre direto no painel, e acha o computador mesmo com outro IP. O
 painel fica deitado, com o processador e a memória grandes no topo de cada computador. Para arrumar

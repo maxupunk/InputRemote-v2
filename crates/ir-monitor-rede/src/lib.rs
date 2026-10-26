@@ -13,7 +13,9 @@
 //!
 //! # Custo
 //!
-//! - A porta só fica aberta com um painel pareado ou com a janela de pareamento aberta.
+//! - A porta só fica aberta com um painel pareado, com a janela de pareamento aberta, ou com os
+//!   pedidos de aparelhos novos aceitos ([`Comando::AceitarPedidos`]). Um endereço que insiste
+//!   depois de recusado fica de fora por um tempo (`recusas`).
 //! - A assinatura de um painel **expira** em [`ASSINATURA_EXPIRA`] sem renovação: um tablet que
 //!   sumiu da rede sem avisar não deixa a coleta ligada. Sem assinante, o serviço não coleta nada
 //!   ([`Aviso::Assinantes`]).
@@ -34,6 +36,7 @@
 
 mod central;
 mod conexao;
+mod recusas;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -46,6 +49,11 @@ use tokio::sync::{mpsc, watch};
 /// Quanto tempo a janela de pareamento fica aberta: os mesmos três minutos do pareamento entre os
 /// computadores ([04, §3](../../../docs/04-seguranca.md)).
 pub const JANELA_DE_PAREAMENTO: Duration = Duration::from_secs(180);
+
+/// Quanto tempo o código de um pareamento espera a resposta das duas telas. Sem resposta, o
+/// pedido é recusado: com o pedido partindo do aparelho, ninguém no computador pediu nada, e o
+/// código não pode ficar na tela para sempre.
+pub const PRAZO_DO_CODIGO: Duration = Duration::from_secs(60);
 
 /// Depois de quanto tempo sem renovação uma assinatura vale como desfeita. O painel renova a cada
 /// 2 s; cinco é folga para uma renovação perdida no Wi-Fi.
@@ -62,6 +70,9 @@ pub enum Comando {
     Confirmar(bool),
     /// Os painéis pareados, como estão gravados. Quem sair da lista é desconectado na hora.
     Conhecidos(Vec<PublicKey>),
+    /// Aceite (`true`) que um aparelho novo peça para parear sem a janela aberta: o código aparece
+    /// sozinho no computador, e a pessoa confere nas duas telas. Desligado, só pela janela.
+    AceitarPedidos(bool),
 }
 
 /// O que o monitor conta ao serviço.

@@ -195,12 +195,16 @@ impl Vigilancia {
             }
         });
         copia::ouvir(self.avisos.subscribe(), Arc::clone(&self.entregar));
-        self.monitor = Some(Monitor::iniciar(
+        let monitor = Monitor::iniciar(
             self.identidade.clone(),
             &self.nome,
             config.chaves_dos_paineis(),
             avisos,
+        );
+        monitor.comandar(ir_monitor_rede::Comando::AceitarPedidos(
+            config.painel_aceita_pedidos,
         ));
+        self.monitor = Some(monitor);
     }
 
     /// A mesa segue a sessão: o par entra quando ela sobe, e sai — com as voltas dele — quando cai.

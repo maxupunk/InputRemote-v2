@@ -28,6 +28,12 @@ pub enum ComandoDePainel {
     Cancelar,
     /// Esqueça este painel: ele é desconectado na hora e não volta sem parear de novo.
     Esquecer(String),
+    /// Aceite, ou não, que um aparelho novo peça para parear sem "Parear aparelho": o código
+    /// aparece sozinho na janela. A resposta chega como [`AvisoDoPainel::AceitaPedidos`].
+    AceitarPedidos(bool),
+    /// Conte se os pedidos estão aceitos ([`AvisoDoPainel::AceitaPedidos`]) — a janela pergunta ao
+    /// abrir.
+    ComoEstaoOsPedidos,
 }
 
 /// O que o serviço conta à janela sobre os painéis.
@@ -39,6 +45,8 @@ pub enum AvisoDoPainel {
     Concluido(bool),
     /// A lista mudou — um painel novo, esquecido, que ligou, desligou ou disse o nome.
     Lista(Vec<ResumoDoPainel>),
+    /// Se um aparelho novo pode pedir para parear por conta própria.
+    AceitaPedidos(bool),
 }
 
 /// Uma linha sobre os aparelhos, para o cartão da tela inicial.

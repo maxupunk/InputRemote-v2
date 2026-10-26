@@ -1,7 +1,7 @@
 //! A dona do estado do monitor: quem está conectado, quem pareia, quem assina.
 
 use std::collections::HashMap;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
 use ir_crypto::{Identity, PublicKey};
@@ -12,6 +12,7 @@ use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
 use crate::conexao::{self, Ligacao};
+use crate::recusas::Recusas;
 use crate::{Aviso, Comando, JANELA_DE_PAREAMENTO, Publicacao};
 
 /// O que uma conexão conta à central.
@@ -56,6 +57,8 @@ struct Viva {
     par: Option<PublicKey>,
     assinando: bool,
     interesse: Option<Interesse>,
+    /// De onde veio: as recusas são contadas por endereço.
+    endereco: IpAddr,
     tarefa: JoinHandle<()>,
 }
 
@@ -70,6 +73,9 @@ pub(crate) struct Central {
     recebidas: mpsc::UnboundedReceiver<DaConexao>,
     assinantes: usize,
     interesse: [InteresseEmProcessos; 2],
+    /// Se um aparelho novo pode pedir para parear sem a janela aberta.
+    aceita_pedidos: bool,
+    recusas: Recusas,
 }
 
 impl Central {
@@ -86,6 +92,8 @@ impl Central {
             recebidas,
             assinantes: 0,
             interesse: Default::default(),
+            aceita_pedidos: false,
+            recusas: Recusas::default(),
         }
     }
 
@@ -124,6 +132,10 @@ impl Central {
                 self.derrubar_desconhecidos();
                 self.ajustar_escuta().await;
             }
+            Comando::AceitarPedidos(aceita) => {
+                self.aceita_pedidos = aceita;
+                self.ajustar_escuta().await;
+            }
         }
     }
 
@@ -150,10 +162,16 @@ impl Central {
     }
 
     fn aceitar(&mut self, socket: TcpStream) {
+        let endereco = socket
+            .peer_addr()
+            .map_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED), |a| a.ip());
         let politica = Politica {
             conhecidos: self.partes.conhecidos.clone(),
-            // Um pareamento de cada vez: com um em curso, o próximo painel novo espera a vez.
-            aceita_pareamento: self.janela_aberta() && self.pareando.is_none(),
+            // Um pareamento de cada vez: com um em curso, o próximo painel novo espera a vez. E
+            // quem já foi recusado demais espera o castigo acabar.
+            aceita_pareamento: self.pareamento_aberto()
+                && self.pareando.is_none()
+                && !self.recusas.de_fora(endereco, Instant::now()),
         };
         let conversa = Conversa::atender(self.partes.identidade.clone(), politica);
         let id = self.proximo;
@@ -172,13 +190,14 @@ impl Central {
             par: None,
             assinando: false,
             interesse: None,
+            endereco,
             tarefa,
         };
         self.vivas.insert(id, viva);
     }
 
     fn codigo(&mut self, id: u64, digitos: [u8; 6]) {
-        if self.pareando.is_some() || !self.janela_aberta() {
+        if self.pareando.is_some() || !self.pareamento_aberto() {
             // Outro painel chegou primeiro, ou a janela fechou no meio do aperto de mão.
             if let Some(viva) = self.vivas.get(&id) {
                 let _ = viva.decisoes.send(false);
@@ -192,6 +211,9 @@ impl Central {
     async fn aberta(&mut self, id: u64, par: PublicKey, pareou: bool) {
         if let Some(viva) = self.vivas.get_mut(&id) {
             viva.par = Some(par);
+            if pareou {
+                self.recusas.esquecer(viva.endereco);
+            }
         }
         if pareou {
             self.pareando = None;
@@ -206,9 +228,12 @@ impl Central {
     }
 
     fn fechou(&mut self, id: u64) {
-        self.vivas.remove(&id);
+        let viva = self.vivas.remove(&id);
         if self.pareando == Some(id) {
             self.pareando = None;
+            if let Some(viva) = viva {
+                self.recusas.anotar(viva.endereco, Instant::now());
+            }
             self.avisar(Aviso::PareamentoFalhou);
         }
         self.contar_assinantes();
@@ -220,6 +245,7 @@ impl Central {
         if let Some(id) = self.pareando.take() {
             if let Some(viva) = self.vivas.get(&id) {
                 let _ = viva.decisoes.send(false);
+                self.recusas.anotar(viva.endereco, Instant::now());
             }
             self.avisar(Aviso::PareamentoFalhou);
         }
@@ -244,9 +270,14 @@ impl Central {
         self.aberto_ate.is_some_and(|ate| Instant::now() < ate)
     }
 
-    /// A porta aberta só quando há a quem atender: um painel pareado, ou a janela aberta.
+    /// Se um painel novo pode parear agora: pela janela aberta, ou pelo pedido do próprio aparelho.
+    fn pareamento_aberto(&self) -> bool {
+        self.aceita_pedidos || self.janela_aberta()
+    }
+
+    /// A porta aberta só quando há a quem atender: um painel pareado, ou um novo que pode parear.
     async fn ajustar_escuta(&mut self) {
-        let precisa = !self.partes.conhecidos.is_empty() || self.janela_aberta();
+        let precisa = !self.partes.conhecidos.is_empty() || self.pareamento_aberto();
         match (precisa, self.escuta.is_some()) {
             (true, false) => self.escuta = escutar(self.partes.porta, &self.da_conexao).await,
             (false, true) => {

@@ -110,6 +110,11 @@ pub struct Config {
     /// Os painéis no Android pareados com este computador ([`paineis`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub paineis: Vec<PainelPareado>,
+    /// Se um aparelho novo pode pedir para parear o painel por conta própria: o código aparece
+    /// sozinho aqui, e a pessoa confere nas duas telas. Ligado por padrão — é o caminho simples;
+    /// desligado, a porta do painel só abre com um aparelho pareado ou com "Parear aparelho".
+    #[serde(default = "sim")]
+    pub painel_aceita_pedidos: bool,
 }
 
 /// O padrão das opções que nascem ligadas.
@@ -175,6 +180,7 @@ impl Default for Config {
             borda_escolhida_em: None,
             copiar_e_colar_escolhido_em: None,
             paineis: Vec::new(),
+            painel_aceita_pedidos: true,
         }
     }
 }

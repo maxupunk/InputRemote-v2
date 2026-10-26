@@ -17,8 +17,7 @@ use crate::{ASSINATURA_EXPIRA, Publicacao};
 /// processamento e um trecho de Wi-Fi.
 const PRAZO_DO_APERTO: Duration = Duration::from_secs(10);
 
-/// Até quando esperar a pessoa responder ao código: a janela de pareamento inteira.
-const PRAZO_DO_CODIGO: Duration = crate::JANELA_DE_PAREAMENTO;
+use crate::PRAZO_DO_CODIGO;
 
 /// Sem nada do painel por este tempo, ele sumiu: a conexão fecha. Três renovações perdidas
 /// além da expiração da assinatura.

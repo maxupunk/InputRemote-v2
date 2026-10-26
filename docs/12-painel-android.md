@@ -132,8 +132,12 @@ No Android: APK de release com **4,4 MB**; a biblioteca nativa tem ~1,1 MB em ar
 
 ## 4. Pareamento e segurança
 
-- **No PC**: tela inicial → "Painel no celular" → "Parear aparelho". A janela de pareamento fica
-  aberta por três minutos, e a porta 52527 só abre com ela ou com um painel já pareado.
+- **O aparelho pede** ([log 71](logs/71-o-aparelho-pede-para-parear.md)): com "Aparelhos novos:
+  Podem pedir" (o padrão), a porta 52527 fica aberta enquanto o serviço roda, e o "Parear" do
+  aparelho chega ao código sem ninguém abrir nada no PC. A janela vem para a frente sozinha, com um
+  recado do sistema. Em troca: um pareamento por vez, o código espera 60 s, e três pareamentos sem
+  fim deixam aquele endereço de fora por 10 min. "Só pelo botão" volta ao jeito antigo: "Painel no
+  celular" → "Parear aparelho" abre a porta por três minutos.
 - **No aparelho**: "Parear" lista os computadores que a descoberta achou (UDP 52524); o IP digitado
   serve para a rede que isola os clientes.
 - **Os dois mostram os seis dígitos, e os dois confirmam** ([04, §3.2](04-seguranca.md)). Recusar em
@@ -205,10 +209,10 @@ métrica nova de uma versão futura entra no fim sozinha, e uma que a pessoa tir
 
 ### 5.4. Primeiro uso
 
-1. No PC: "Painel no celular" → "Parear aparelho".
-2. No aparelho: abrir o aplicativo; o computador aparece na lista; tocar em "Parear".
-3. As duas telas mostram o mesmo código; "São iguais" nas duas.
-4. O painel aparece. Das próximas vezes, abre direto nele.
+1. No aparelho: abrir o aplicativo; o computador aparece na lista; tocar em "Parear".
+2. O código aparece sozinho no PC, com a janela na frente; "São iguais" nas duas telas.
+3. O painel aparece, com o outro computador junto pela sessão entre os dois — ele não precisa ser
+   pareado. Das próximas vezes, o aplicativo abre direto no painel.
 
 ## 6. Fora da v1
 

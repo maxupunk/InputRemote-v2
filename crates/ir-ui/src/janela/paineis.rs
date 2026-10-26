@@ -44,6 +44,11 @@ pub(super) fn ligar(janela: &Janela, contexto: &Rc<Contexto>) {
     });
 
     let alvo = Rc::clone(contexto);
+    acoes.on_aceitar_pedidos_de_paineis(move |aceita| {
+        alvo.pedir_sobre_paineis(ComandoDePainel::AceitarPedidos(aceita));
+    });
+
+    let alvo = Rc::clone(contexto);
     acoes.on_esquecer_painel(move |posicao| {
         let id = usize::try_from(posicao)
             .ok()
@@ -66,11 +71,24 @@ impl Contexto {
         self.com_janela(|janela| janela.global::<Dados>().set_painel_etapa(depois));
     }
 
-    /// Pede a lista ao serviço — ao abrir e ao reconectar.
+    /// Um pedido sobre os painéis que não muda a etapa da tela: a resposta chega como aviso.
+    fn pedir_sobre_paineis(&self, comando: ComandoDePainel) {
+        if let Resposta::Falha(falha) = self.servico.pedir(Pedido::Painel(comando)) {
+            self.recado(Some(falha));
+        }
+    }
+
+    /// Pede a lista ao serviço — ao abrir e ao reconectar —, e se os pedidos de aparelhos novos
+    /// estão aceitos.
     pub(super) fn buscar_paineis(&self) {
         if let Resposta::Paineis(lista) = self.servico.pedir(Pedido::Paineis) {
             self.mostrar_paineis(lista);
         }
+        // Só para o interruptor da tela: um serviço de antes desta versão não o conhece, e a falha
+        // dele não é recado para ninguém.
+        let _ = self
+            .servico
+            .pedir(Pedido::Painel(ComandoDePainel::ComoEstaoOsPedidos));
     }
 
     /// O que o serviço contou sobre os painéis.
@@ -82,10 +100,20 @@ impl Contexto {
                     janela
                         .global::<Dados>()
                         .set_painel_etapa(EtapaDoPainel::Comparando);
-                    // O aparelho chegou: a comparação precisa estar na frente de quem olha.
+                    // O aparelho chegou — e, com o pedido partindo dele, ninguém aqui clicou em
+                    // nada: a comparação vem para a frente, mesmo com a janela na bandeja.
                     janela.invoke_mostrar_paineis();
+                    let janela = janela.window();
+                    janela.set_minimized(false);
+                    let _ = janela.show();
                 });
+                self.recados
+                    .borrow_mut()
+                    .avulso(&ir_recado::Recado::pedido_de_painel(digitos));
             }
+            AvisoDoPainel::AceitaPedidos(aceita) => self.com_janela(|janela| {
+                janela.global::<Dados>().set_painel_aceita_pedidos(aceita);
+            }),
             AvisoDoPainel::Concluido(sucesso) => {
                 let etapa = self.etapa_do_painel();
                 // Só um pareamento em curso termina; um "não" que esta tela já mostrou fica.

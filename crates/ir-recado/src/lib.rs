@@ -144,6 +144,32 @@ impl Recado {
         )
     }
 
+    /// Um aparelho pediu para parear o painel, e o código está na janela.
+    ///
+    /// Quem está no computador não pediu nada: o pedido partiu do aparelho. A janela vem para a
+    /// frente sozinha, mas pode estar atrás de um jogo em tela cheia — o recado é o que garante que
+    /// a pessoa saiba que há um código esperando, e qual.
+    #[must_use]
+    pub fn pedido_de_painel(digitos: [u8; 6]) -> Self {
+        let codigo: String = digitos
+            .iter()
+            .enumerate()
+            .map(|(i, d)| {
+                if i == 3 {
+                    format!(" {d}")
+                } else {
+                    d.to_string()
+                }
+            })
+            .collect();
+        Self::informacao(
+            "Um aparelho quer ver o uso deste computador".to_owned(),
+            format!(
+                "Se foi você, confira o código {codigo} no aparelho e na janela do InputRemote."
+            ),
+        )
+    }
+
     /// A conexão com o outro computador caiu, com o que se sabe do motivo.
     #[must_use]
     pub fn conexao_perdida(detalhe: &str) -> Self {
@@ -208,6 +234,13 @@ fn quem(par: &str) -> &str {
 mod tests {
     use super::*;
     use ir_ipc::transferencia::Motivo;
+
+    #[test]
+    fn o_pedido_do_painel_diz_o_codigo_em_tres_e_tres() {
+        let recado = Recado::pedido_de_painel([1, 0, 4, 7, 8, 2]);
+        assert!(recado.corpo.contains("104 782"), "{}", recado.corpo);
+        assert!(recado.titulo.contains("aparelho"));
+    }
 
     fn copia(sentido: Sentido, fase: Fase) -> Transferencia {
         Transferencia {

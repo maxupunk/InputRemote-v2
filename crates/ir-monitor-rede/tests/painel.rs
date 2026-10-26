@@ -325,6 +325,24 @@ async fn sem_janela_um_painel_novo_nao_pareia() {
     drop(monitor);
 }
 
+/// O pedido parte do aparelho: sem ninguém abrir a janela no computador, o código aparece lá.
+#[tokio::test]
+async fn com_pedidos_aceitos_o_aparelho_chega_ao_codigo_sozinho() {
+    let porta = porta_livre();
+    let (tx, mut avisos) = mpsc::unbounded_channel();
+    let monitor = Monitor::iniciar_na_porta(Identity::generate(), "DESKTOP", Vec::new(), tx, porta);
+    monitor.comandar(Comando::AceitarPedidos(true));
+    let mut painel = Painel::discar(porta, &Identity::generate(), ConnectMode::Pair).await;
+    let no_painel = painel
+        .ate(|e| match e {
+            Evento::Codigo { digitos, .. } => Some(*digitos),
+            _ => None,
+        })
+        .await;
+    let aviso = aviso(&mut avisos, |a| matches!(a, Aviso::Codigo(_))).await;
+    assert_eq!(aviso, Aviso::Codigo(no_painel));
+}
+
 #[tokio::test]
 async fn esquecer_o_painel_derruba_a_conexao_dele() {
     let porta = porta_livre();

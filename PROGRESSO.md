@@ -649,6 +649,8 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
 - [x] A cópia de arquivos em tempo real, os cards de processo (Docker, WSL) e a lista do "i" no
       processador e na memória, ao vivo; a foto de processos em uma chamada no Windows; conferido
       no tablet de verdade ([log 70](docs/logs/70-processos-e-copia-no-painel.md))
+- [x] O aparelho pede para parear: o código aparece sozinho no PC, sem "Parear aparelho"; prazo de
+      60 s, castigo por endereço e o interruptor "Aparelhos novos" ([log 71](docs/logs/71-o-aparelho-pede-para-parear.md))
 - [ ] `[H]` Bancada com o serviço **instalado** nos dois computadores e um aparelho de verdade: o
       par da versão 11 respondendo, as duas rotas medidas, o par antigo pedindo atualização, os
       processos do par e uma cópia de verdade

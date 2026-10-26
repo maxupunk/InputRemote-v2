@@ -63,8 +63,8 @@ fun TelaDeProcura(procura: Tela.Procurando, acoes: Acoes) = Centro {
     Titulo("Parear com um computador")
     procura.recado?.let { Nota(it, Cores.atencao) }
     Nota(
-        "No computador, abra o InputRemote, toque em \"Painel no celular\" e depois em " +
-            "\"Parear aparelho\". Este aparelho precisa estar no mesmo Wi-Fi.",
+        "Toque em \"Parear\" ao lado do seu computador. O código aparece na tela dele: " +
+            "confira nas duas. Este aparelho precisa estar no mesmo Wi-Fi.",
     )
     if (procura.procurando) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -127,7 +127,7 @@ fun TelaDeConferencia(conferindo: Tela.Conferindo, acoes: Acoes) = Centro {
     when {
         digitos == null -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-            Nota("Esperando o computador… Confira se \"Parear aparelho\" está aberto na janela dele.")
+            Nota("Esperando o computador… O código aparece na tela dele em instantes.")
         }
         conferindo.aguardandoOutraTela -> {
             Digitos(digitos)

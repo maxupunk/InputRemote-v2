@@ -8,7 +8,7 @@
 import { Tema } from "tema.slint";
 import { Dados, Acoes } from "dados.slint";
 import { EtapaDoPainel, PainelUi } from "paineis-tipos.slint";
-import { Cartao, Botao, BotaoConfirmado, Faixa, Ponto, Secao } from "componentes.slint";
+import { Cartao, Botao, BotaoConfirmado, Faixa, Ponto, Secao, Alternativas } from "componentes.slint";
 import { Digito } from "pareamento.slint";
 
 /// O cartão da tela inicial: uma linha sobre os aparelhos, e o caminho para a tela deles.
@@ -113,10 +113,16 @@ component PareamentoDoPainel inherits Cartao {
             wrap: word-wrap;
         }
 
+        // Com os pedidos aceitos, não há nada a fazer aqui antes: o código aparece sozinho.
         Text {
-            text: "1. Instale o InputRemote Painel no Android.\n"
-                + "2. Deixe o aparelho na mesma rede Wi-Fi deste computador.\n"
-                + "3. Toque em \"Parear\" lá e em \"Parear aparelho\" aqui.";
+            text: Dados.painel-aceita-pedidos
+                ? "1. Instale o InputRemote Painel no Android.\n"
+                    + "2. Deixe o aparelho na mesma rede Wi-Fi deste computador.\n"
+                    + "3. No aparelho, toque em \"Parear\" ao lado deste computador. O código "
+                    + "aparece aqui sozinho: confira nas duas telas."
+                : "1. Instale o InputRemote Painel no Android.\n"
+                    + "2. Deixe o aparelho na mesma rede Wi-Fi deste computador.\n"
+                    + "3. Toque em \"Parear aparelho\" aqui, e em \"Parear\" lá.";
             font-size: Tema.fonte-corpo;
             color: Tema.texto;
             wrap: word-wrap;
@@ -130,7 +136,7 @@ component PareamentoDoPainel inherits Cartao {
             wrap: word-wrap;
         }
 
-        HorizontalLayout {
+        if !Dados.painel-aceita-pedidos: HorizontalLayout {
             alignment: start;
 
             Botao {
@@ -261,11 +267,41 @@ component PareamentoDoPainel inherits Cartao {
     }
 }
 
+/// Se um aparelho novo pode pedir para parear por conta própria.
+component PedidosDeAparelhos inherits Cartao {
+    VerticalLayout {
+        spacing: Tema.e2;
+
+        Secao { text: "Aparelhos novos"; }
+
+        Text {
+            text: Dados.painel-aceita-pedidos
+                ? "Um aparelho na mesma rede pode pedir para parear: o código aparece aqui sozinho, e "
+                    + "nada é pareado sem você conferir nas duas telas."
+                : "Só pareia quem você chamar por \"Parear aparelho\". Fora disso, a porta do painel "
+                    + "fica fechada para aparelhos novos.";
+            font-size: Tema.fonte-nota;
+            color: Tema.texto-fraco;
+            wrap: word-wrap;
+        }
+
+        Alternativas {
+            opcoes: ["Podem pedir", "Só pelo botão"];
+            escolhida: Dados.painel-aceita-pedidos ? 0 : 1;
+            escolher(indice) => {
+                Acoes.aceitar-pedidos-de-paineis(indice == 0);
+            }
+        }
+    }
+}
+
 /// A tela dos aparelhos.
 export component Paineis inherits VerticalLayout {
     spacing: Tema.e4;
 
     PareamentoDoPainel { }
+
+    PedidosDeAparelhos { }
 
     if Dados.paineis.length > 0: VerticalLayout {
         spacing: Tema.e2;

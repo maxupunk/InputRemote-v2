@@ -139,7 +139,7 @@ fn nome(entrada: &SYSTEM_PROCESS_INFORMATION, bytes: &[u8]) -> Option<String> {
     let texto = bytes.get(inicio..inicio.checked_add(comprimento)?)?;
     let unidades: Vec<u16> = texto
         .chunks_exact(2)
-        .map(|par| u16::from_ne_bytes([par[0], par[1]]))
+        .map(|par| <[u8; 2]>::try_from(par).map_or(0, u16::from_ne_bytes))
         .collect();
     let nome = String::from_utf16_lossy(&unidades);
     Some(sem_exe(nome))
