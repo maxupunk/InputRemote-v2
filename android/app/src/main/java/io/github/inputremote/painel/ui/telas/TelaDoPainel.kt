@@ -86,8 +86,12 @@ private val COM_LISTA = setOf("cpu", "ram")
  * - Página 3: Ajustes do visor e pareamento.
  */
 @Composable
-fun TelaDoPainel(painel: Tela.Painel, acoes: Acoes, aparelho: Aparelho) {
+fun TelaDoPainel(painel: Tela.Painel, acoes: Acoes, salvo: Aparelho) {
     var editando by rememberSaveable { mutableStateOf(false) }
+    // Na edição, cada mudança guarda o arranjo de antes, para o "Desfazer"; ao concluir, esquece.
+    val desfazer = remember { Desfazer() }
+    LaunchedEffect(editando) { if (!editando) desfazer.esquecer() }
+    val aparelho = if (editando) desfazer.guardando(salvo) else salvo
     var ordem by rememberSaveable { mutableStateOf(Ordem.PROCESSADOR) }
     var maquinaProcessos by rememberSaveable { mutableIntStateOf(0) }
     val escopo = rememberCoroutineScope()
@@ -196,6 +200,7 @@ fun TelaDoPainel(painel: Tela.Painel, acoes: Acoes, aparelho: Aparelho) {
                     aparelho = aparelho,
                     rotulos = rotulos,
                     aoInverterLados = aoInverter,
+                    desfazer = desfazer,
                     concluir = { editando = false },
                 )
             }

@@ -1,6 +1,14 @@
 package io.github.inputremote.painel.ui.telas
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -37,8 +45,9 @@ import io.github.inputremote.painel.dados.Arranjo
 import io.github.inputremote.painel.ui.tema.Cores
 
 /**
- * Um card em edição: o card, com a borda de ação, e os controles embaixo — andar para antes ou para
- * depois, destacar, tirar. Fora da edição, só o card.
+ * Um card em edição: o card, com a borda de ação, o ✕ num selo no canto — sempre à vista, por menor
+ * que o card seja — e, embaixo, andar para antes, destacar e andar para depois, repartindo a largura
+ * que houver. Fora da edição, só o card.
  *
  * [podeMover] e [podeDestacar] existem para a faixa do enlace, que não entra na grade dos cards: ela
  * só sai e volta.
@@ -57,40 +66,98 @@ fun Editavel(
         Box(modifier) { conteudo() }
         return
     }
-    val destaque = aparelho.arranjo.cards.firstOrNull { it.chave == chave }?.destaque == true
+    val destaque = aparelho.painelAtivo.arranjo.cards.firstOrNull { it.chave == chave }?.destaque == true
     val editar = aparelho.editarArranjo
-    Column(
-        modifier.border(BorderStroke(1.dp, Cores.acao), RoundedCornerShape(12.dp)),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        conteudo()
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-            if (podeMover) {
-                Controle("◀", "Mover para antes") { editar { it.mover(chave, -1) } }
-                Controle("▶", "Mover para depois") { editar { it.mover(chave, 1) } }
-            }
-            if (podeDestacar) {
-                Controle(if (destaque) "★" else "☆", if (destaque) "Deixar compacto" else "Destacar") {
-                    editar { it.alternarDestaque(chave) }
+    Box(modifier.border(BorderStroke(1.dp, Cores.acao), RoundedCornerShape(12.dp))) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            // A faixa ocupa a altura que tem: o conteúdo cede lugar à linha dos controles.
+            Box(Modifier.weight(1f, fill = false)) { conteudo() }
+            if (podeMover || podeDestacar) {
+                Row(Modifier.fillMaxWidth().height(40.dp)) {
+                    if (podeMover) Controle("◀", "Mover para antes") { editar { it.mover(chave, -1) } }
+                    if (podeDestacar) {
+                        Controle(if (destaque) "★" else "☆", if (destaque) "Deixar compacto" else "Destacar") {
+                            editar { it.alternarDestaque(chave) }
+                        }
+                    }
+                    if (podeMover) Controle("▶", "Mover para depois") { editar { it.mover(chave, 1) } }
                 }
             }
-            Controle("✕", "Tirar da tela", Cores.ruim) { editar { it.remover(chave) } }
         }
+        Tirar(Modifier.align(Alignment.TopEnd)) { editar { it.remover(chave) } }
     }
 }
 
-/** Um botão de edição: um símbolo grande para o dedo, e o nome para o leitor de tela. */
+/** Um botão de edição: reparte a linha com os outros, e diz o nome ao leitor de tela. */
 @Composable
-private fun Controle(simbolo: String, nome: String, cor: androidx.compose.ui.graphics.Color = Cores.acao, acao: () -> Unit) {
+private fun RowScope.Controle(simbolo: String, nome: String, acao: () -> Unit) {
     Box(
         Modifier
-            .size(44.dp)
+            .weight(1f)
+            .fillMaxHeight()
+            .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = acao)
             .semantics { contentDescription = nome },
         contentAlignment = Alignment.Center,
     ) {
-        Text(simbolo, color = cor, fontSize = 20.sp)
+        Text(simbolo, color = Cores.acao, fontSize = 20.sp)
     }
+}
+
+/**
+ * O ✕ de tirar: um selo vermelho dentro do canto do card — dentro, para nenhuma rolagem cortá-lo —,
+ * com a área de toque maior que o desenho. Tirar é seguro: "Desfazer" devolve, e "Adicionar card" também.
+ */
+@Composable
+private fun Tirar(modifier: Modifier, acao: () -> Unit) {
+    Box(
+        modifier
+            .size(40.dp)
+            .clickable(onClick = acao)
+            .semantics { contentDescription = "Tirar da tela" },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier.size(24.dp).clip(CircleShape).background(Cores.ruim),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("✕", color = Cores.fundo, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+/**
+ * O "Desfazer" da edição: cada mudança que muda algo guarda o arranjo de antes, com o painel dele.
+ * Desfaz um passo por vez, só no painel à vista; ao concluir a edição, esquece tudo.
+ */
+class Desfazer {
+    private val antes = mutableStateListOf<Pair<String, Arranjo>>()
+
+    /** O editar de fora, que só salva: desfazer não é uma mudança a desfazer. */
+    private var salvar: ((Arranjo) -> Arranjo) -> Unit = {}
+
+    fun podeEm(painel: String): Boolean = antes.any { it.first == painel }
+
+    /** O mesmo aparelho, mas cada edição passa por aqui antes. */
+    fun guardando(aparelho: Aparelho): Aparelho {
+        salvar = aparelho.editarArranjo
+        return aparelho.copy(
+            editarArranjo = { edicao ->
+                val painel = aparelho.painelAtivo
+                if (edicao(painel.arranjo) != painel.arranjo) antes.add(painel.id to painel.arranjo)
+                aparelho.editarArranjo(edicao)
+            },
+        )
+    }
+
+    fun desfazer(painel: String) {
+        val ultimo = antes.indexOfLast { it.first == painel }
+        if (ultimo < 0) return
+        val arranjo = antes.removeAt(ultimo).second
+        salvar { arranjo }
+    }
+
+    fun esquecer() = antes.clear()
 }
 
 /**
@@ -102,6 +169,7 @@ fun BarraDeEdicao(
     aparelho: Aparelho,
     rotulos: Map<String, String>,
     aoInverterLados: (() -> Unit)? = null,
+    desfazer: Desfazer? = null,
     concluir: () -> Unit,
 ) {
     var escolhendo by remember { mutableStateOf(false) }
@@ -119,16 +187,26 @@ fun BarraDeEdicao(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Editando \"${painelAtual.nome}\": toque ◀ ▶ na ordem, ★ no destaque, ✕ para tirar.",
+                text = "Editando \"${painelAtual.nome}\": ◀ ▶ mudam o lugar, ★ destaca, ✕ no canto tira.",
                 color = Cores.textoFraco,
                 fontSize = 12.sp,
                 modifier = Modifier.weight(1f, fill = false),
             )
-            Button(
-                onClick = concluir,
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
-            ) {
-                Text("Concluir", fontSize = 12.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (desfazer != null && desfazer.podeEm(painelAtual.id)) {
+                    OutlinedButton(
+                        onClick = { desfazer.desfazer(painelAtual.id) },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+                    ) {
+                        Text("Desfazer", fontSize = 12.sp)
+                    }
+                }
+                Button(
+                    onClick = concluir,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+                ) {
+                    Text("Concluir", fontSize = 12.sp)
+                }
             }
         }
         Row(
@@ -151,7 +229,6 @@ fun BarraDeEdicao(
             TextButton(onClick = { aparelho.editarArranjo { Arranjo.PADRAO.conhecer(it.conhecidas) } }) {
                 Text("Restaurar padrão")
             }
-            Button(onClick = concluir) { Text("Concluir") }
         }
     }
 

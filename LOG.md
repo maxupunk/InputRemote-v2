@@ -98,3 +98,4 @@ quê. Um registro que se reescreve não é registro.
 | 71 | 2026-10-26 | [O aparelho pede para parear](docs/logs/71-o-aparelho-pede-para-parear.md) |
 | 72 | 2026-10-26 | [A placa de vídeo e todos os sensores de temperatura](docs/logs/72-gpu-e-todos-os-sensores.md) |
 | 73 | 2026-10-26 | [Sem conexão, em silêncio](docs/logs/73-sem-conexao-em-silencio.md) |
+| 74 | 2026-10-27 | [Editar os cards sem perder o ✕](docs/logs/74-editar-cards-sem-perder-o-x.md) |
