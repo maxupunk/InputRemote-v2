@@ -60,6 +60,7 @@ async fn pedir_a_mesma_copia_de_novo_nao_copia_duas_vezes() {
     let b = subir("uma-copia-repetida-b");
     parear(&a, &b);
     parear(&b, &a);
+    comum::ao_alcance(&a).await;
 
     // Grande o bastante para ainda estar indo quando os pedidos repetidos chegam — eles chegam no
     // mesmo instante —, e pequeno para a primeira terminar com folga dentro do prazo, mesmo num
@@ -92,6 +93,7 @@ async fn copiar_outra_coisa_cancela_a_anterior_e_nao_deixa_sobra() {
     let mut b = subir("troca-b");
     parear(&a, &b);
     parear(&b, &a);
+    comum::ao_alcance(&a).await;
 
     let grande = arquivo_grande(&a.pasta, "grande.bin", 64);
     let pequeno = a.pasta.join("bilhete.txt");

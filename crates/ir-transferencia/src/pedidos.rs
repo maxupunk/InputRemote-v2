@@ -146,8 +146,15 @@ impl Pedidos {
         havia
     }
 
+    /// Se o outro computador está ao alcance: o canal de arquivos está de pé. Sem ele, uma cópia
+    /// pedida não começa ([`Self::enviar`]).
+    #[must_use]
+    pub fn ao_alcance(&self) -> bool {
+        self.de_pe.load(Ordering::Acquire)
+    }
+
     /// Pede o envio destes caminhos, lidos com a autoridade de `leitor`. `false` quando a
-    /// transferência não está de pé.
+    /// transferência não está de pé — inclusive quando o outro computador não está ao alcance.
     ///
     /// `leitor` não é detalhe: o serviço tem mais autoridade que quem pede, e sem ele o serviço leria
     /// **por** quem pediu o que essa pessoa não leria sozinha (`ir_files::permissao`).
@@ -166,6 +173,10 @@ impl Pedidos {
         if caminhos.is_empty() {
             return false;
         }
+        if !self.ao_alcance() {
+            self.sem_conexao();
+            return false;
+        }
         let (recebido, saiu) = self.fila.pedir(caminhos, leitor);
         if let Some(trabalho) = saiu {
             retomada::espera_cancelada(&self.avisos, &trabalho);
@@ -174,15 +185,24 @@ impl Pedidos {
             debug!("esta cópia já está indo; não vai de novo");
             return true;
         }
-        if self.acorda.send(()).is_err() {
-            return false;
+        self.acorda.send(()).is_ok()
+    }
+
+    /// Uma cópia pedida com o outro computador fora de alcance — desligado, longe, sem par: ela
+    /// não começa, e **nada é dito** ([log 73](../../../docs/logs/73-sem-conexao-em-silencio.md)).
+    ///
+    /// Antes ela entrava na fila "esperando a conexão" e, um minuto depois, virava "a cópia não
+    /// atravessou": um aviso de falha para uma cópia que nem devia ter começado, a cada Ctrl+C com o
+    /// outro computador desligado. Copiar com ele longe é usar o computador sozinho, e não um erro.
+    ///
+    /// A cópia interrompida que esperava a conexão, essa sim, sai da fila: o clipboard agora é
+    /// outro, e entregá-la na volta colaria a coisa errada. Ela tinha aparecido na tela, então o
+    /// cartão dela diz que parou.
+    fn sem_conexao(&self) {
+        debug!("o outro computador não está ao alcance; a cópia não começa");
+        let (_, a_vista) = self.fila.cancelar_tudo();
+        if let Some(trabalho) = a_vista {
+            retomada::espera_cancelada(&self.avisos, &trabalho);
         }
-        // Sem enlace, a cópia espera por ele — à vista, e com prazo. Sem par não há enlace a
-        // esperar: quem conduz o canal recusa o pedido com esse motivo.
-        let tem_par = self.destino.borrow().chave.is_some();
-        if tem_par && !self.de_pe.load(Ordering::Acquire) {
-            retomada::mostrar_espera(&self.fila, &self.avisos);
-        }
-        true
     }
 }

@@ -17,6 +17,7 @@ async fn desligado_aqui_a_copia_de_la_e_recusada_e_nada_chega() {
     let b = subir("copia-desligada-b");
     parear(&a, &b);
     parear(&b, &a);
+    comum::ao_alcance(&a).await;
     b.pedidos.copias().ligar(false);
 
     let arquivo = a.pasta.join("relatorio.txt");

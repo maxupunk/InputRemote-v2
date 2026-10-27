@@ -106,3 +106,28 @@ pub fn limpar(maquinas: impl IntoIterator<Item = Maquina>) {
         let _ = std::fs::remove_dir_all(maquina.pasta);
     }
 }
+
+/// Espera o canal de arquivos de `maquina` subir: só com o outro computador ao alcance uma cópia
+/// começa.
+pub async fn ao_alcance(maquina: &Maquina) {
+    let espera = async {
+        while !maquina.pedidos.ao_alcance() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(20), espera)
+        .await
+        .expect("o canal de arquivos não subiu");
+}
+
+/// Se nenhum aviso de cópia sai de `avisos` durante `prazo`.
+pub async fn calado(avisos: &mut broadcast::Receiver<Aviso>, prazo: Duration) -> bool {
+    let procurar = async {
+        loop {
+            if let Ok(Aviso::Transferencia(_)) = avisos.recv().await {
+                return;
+            }
+        }
+    };
+    tokio::time::timeout(prazo, procurar).await.is_err()
+}

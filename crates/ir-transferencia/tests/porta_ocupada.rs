@@ -52,15 +52,13 @@ async fn a_porta_liberada_depois_volta_a_copiar_sem_reiniciar() {
     let arquivo = a.pasta.join("bilhete.txt");
     std::fs::write(&arquivo, b"chegou").unwrap();
 
-    // Com a porta ocupada, o pedido é recusado com motivo — e não fica esperando para sempre.
+    // Com a porta ocupada não há canal: a cópia não começa, e não fica esperando para sempre.
     tokio::time::sleep(Duration::from_millis(300)).await;
-    assert!(a.pedidos.enviar(vec![arquivo.clone()], Leitor::Proprio));
-    let fase = proximo_fim(&mut a.avisos, Duration::from_secs(5)).await;
-    assert!(matches!(fase, Some(Fase::Parada(_))), "{fase:?}");
+    assert!(!a.pedidos.enviar(vec![arquivo.clone()], Leitor::Proprio));
 
     // O antigo solta a porta; na próxima tentativa o canal abre, e a cópia passa.
     drop(ocupante);
-    tokio::time::sleep(Duration::from_secs(7)).await;
+    comum::ao_alcance(&a).await;
     assert!(a.pedidos.enviar(vec![arquivo], Leitor::Proprio));
     let fase = proximo_fim(&mut a.avisos, Duration::from_secs(20)).await;
     assert!(

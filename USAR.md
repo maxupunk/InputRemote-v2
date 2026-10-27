@@ -122,6 +122,11 @@ ou não atravessou), e o andamento fica em dois lugares que não interrompem:
 Uma imagem que chega aparece em miniatura na notificação, e **Abrir a pasta** abre o gerenciador de
 arquivos com ela já selecionada.
 
+**Com o outro computador desligado ou longe**, copiar não faz nada aparecer: a cópia não começa e
+nada avisa — é usar o computador sozinho, e não um erro. Quando ele voltar, a cópia vai na primeira
+vez que o cursor atravessar. Só a cópia que já estava andando quando a conexão caiu espera um minuto
+por ela, e diz se não chegou.
+
 No Linux sem aviso de mudança de clipboard (o GNOME), o que foi copiado atravessa quando o ponteiro
 atravessa ([ADR-0011](docs/adr/0011-clipboard-na-travessia.md)). Os arquivos recebidos ficam na pasta
 de recebidos (Preferências mostra qual), que se limpa sozinha.

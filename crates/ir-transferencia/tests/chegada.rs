@@ -22,6 +22,7 @@ async fn quem_recebe_anuncia_a_chegada_com_os_caminhos_de_verdade() {
     let mut b = subir("chegada-b");
     parear(&a, &b);
     parear(&b, &a);
+    comum::ao_alcance(&a).await;
     let pasta = a.pasta.join("relatório");
     std::fs::create_dir_all(pasta.join("anexos")).unwrap();
     std::fs::write(pasta.join("a.txt"), b"primeiro").unwrap();

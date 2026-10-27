@@ -16,7 +16,7 @@ use std::time::Duration;
 use comum::{Maquina, parear, porta_livre, subir_com};
 use ir_crypto::PublicKey;
 use ir_ipc::Aviso;
-use ir_ipc::transferencia::{Fase, Motivo, Sentido, Transferencia};
+use ir_ipc::transferencia::{Fase, Sentido, Transferencia};
 use ir_transferencia::{Destino, Leitor, Localizador, sem_localizador};
 use ir_transporte::Endereco;
 use tokio::sync::broadcast;
@@ -43,22 +43,23 @@ async fn fim(avisos: &mut broadcast::Receiver<Aviso>, sentido: Sentido) -> Trans
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn sem_par_recusa_com_motivo_e_com_par_novo_envia_sem_reiniciar() {
+async fn sem_par_a_copia_nao_comeca_nem_avisa_e_com_par_novo_envia_sem_reiniciar() {
     let mut a = subir("a", sem_localizador());
     let mut b = subir("b", sem_localizador());
     let arquivo = a.pasta.join("bilhete.txt");
     std::fs::write(&arquivo, b"chegou sem reiniciar").unwrap();
 
-    assert!(a.pedidos.enviar(vec![arquivo.clone()], Leitor::Proprio));
-    let recusa = fim(&mut a.avisos, Sentido::Enviando).await;
+    // Sem par, o outro computador não está ao alcance: a cópia não começa, e nada é dito.
+    assert!(!a.pedidos.enviar(vec![arquivo.clone()], Leitor::Proprio));
     assert!(
-        matches!(&recusa.fase, Fase::Parada(Motivo::Outro(m)) if m.contains("par")),
-        "{recusa:?}"
+        comum::calado(&mut a.avisos, Duration::from_millis(500)).await,
+        "sem conexão, nenhum aviso de cópia"
     );
 
     // Pareiam agora. Nenhum dos dois reinicia.
     parear(&a, &b);
     parear(&b, &a);
+    comum::ao_alcance(&a).await;
     assert!(a.pedidos.enviar(vec![arquivo], Leitor::Proprio));
     let enviado = fim(&mut a.avisos, Sentido::Enviando).await;
     assert!(
@@ -118,6 +119,7 @@ async fn pareados_pelo_bluetooth_os_arquivos_acham_o_par_na_rede() {
 
     let arquivo = a.pasta.join("pelo-radio.txt");
     std::fs::write(&arquivo, b"achado na rede").unwrap();
+    comum::ao_alcance(&a).await;
     assert!(a.pedidos.enviar(vec![arquivo], Leitor::Proprio));
     let enviado = fim(&mut a.avisos, Sentido::Enviando).await;
     assert!(

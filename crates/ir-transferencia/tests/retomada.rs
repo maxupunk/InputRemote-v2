@@ -49,6 +49,7 @@ async fn uma_pasta_com_milhares_de_arquivos_atravessa_pelo_canal_de_verdade() {
     let mut b = subir("milhares-b");
     parear(&a, &b);
     parear(&b, &a);
+    comum::ao_alcance(&a).await;
     let pasta = a.pasta.join("Jogo eletronica 2");
     for n in 0..ARQUIVOS {
         let alvo = pasta.join(format!("Data/Textures/textura-{n:05}.png"));
@@ -85,6 +86,7 @@ async fn a_copia_que_o_enlace_largou_no_meio_recomeca_sozinha() {
     let mut b = subir("queda-b");
     parear(&a, &b);
     parear(&b, &a);
+    comum::ao_alcance(&a).await;
     let arquivo = a.pasta.join("grande.bin");
     let conteudo: Vec<u8> = (0..16 * 1024 * 1024)
         .map(|n: usize| u8::try_from(n % 251).unwrap())

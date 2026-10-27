@@ -44,7 +44,8 @@ type Avisos = broadcast::Sender<Aviso>;
 /// O envio caiu no meio: a cópia volta para a fila, ou desiste depois de [`MAX_QUEDAS`].
 ///
 /// Quem mostra a espera não é esta função, e sim quem conduz o canal ao ver o enlace cair
-/// ([`mostrar_espera`]): é o mesmo lugar que mostra a de uma cópia pedida com o enlace já caído.
+/// ([`mostrar_espera`]). Uma cópia pedida com o enlace já caído não espera: nem começa
+/// (`Pedidos::enviar`).
 pub(crate) fn envio_caiu(
     fila: &Fila,
     avisos: &Avisos,
