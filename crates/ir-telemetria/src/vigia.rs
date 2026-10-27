@@ -4,8 +4,8 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use ir_monitor::amostra::UsageSample;
 use ir_monitor::processos::{InteresseEmProcessos, Processos};
-use ir_proto::message::UsageSample;
 
 use crate::coletor::Coletor;
 use crate::fonte::Agendada;

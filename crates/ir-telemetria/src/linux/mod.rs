@@ -3,6 +3,7 @@
 //! Os arquivos ficam abertos enquanto a vigia vive e são relidos do começo a cada leitura — sem
 //! reabrir a cada segundo ([12, §3.3](../../../../docs/12-painel-android.md)).
 
+mod gpu;
 mod proc;
 mod processos;
 mod sys;
@@ -32,6 +33,9 @@ pub(crate) fn fontes() -> Vec<Agendada> {
     }
     fontes.push(Agendada::nova(sys::Termica::procurar(), cadencia::MEDIA));
     fontes.push(Agendada::nova(sys::Disco, cadencia::LENTA));
+    if let Some(placas) = gpu::Placas::procurar() {
+        fontes.push(Agendada::nova(placas, cadencia::RAPIDA));
+    }
     fontes
 }
 

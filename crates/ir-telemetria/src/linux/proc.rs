@@ -2,7 +2,7 @@
 
 use std::time::Instant;
 
-use ir_proto::message::{Occupancy, Traffic, UsageSample};
+use ir_monitor::amostra::{Occupancy, Traffic, UsageSample};
 
 use super::Arquivo;
 use crate::conta::{Taxa, TemposDoProcessador, uso_do_processador};

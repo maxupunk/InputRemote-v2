@@ -1,8 +1,8 @@
 use super::*;
 use ir_ipc::{AvisoDoPainel, ComandoDePainel, Falha, Resposta};
+use ir_monitor::amostra::UsageSample;
 use ir_monitor::entre_pcs::{codificar, decodificar};
 use ir_monitor::{EntrePcs, Situacao, UsoDeProcesso};
-use ir_proto::message::UsageSample;
 use ir_session::Millis;
 use tokio::sync::broadcast;
 

@@ -30,11 +30,12 @@ data class Arranjo(
     fun ocultas(): Set<String> = conhecidas - cards.map { it.chave }.toSet()
 
     /**
-     * Uma chave nova entra no fim, visível; uma já conhecida fica como a pessoa deixou. Processo não
-     * entra assim: o card de outro painel ligado ao mesmo computador não aparece neste.
+     * Uma chave nova entra no fim, visível; uma já conhecida fica como a pessoa deixou. O card sob
+     * demanda não entra assim ([ehSobDemanda]): o processo de outro painel ligado ao mesmo
+     * computador, e cada sensor de temperatura, só aparecem quando a pessoa os põe.
      */
     fun conhecer(chaves: Collection<String>): Arranjo {
-        val novas = chaves.filterNot { it in conhecidas || ehProcesso(it) }.distinct()
+        val novas = chaves.filterNot { it in conhecidas || ehSobDemanda(it) }.distinct()
         if (novas.isEmpty()) return this
         return copy(cards = cards + novas.map { Card(it) }, conhecidas = conhecidas + novas)
     }
@@ -50,11 +51,19 @@ data class Arranjo(
         return copy(cards = lista)
     }
 
-    /** Tira o card da tela. Ele continua conhecido — menos o de processo, que é esquecido. */
+    /** Tira o card da tela. Ele continua conhecido — menos o sob demanda, que é esquecido. */
     fun remover(chave: String): Arranjo = copy(
         cards = cards.filterNot { it.chave == chave },
-        conhecidas = if (ehProcesso(chave)) conhecidas - chave else conhecidas,
+        conhecidas = if (ehSobDemanda(chave)) conhecidas - chave else conhecidas,
     )
+
+    /**
+     * O que "Adicionar card" oferece: o que existe agora ([rotulos], pela chave) e não está na
+     * tela — os cards de sempre primeiro, depois os de cada sensor, cada grupo pelo nome.
+     */
+    fun disponiveis(rotulos: Map<String, String>): List<String> = rotulos.keys
+        .filterNot(::visivel)
+        .sortedWith(compareBy<String> { ehSensor(it) }.thenBy { rotulos[it] })
 
     /** Os nomes dos processos acompanhados, na ordem da tela. É o que se pede ao computador. */
     fun processos(): List<String> = cards.map { it.chave }.filter(::ehProcesso).map { it.removePrefix(PREFIXO_DE_PROCESSO) }
@@ -107,6 +116,18 @@ data class Arranjo(
 
         fun ehProcesso(chave: String) = chave.startsWith(PREFIXO_DE_PROCESSO)
 
+        /** O começo da chave do card de um sensor de temperatura (`vista::PREFIXO_DE_SENSOR`). */
+        const val PREFIXO_DE_SENSOR = "sensor:"
+
+        fun ehSensor(chave: String) = chave.startsWith(PREFIXO_DE_SENSOR)
+
+        /**
+         * Um card que só existe porque a pessoa o pediu: um processo, um sensor. Não entra sozinho,
+         * e tirado é esquecido — um computador com dezesseis núcleos não enche o painel por conta
+         * própria.
+         */
+        fun ehSobDemanda(chave: String) = ehProcesso(chave) || ehSensor(chave)
+
         /**
          * O que se olha primeiro é o processador e a memória: grandes e no começo. Depois o que
          * mais muda (temperatura, rede), e por fim o que muda devagar.
@@ -114,6 +135,7 @@ data class Arranjo(
         val PADRAO: Arranjo = listOf(
             Card("cpu", destaque = true),
             Card("ram", destaque = true),
+            Card("gpu"),
             Card("temp-cpu"),
             Card("rede"),
             Card("disco"),

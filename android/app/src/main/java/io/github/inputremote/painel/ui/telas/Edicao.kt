@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -266,26 +268,40 @@ private fun DialogoCriarPainel(
 
 @Composable
 private fun EscolherCard(aparelho: Aparelho, rotulos: Map<String, String>, fechar: () -> Unit) {
-    val disponiveis = aparelho.arranjo.ocultas().filter { it in rotulos }.sortedBy { rotulos[it] }
+    val (sensores, cards) = aparelho.arranjo.disponiveis(rotulos).partition(Arranjo::ehSensor)
+    val opcao: @Composable (String) -> Unit = { chave ->
+        Text(
+            rotulos.getValue(chave),
+            fontSize = 17.sp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    aparelho.editarArranjo { it.adicionar(chave) }
+                    fechar()
+                }
+                .padding(vertical = 12.dp),
+        )
+    }
     AlertDialog(
         onDismissRequest = fechar,
         confirmButton = { TextButton(onClick = fechar) { Text("Fechar") } },
         title = { Text("Adicionar card") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (disponiveis.isEmpty()) Text("Todos os cards desta tela já estão à vista.")
-                disponiveis.forEach { chave ->
+            // Com um sensor por núcleo, a lista passa da tela: rola por dentro do diálogo.
+            Column(
+                Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                if (cards.isEmpty() && sensores.isEmpty()) Text("Todos os cards desta tela já estão à vista.")
+                cards.forEach { opcao(it) }
+                if (sensores.isNotEmpty()) {
                     Text(
-                        rotulos.getValue(chave),
-                        fontSize = 17.sp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                aparelho.editarArranjo { it.adicionar(chave) }
-                                fechar()
-                            }
-                            .padding(vertical = 12.dp),
+                        "Sensores de temperatura",
+                        color = Cores.textoFraco,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(top = 8.dp),
                     )
+                    sensores.forEach { opcao(it) }
                 }
             }
         },

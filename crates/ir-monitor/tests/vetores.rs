@@ -8,12 +8,12 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+use ir_monitor::amostra::{Gpu, GpuVendor, Occupancy, Sensor, Temperature, UsageSample};
 use ir_monitor::mensagem::{codificar, decodificar};
 use ir_monitor::{
     Apresentacao, Copia, Detalhes, DoPainel, Enlace, EntrePcs, FaseDaCopia, Interesse,
     InteresseEmProcessos, Maquina, ParaPainel, Processos, Quadro, Rota, Situacao, UsoDeProcesso,
 };
-use ir_proto::message::{Sensor, Temperature, UsageSample};
 
 fn hex(bytes: &[u8]) -> String {
     use core::fmt::Write;
@@ -57,6 +57,15 @@ fn para_o_painel() {
                     temperatures: vec![Temperature {
                         sensor: Sensor::Gpu,
                         centi_celsius: 4800,
+                        name: "Core".to_owned(),
+                    }],
+                    gpus: vec![Gpu {
+                        vendor: GpuVendor::Amd,
+                        busy_permille: Some(250),
+                        memory: Some(Occupancy {
+                            used_kib: 1,
+                            total_kib: 2,
+                        }),
                     }],
                     ..UsageSample::default()
                 }),
@@ -75,7 +84,7 @@ fn para_o_painel() {
     confere(
         "quadro",
         &quadro,
-        "01020250430001e701000000000101804b026e62020101d836000100",
+        "01020250430001e701000000000101804b04436f7265010201fa01010102026e62020101d836000100",
     );
 }
 
@@ -147,5 +156,5 @@ fn entre_pcs() {
             lista: vec![docker()],
         }),
     );
-    confere_recado("uso", &uso, "02010a000000000001000102646b02ac028008");
+    confere_recado("uso", &uso, "02010a00000000000001000102646b02ac028008");
 }

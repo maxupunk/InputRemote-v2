@@ -1,7 +1,7 @@
 //! A amostra de uso desta máquina, para o painel no Android ([12](../../../docs/12-painel-android.md)).
 //!
 //! O serviço liga a [`Vigia`] quando um painel começa a olhar e a solta quando ele para. Enquanto
-//! ela vive, uma linha própria tira uma [`UsageSample`](ir_proto::message::UsageSample) por segundo
+//! ela vive, uma linha própria tira uma [`UsageSample`](ir_monitor::amostra::UsageSample) por segundo
 //! e a entrega a quem pediu. Sem vigia não há linha, nem arquivo aberto, nem consulta ao WMI: o
 //! custo do painel é zero quando ninguém olha (§3.1 do documento).
 //!
@@ -13,6 +13,8 @@
 //! | [`coletor`] | junta as fontes numa amostra, sem E/S própria |
 //! | [`conta`] | as contas: uso do processador e taxa de bytes entre duas leituras |
 //! | [`leitura`] | o texto de `/proc` e `/sys` virando número, puro e testável em qualquer sistema |
+//! | [`sensores`] | de que parte é cada sensor de temperatura, o nome dele, e quais entram |
+//! | [`gpu`] | o uso de uma placa de vídeo pelo tempo de cada motor dela, puro |
 //! | `linux`, `windows` | as fontes de cada sistema |
 //! | [`processos`] | os processos agrupados pelo nome, entre duas fotos do sistema |
 //! | [`vigia`] | a linha que amostra a cada segundo |
@@ -33,8 +35,10 @@
 pub mod coletor;
 pub mod conta;
 pub mod fonte;
+pub mod gpu;
 pub mod leitura;
 pub mod processos;
+pub mod sensores;
 pub mod vigia;
 
 #[cfg(target_os = "linux")]

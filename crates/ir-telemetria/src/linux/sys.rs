@@ -6,23 +6,26 @@ use std::ffi::CString;
 use std::path::Path;
 use std::time::Instant;
 
-use ir_proto::message::{Battery, Occupancy, Sensor, UsageSample};
+use ir_monitor::amostra::{Battery, Occupancy, Sensor, UsageSample};
 
 use super::Arquivo;
 use crate::fonte::Fonte;
 use crate::leitura;
+use crate::sensores;
 
 /// Quantos `tempN_input` olhar em cada `hwmon`. Os drivers comuns têm até uns dez (um por núcleo
 /// no `coretemp`); dezesseis é folga e põe teto na varredura.
 const MAX_ENTRADAS_POR_HWMON: u32 = 16;
 
-/// As temperaturas dos `hwmon` de drivers conhecidos ([`leitura::sensor_do_hwmon`]).
+/// As temperaturas de todos os `hwmon`, cada uma com a parte da máquina e o nome
+/// ([`sensores::do_hwmon`], [`sensores::nome_do_hwmon`]).
 ///
 /// A varredura de `/sys/class/hwmon` é feita uma vez, ao começar a assinatura: os arquivos de
-/// temperatura ficam abertos, e cada leitura só os relê.
+/// temperatura ficam abertos, e cada leitura só os relê. Os rótulos (`tempN_label`) não mudam com a
+/// máquina ligada, e são lidos só aí.
 #[derive(Debug)]
 pub(super) struct Termica {
-    entradas: Vec<(Sensor, Arquivo)>,
+    entradas: Vec<(Sensor, String, Arquivo)>,
 }
 
 impl Termica {
@@ -33,30 +36,38 @@ impl Termica {
         };
         for dispositivo in dispositivos.flatten() {
             let pasta = dispositivo.path();
-            let Some(sensor) = std::fs::read_to_string(pasta.join("name"))
-                .ok()
-                .and_then(|nome| leitura::sensor_do_hwmon(&nome))
-            else {
+            let Ok(driver) = std::fs::read_to_string(pasta.join("name")) else {
                 continue;
             };
-            entradas.extend(temperaturas_em(&pasta).map(|arquivo| (sensor, arquivo)));
+            let sensor = sensores::do_hwmon(&driver);
+            entradas.extend(temperaturas_em(&pasta).map(|(rotulo, arquivo)| {
+                let nome = sensores::nome_do_hwmon(&driver, rotulo.as_deref());
+                (sensor, nome, arquivo)
+            }));
         }
         Self { entradas }
     }
 }
 
-fn temperaturas_em(pasta: &Path) -> impl Iterator<Item = Arquivo> + '_ {
-    (1..=MAX_ENTRADAS_POR_HWMON)
-        .filter_map(move |n| Arquivo::abrir(pasta.join(format!("temp{n}_input"))))
+/// Cada `tempN_input` aberto, com o rótulo dele, quando o driver dá um.
+fn temperaturas_em(pasta: &Path) -> impl Iterator<Item = (Option<String>, Arquivo)> + '_ {
+    (1..=MAX_ENTRADAS_POR_HWMON).filter_map(move |n| {
+        let arquivo = Arquivo::abrir(pasta.join(format!("temp{n}_input")))?;
+        let rotulo = std::fs::read_to_string(pasta.join(format!("temp{n}_label"))).ok();
+        Some((rotulo, arquivo))
+    })
 }
 
 impl Fonte for Termica {
     fn ler(&mut self, _: Instant, amostra: &mut UsageSample) {
-        let leituras = self.entradas.iter_mut().filter_map(|(sensor, arquivo)| {
-            let centi = arquivo.ler().and_then(leitura::milesimos_para_centesimos)?;
-            Some((*sensor, centi))
-        });
-        amostra.temperatures = leitura::mais_quentes(leituras);
+        let leituras = self
+            .entradas
+            .iter_mut()
+            .filter_map(|(sensor, nome, arquivo)| {
+                let centi = arquivo.ler().and_then(leitura::milesimos_para_centesimos)?;
+                Some((*sensor, nome.clone(), centi))
+            });
+        amostra.temperatures = sensores::escolher(leituras);
     }
 }
 

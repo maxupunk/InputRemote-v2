@@ -111,13 +111,6 @@ pub const MAX_COPIED_PATHS: usize = 1_000;
 /// quinze megabytes. Acima disto a pasta não é compartilhada, com o motivo dito.
 pub const MAX_FOLDER_ENTRIES: usize = 100_000;
 
-/// Máximo de temperaturas numa amostra de uso.
-///
-/// Origem: o painel mostra até quatro por máquina (CPU, GPU, disco, placa); oito é folga para
-/// dois discos e mais de uma GPU, e mantém a amostra bem abaixo do teto do RFCOMM. Decisão de
-/// 2026-10-24 ([12](../../../docs/12-painel-android.md)).
-pub const MAX_TEMPERATURES: usize = 8;
-
 /// Máximo de bytes num recado do painel entre os computadores (`Control::Panel`).
 ///
 /// Origem: o teto do RFCOMM (512) menos o envelope do quadro, com folga. Quem monta o recado

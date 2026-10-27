@@ -1,4 +1,5 @@
 use super::*;
+use crate::amostra::{Gpu, GpuVendor, Sensor, Temperature};
 
 fn completa() -> UsageSample {
     UsageSample {
@@ -22,6 +23,12 @@ fn completa() -> UsageSample {
         temperatures: vec![Temperature {
             sensor: Sensor::Cpu,
             centi_celsius: 6150,
+            name: "Package".to_owned(),
+        }],
+        gpus: vec![Gpu {
+            vendor: GpuVendor::Nvidia,
+            busy_permille: Some(420),
+            memory: None,
         }],
     }
 }

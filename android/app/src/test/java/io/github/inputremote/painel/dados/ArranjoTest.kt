@@ -82,4 +82,16 @@ class ArranjoTest {
         assertFalse("proc:docker" in sem.conhecidas)
         assertSame(sem, sem.conhecer(listOf("proc:steam")))
     }
+
+    @Test
+    fun sensorNaoEntraSozinhoEApareceParaAdicionar() {
+        val arranjo = padrao.conhecer(listOf("gpu", "sensor:cpu:core-3"))
+        assertTrue("a GPU é um card de sempre", arranjo.visivel("gpu"))
+        assertFalse(arranjo.visivel("sensor:cpu:core-3"))
+        val rotulos = mapOf("sensor:cpu:core-3" to "CPU · Core #3", "disco" to "Disco", "cpu" to "CPU")
+        val semDisco = arranjo.remover("disco")
+        assertEquals(listOf("disco", "sensor:cpu:core-3"), semDisco.disponiveis(rotulos))
+        val comSensor = semDisco.adicionar("sensor:cpu:core-3").remover("sensor:cpu:core-3")
+        assertFalse("o sensor tirado é esquecido", "sensor:cpu:core-3" in comSensor.conhecidas)
+    }
 }

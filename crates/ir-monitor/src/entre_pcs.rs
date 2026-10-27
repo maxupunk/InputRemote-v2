@@ -7,8 +7,8 @@
 //! Tudo aqui cabe em [`ir_proto::limits::MAX_PANEL_MESSAGE`], o teto do quadro do rádio: quando a
 //! lista de processos não cabe, ela encolhe — a amostra e os vigiados vão sempre.
 
+use crate::amostra::UsageSample;
 use ir_proto::limits::MAX_PANEL_MESSAGE;
-use ir_proto::message::UsageSample;
 use serde::{Deserialize, Serialize};
 
 use crate::mensagem::{codificar as em_bytes, decodificar as de_bytes};

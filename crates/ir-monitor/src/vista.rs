@@ -6,7 +6,7 @@
 //!
 //! Os textos são em português do Brasil, com vírgula decimal.
 
-use ir_proto::message::{Battery, Occupancy, Sensor, Temperature, Traffic, UsageSample};
+use crate::amostra::{Battery, Occupancy, Traffic, UsageSample};
 use serde::Serialize;
 
 use crate::detalhes::Detalhes;
@@ -15,8 +15,10 @@ use crate::nivel::{self, Nivel};
 use crate::processos::Processos;
 
 mod detalhes;
+mod hardware;
 
 pub use detalhes::{CHAVE_DA_COPIA, LinhaDeProcesso, PREFIXO_DE_PROCESSO, chave_do_processo};
+pub use hardware::{PREFIXO_DE_SENSOR, chave_do_sensor};
 
 /// O que o painel desenha.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -138,9 +140,9 @@ fn blocos(amostra: &UsageSample) -> Vec<Bloco> {
     let mut blocos = vec![
         processador(amostra.cpu_permille),
         ocupacao("ram", "RAM", amostra.memory),
-        disco(amostra.disk),
-        rede(amostra.network),
     ];
+    blocos.extend(hardware::gpus(&amostra.gpus));
+    blocos.extend([disco(amostra.disk), rede(amostra.network)]);
     blocos.extend(amostra.battery.map(bateria));
     if amostra.temperatures.is_empty() {
         blocos.push(Bloco {
@@ -148,7 +150,7 @@ fn blocos(amostra: &UsageSample) -> Vec<Bloco> {
             ..vazio("temp", "Temperatura")
         });
     }
-    blocos.extend(amostra.temperatures.iter().copied().map(temperatura));
+    blocos.extend(hardware::temperaturas(&amostra.temperatures));
     blocos
 }
 
@@ -225,22 +227,6 @@ fn bateria(bateria: Battery) -> Bloco {
         nivel: nivel::da_bateria(bateria.percent, bateria.plugged),
         serie: None,
         ..vazio("bateria", "Bateria")
-    }
-}
-
-fn temperatura(temperatura: Temperature) -> Bloco {
-    let (chave, rotulo) = match temperatura.sensor {
-        Sensor::Cpu => ("temp-cpu", "Temp. CPU"),
-        Sensor::Gpu => ("temp-gpu", "Temp. GPU"),
-        Sensor::Disk => ("temp-disco", "Temp. disco"),
-        Sensor::Board => ("temp-placa", "Temp. placa"),
-    };
-    let graus = f32::from(temperatura.centi_celsius) / 100.0;
-    Bloco {
-        valor: format!("{} °C", decimal(f64::from(graus), 0)),
-        nivel: nivel::da_temperatura(temperatura.centi_celsius),
-        serie: Some(graus),
-        ..vazio(chave, rotulo)
     }
 }
 

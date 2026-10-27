@@ -7,10 +7,10 @@ use ir_configuracao::{Config, Gravador};
 use ir_crypto::{Identity, PublicKey};
 use ir_ipc::Aviso;
 use ir_ipc::transferencia::Velocimetro;
+use ir_monitor::amostra::UsageSample;
 use ir_monitor::{InteresseEmProcessos, Mesa, Processos, Rota};
 use ir_monitor_rede::Monitor;
 use ir_proto::carrier::Carrier;
-use ir_proto::message::UsageSample;
 use ir_session::{Input, Notice};
 use ir_telemetria::Vigia;
 

@@ -7,6 +7,7 @@
 //!
 //! | Módulo | O quê |
 //! |---|---|
+//! | [`amostra`] | a amostra de uso de uma máquina: processador, memória, GPU, temperaturas |
 //! | [`mensagem`] | o que o painel e o computador dizem um ao outro |
 //! | [`detalhes`] | a cópia em curso e os processos, ao lado do quadro |
 //! | [`processos`] | os processos agrupados pelo nome, e o que se quer saber deles |
@@ -34,6 +35,7 @@
     )
 )]
 
+pub mod amostra;
 pub mod conversa;
 pub mod detalhes;
 pub mod entre_pcs;

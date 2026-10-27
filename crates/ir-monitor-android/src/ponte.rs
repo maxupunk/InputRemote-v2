@@ -101,7 +101,7 @@ mod tests {
         let quadro = Quadro {
             maquinas: vec![Maquina {
                 nome: "DESKTOP".to_owned(),
-                situacao: Situacao::Amostra(ir_proto::message::UsageSample::default()),
+                situacao: Situacao::Amostra(ir_monitor::amostra::UsageSample::default()),
             }],
             enlace: None,
         };

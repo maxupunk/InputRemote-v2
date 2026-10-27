@@ -36,7 +36,7 @@ mod vigilancia;
 
 use ir_ipc::Transferencia;
 use ir_monitor::Processos;
-use ir_proto::message::UsageSample;
+use ir_monitor::amostra::UsageSample;
 
 pub use vigilancia::Vigilancia;
 

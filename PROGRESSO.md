@@ -651,6 +651,8 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito e verificado · `[!
       no tablet de verdade ([log 70](docs/logs/70-processos-e-copia-no-painel.md))
 - [x] O aparelho pede para parear: o código aparece sozinho no PC, sem "Parear aparelho"; prazo de
       60 s, castigo por endereço e o interruptor "Aparelhos novos" ([log 71](docs/logs/71-o-aparelho-pede-para-parear.md))
+- [x] A placa de vídeo (uso e memória, uma ou duas) e um card por sensor de temperatura, com
+      nome; a GPU no Windows pelas estatísticas do núcleo de vídeo, ~1 ms ([log 72](docs/logs/72-gpu-e-todos-os-sensores.md))
 - [ ] `[H]` Bancada com o serviço **instalado** nos dois computadores e um aparelho de verdade: o
       par da versão 11 respondendo, as duas rotas medidas, o par antigo pedindo atualização, os
       processos do par e uma cópia de verdade

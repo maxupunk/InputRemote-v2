@@ -4,7 +4,7 @@
 //! **é o formato de fio**. Acrescentar no fim é seguro; o resto exige subir [`VERSAO`]. Os vetores
 //! gravados em `tests/vetores.rs` pegam a mudança esquecida.
 
-use ir_proto::message::UsageSample;
+use crate::amostra::UsageSample;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 /// A versão deste vocabulário. Independe da versão do protocolo entre os computadores: o painel e

@@ -7,7 +7,7 @@
 
 use std::time::Instant;
 
-use ir_proto::message::{Battery, Occupancy, Traffic, UsageSample};
+use ir_monitor::amostra::{Battery, Occupancy, Traffic, UsageSample};
 use windows_sys::Win32::Foundation::FILETIME;
 use windows_sys::Win32::NetworkManagement::IpHelper::{FreeMibTable, GetIfTable2, MIB_IF_TABLE2};
 use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;

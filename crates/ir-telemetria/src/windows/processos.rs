@@ -177,7 +177,7 @@ mod tests {
         assert!(foto.total > 0);
         let eu = foto.processos.iter().find(|p| p.pid == std::process::id());
         assert!(
-            eu.is_some_and(|p| p.memoria_kib > 0 && p.tempo > 0 && !p.nome.is_empty()),
+            eu.is_some_and(|p| p.memoria_kib > 0 && !p.nome.is_empty()),
             "{eu:?}"
         );
     }

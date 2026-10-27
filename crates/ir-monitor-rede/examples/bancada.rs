@@ -16,9 +16,9 @@
 use std::time::Instant;
 
 use ir_crypto::Identity;
+use ir_monitor::amostra::UsageSample;
 use ir_monitor::{Copia, FaseDaCopia, InteresseEmProcessos, Mesa, Processos, Rota};
 use ir_monitor_rede::{Aviso, Comando, Monitor};
-use ir_proto::message::UsageSample;
 use tokio::sync::mpsc;
 
 /// A cópia de mentira: 600 MB a cerca de 40 MB/s, a cada minuto.
@@ -86,7 +86,7 @@ async fn main() -> std::io::Result<()> {
 fn par_simulado(daqui: &UsageSample, passo: u64) -> UsageSample {
     let mut par = daqui.clone();
     par.cpu_permille = Some(u16::try_from(oscilar(180, passo, 120)).unwrap_or(0));
-    par.battery = Some(ir_proto::message::Battery {
+    par.battery = Some(ir_monitor::amostra::Battery {
         percent: 64,
         plugged: false,
     });

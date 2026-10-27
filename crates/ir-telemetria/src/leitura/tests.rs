@@ -43,15 +43,6 @@ fn net_dev_sem_interface_fisica_nao_tem_trafego() {
 }
 
 #[test]
-fn hwmon_conhecido_vira_sensor_e_desconhecido_fica_de_fora() {
-    assert_eq!(sensor_do_hwmon("k10temp\n"), Some(Sensor::Cpu));
-    assert_eq!(sensor_do_hwmon("amdgpu"), Some(Sensor::Gpu));
-    assert_eq!(sensor_do_hwmon("nvme"), Some(Sensor::Disk));
-    assert_eq!(sensor_do_hwmon("acpitz"), Some(Sensor::Board));
-    assert_eq!(sensor_do_hwmon("iwlwifi_1"), None);
-}
-
-#[test]
 fn temperatura_em_milesimos_vira_centesimos() {
     assert_eq!(milesimos_para_centesimos("61500\n"), Some(6150));
     assert_eq!(milesimos_para_centesimos("lixo"), None);
@@ -72,63 +63,8 @@ fn kelvin_do_acpi_vira_celsius() {
 }
 
 #[test]
-fn lhm_pega_o_pacote_do_processador_e_ignora_os_nucleos() {
-    assert_eq!(
-        sensor_do_lhm("/amdcpu/0/temperature/2", "Core (Tctl/Tdie)"),
-        Some(Sensor::Cpu)
-    );
-    assert_eq!(
-        sensor_do_lhm("/intelcpu/0/temperature/8", "CPU Package"),
-        Some(Sensor::Cpu)
-    );
-    assert_eq!(
-        sensor_do_lhm("/intelcpu/0/temperature/1", "CPU Core #2"),
-        None
-    );
-    assert_eq!(
-        sensor_do_lhm("/gpu-nvidia/0/temperature/0", "GPU Core"),
-        Some(Sensor::Gpu)
-    );
-    assert_eq!(
-        sensor_do_lhm("/gpu-nvidia/0/temperature/2", "GPU Hot Spot"),
-        None
-    );
-    assert_eq!(
-        sensor_do_lhm("/nvme/1/temperature/0", "Temperature"),
-        Some(Sensor::Disk)
-    );
-    assert_eq!(
-        sensor_do_lhm("/lpc/nct6798d/temperature/1", "CPU"),
-        Some(Sensor::Board)
-    );
-}
-
-#[test]
-fn fica_a_mais_quente_de_cada_sensor_em_ordem() {
-    let leituras = [
-        (Sensor::Disk, 3500),
-        (Sensor::Cpu, 6000),
-        (Sensor::Disk, 4100),
-        (Sensor::Board, 3000),
-    ];
-    let quentes = mais_quentes(leituras);
-    let pares: Vec<(Sensor, i16)> = quentes
-        .iter()
-        .map(|t| (t.sensor, t.centi_celsius))
-        .collect();
-    assert_eq!(
-        pares,
-        vec![
-            (Sensor::Cpu, 6000),
-            (Sensor::Disk, 4100),
-            (Sensor::Board, 3000)
-        ]
-    );
-}
-
-#[test]
-fn pid_stat_le_o_nome_com_parenteses_e_os_numeros_depois_dele() {
-    let texto = "4812 (Web (Content)) S 1 4812 4812 0 -1 4194560 100 0 0 0 250 50 0 0 20 0 30 0 1234 2000000 512 18446744073709551615";
-    assert_eq!(proc_pid_stat(texto), Some(("Web (Content)", 300, 512)));
-    assert_eq!(proc_pid_stat("1 (curto) S 1"), None);
+fn numero_do_sys_em_decimal_ou_hexadecimal() {
+    assert_eq!(numero_do_sys("0x1002\n"), Some(0x1002));
+    assert_eq!(numero_do_sys("4294967296"), Some(4_294_967_296));
+    assert_eq!(numero_do_sys("lixo"), None);
 }

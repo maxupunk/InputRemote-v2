@@ -12,12 +12,13 @@
 
 use std::time::{Duration, Instant};
 
-use ir_proto::message::{Sensor, UsageSample};
+use ir_monitor::amostra::UsageSample;
 use serde::Deserialize;
 use wmi::WMIConnection;
 
 use crate::fonte::Fonte;
-use crate::leitura::{decimos_de_kelvin_para_centesimos, mais_quentes, sensor_do_lhm};
+use crate::leitura::decimos_de_kelvin_para_centesimos;
+use crate::sensores::{self, Leitura};
 
 /// De quanto em quanto tempo procurar de novo um monitor de hardware que não estava rodando.
 ///
@@ -31,6 +32,7 @@ const MONITORES: [&str; 2] = ["ROOT\\LibreHardwareMonitor", "ROOT\\OpenHardwareM
 #[derive(Deserialize)]
 #[serde(rename = "MSAcpi_ThermalZoneTemperature", rename_all = "PascalCase")]
 struct Zona {
+    instance_name: String,
     current_temperature: u32,
 }
 
@@ -88,7 +90,7 @@ impl Termica {
         }
     }
 
-    fn do_monitor(&mut self) -> Option<Vec<(Sensor, i16)>> {
+    fn do_monitor(&mut self) -> Option<Vec<Leitura>> {
         let conexao = self.monitor.as_ref()?;
         let consulta =
             "SELECT Identifier, Name, Value FROM Sensor WHERE SensorType = 'Temperature'";
@@ -101,14 +103,14 @@ impl Termica {
             sensores
                 .into_iter()
                 .filter_map(|s| {
-                    let sensor = sensor_do_lhm(&s.identifier, &s.name)?;
-                    Some((sensor, centesimos(s.value)?))
+                    let (sensor, nome) = sensores::do_lhm(&s.identifier, &s.name)?;
+                    Some((sensor, nome, centesimos(s.value)?))
                 })
                 .collect(),
         )
     }
 
-    fn do_acpi(&mut self) -> Vec<(Sensor, i16)> {
+    fn do_acpi(&mut self) -> Vec<Leitura> {
         let Some(conexao) = self.acpi.as_ref() else {
             return Vec::new();
         };
@@ -119,8 +121,11 @@ impl Termica {
         };
         zonas
             .into_iter()
-            .filter_map(|zona| decimos_de_kelvin_para_centesimos(zona.current_temperature))
-            .map(|centi| (Sensor::Board, centi))
+            .filter_map(|zona| {
+                let centi = decimos_de_kelvin_para_centesimos(zona.current_temperature)?;
+                let nome = sensores::nome_do_acpi(&zona.instance_name);
+                Some((ir_monitor::amostra::Sensor::Board, nome, centi))
+            })
             .collect()
     }
 }
@@ -132,7 +137,7 @@ impl Fonte for Termica {
             Some(leituras) if !leituras.is_empty() => leituras,
             _ => self.do_acpi(),
         };
-        amostra.temperatures = mais_quentes(leituras);
+        amostra.temperatures = sensores::escolher(leituras);
     }
 }
 

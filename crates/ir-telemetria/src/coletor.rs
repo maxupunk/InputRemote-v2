@@ -2,7 +2,7 @@
 
 use std::time::Instant;
 
-use ir_proto::message::UsageSample;
+use ir_monitor::amostra::UsageSample;
 
 use crate::fonte::Agendada;
 

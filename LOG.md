@@ -96,3 +96,4 @@ quê. Um registro que se reescreve não é registro.
 | 69 | 2026-10-24 | [O painel deitado, e os cards que a pessoa arruma](docs/logs/69-o-painel-deitado-e-os-cards.md) |
 | 70 | 2026-10-24 | [Os processos e a cópia no painel](docs/logs/70-processos-e-copia-no-painel.md) |
 | 71 | 2026-10-26 | [O aparelho pede para parear](docs/logs/71-o-aparelho-pede-para-parear.md) |
+| 72 | 2026-10-26 | [A placa de vídeo e todos os sensores de temperatura](docs/logs/72-gpu-e-todos-os-sensores.md) |

@@ -3,8 +3,6 @@
 //! Mora fora dos módulos de cada sistema para os testes rodarem em qualquer máquina — o formato
 //! de `/proc/stat` não muda porque o teste roda no Windows.
 
-use ir_proto::message::{Sensor, Temperature};
-
 use crate::conta::TemposDoProcessador;
 
 /// A primeira linha de `/proc/stat`: `cpu  user nice system idle iowait irq softirq steal …`.
@@ -105,17 +103,14 @@ fn interface_virtual(nome: &str) -> bool {
     PREFIXOS.iter().any(|prefixo| nome.starts_with(prefixo))
 }
 
-/// Que parte da máquina um `hwmon` mede, pelo nome do driver (`/sys/class/hwmon/*/name`).
-///
-/// Só os drivers conhecidos entram: um sensor que não se sabe o que mede é um número que engana.
+/// Um número que o kernel escreve em decimal (`mem_info_vram_used`) ou em hexadecimal com `0x`
+/// (`vendor`, o fabricante PCI).
 #[must_use]
-pub fn sensor_do_hwmon(nome: &str) -> Option<Sensor> {
-    match nome.trim() {
-        "coretemp" | "k10temp" | "zenpower" | "cpu_thermal" => Some(Sensor::Cpu),
-        "amdgpu" | "radeon" | "nouveau" | "i915" | "xe" => Some(Sensor::Gpu),
-        "nvme" | "drivetemp" => Some(Sensor::Disk),
-        "acpitz" => Some(Sensor::Board),
-        _ => None,
+pub fn numero_do_sys(texto: &str) -> Option<u64> {
+    let texto = texto.trim();
+    match texto.strip_prefix("0x") {
+        Some(hexa) => u64::from_str_radix(hexa, 16).ok(),
+        None => texto.parse().ok(),
     }
 }
 
@@ -141,50 +136,6 @@ pub fn bateria(capacidade: &str, estado: &str) -> Option<(u8, bool)> {
 pub fn decimos_de_kelvin_para_centesimos(decimos: u32) -> Option<i16> {
     let centesimos = i64::from(decimos) * 10 - 27_315;
     i16::try_from(centesimos).ok()
-}
-
-/// Que parte da máquina um sensor do `LibreHardwareMonitor` mede, pelo `Identifier` dele —
-/// `/amdcpu/0/temperature/2`, `/gpu-nvidia/0/temperature/0`, `/nvme/1/temperature/0`.
-///
-/// Do processador vale só o pacote (`Package`, `Tctl`, `Core Max`): os núcleos um a um encheriam o
-/// painel de números que dizem a mesma coisa.
-#[must_use]
-pub fn sensor_do_lhm(identificador: &str, nome: &str) -> Option<Sensor> {
-    let hardware = identificador.trim_start_matches('/').split('/').next()?;
-    if hardware.ends_with("cpu") {
-        let pacote = ["Package", "Tctl", "Core Max", "CPU Total"];
-        return pacote
-            .iter()
-            .any(|p| nome.contains(p))
-            .then_some(Sensor::Cpu);
-    }
-    if hardware.starts_with("gpu") {
-        return (nome.contains("Core") || nome == "GPU").then_some(Sensor::Gpu);
-    }
-    if matches!(hardware, "nvme" | "hdd" | "ssd") {
-        return Some(Sensor::Disk);
-    }
-    hardware.starts_with("lpc").then_some(Sensor::Board)
-}
-
-/// Uma temperatura por parte da máquina — a mais quente —, na ordem de [`Sensor`].
-///
-/// Dois discos ou duas zonas do ACPI dizem a mesma coisa ao painel: o que importa é o mais quente.
-/// O resultado cabe em [`MAX_TEMPERATURES`](ir_proto::limits::MAX_TEMPERATURES) por construção.
-#[must_use]
-pub fn mais_quentes(leituras: impl IntoIterator<Item = (Sensor, i16)>) -> Vec<Temperature> {
-    let mut por_sensor: Vec<Temperature> = Vec::new();
-    for (sensor, centi_celsius) in leituras {
-        match por_sensor.iter_mut().find(|t| t.sensor == sensor) {
-            Some(atual) => atual.centi_celsius = atual.centi_celsius.max(centi_celsius),
-            None => por_sensor.push(Temperature {
-                sensor,
-                centi_celsius,
-            }),
-        }
-    }
-    por_sensor.sort_by_key(|t| t.sensor);
-    por_sensor
 }
 
 #[cfg(test)]

@@ -68,9 +68,10 @@ Sem assinatura não há linha de coleta, nem arquivo de `/proc` aberto, nem cons
   ([03, §6](03-protocolo.md)). Dentro dele, `ir_monitor::EntrePcs`: o pedido (com os processos que
   o painel quer), parar, e a amostra com os processos. Com um par mais antigo, o painel mostra só o
   computador que agrega e diz "Atualize o InputRemote neste computador" no cartão do outro.
-- **`UsageSample` em ponto fixo**: CPU em milésimos, memória e disco em KiB, tráfego em bytes/s,
-  bateria em %, até 8 temperaturas em centésimos de grau. `None` é "não sei ler". Uma amostra
-  completa tem cerca de 40 bytes.
+- **`UsageSample` em ponto fixo** (`ir_monitor::amostra`): CPU em milésimos, memória e disco em
+  KiB, tráfego em bytes/s, bateria em %, até 12 temperaturas em centésimos de grau, cada uma com o
+  nome do sensor, e até duas placas de vídeo (uso e memória dedicada). `None` é "não sei ler". Com
+  todos os sensores, a amostra tem uns 280 bytes ([log 72](logs/72-gpu-e-todos-os-sensores.md)).
 - **A latência não tem sonda nova.** O `Pong` que já existe é medido **por portador, antes da
   detecção de repetição** (`Notice::RouteLatency`). Na rota dupla o par responde ao primeiro `Ping`
   que lhe chega, então a medida da rota mais lenta é a ida pela mais rápida somada à volta por ela —
@@ -101,14 +102,16 @@ pub trait Fonte {
 |---|---|---|
 | CPU | `GetSystemTimes` | `/proc/stat` |
 | RAM | `GlobalMemoryStatusEx` | `/proc/meminfo` (total menos disponível) |
-| Temperatura | `MSAcpi_ThermalZoneTemperature`; o WMI do LibreHardwareMonitor ou do OpenHardwareMonitor, se rodando | `hwmon` de drivers conhecidos |
+| Temperatura | `MSAcpi_ThermalZoneTemperature`; o WMI do LibreHardwareMonitor ou do OpenHardwareMonitor, se rodando | todo `hwmon`, com o rótulo do driver |
+| GPU | DXGI (fabricante, memória dedicada, LUID; uma vez) e `D3DKMTQueryStatistics` (tempo de cada motor, bytes de cada segmento): ~1 ms | `/sys/class/drm` (`amdgpu`: uso e memória) |
 | Disco | `GetDiskFreeSpaceExW` na unidade do sistema | `statvfs("/")` |
 | Rede | `GetIfTable2`, só placa física e sem filtro | `/proc/net/dev`, sem as interfaces virtuais |
 | Bateria | `GetSystemPowerStatus` | `/sys/class/power_supply` |
 | RTT por rota | sessão (`ir-session`) | sessão (`ir-session`) |
 
 Os arquivos de `/proc` e `/sys` ficam abertos durante a assinatura; a conexão WMI é aberta uma vez.
-Cada tipo de sensor mostra o mais quente.
+Cada sensor tem nome ("Package", "Core #3", "GPU Hot Spot"); com mais de doze, cada parte da máquina
+ganha uma vaga antes de alguma ganhar a segunda (`sensores::escolher`).
 
 **Processos** ([log 70](logs/70-processos-e-copia-no-painel.md)): só com interesse — um card de
 processo ou a lista aberta, aqui ou no painel do par. Uma foto por segundo, e o uso é a diferença
@@ -181,6 +184,11 @@ deitado) tudo cabe sem rolar ([log 69](logs/69-o-painel-deitado-e-os-cards.md)):
 - **a faixa "Entre os computadores"** numa linha fina embaixo e, enquanto há cópia de arquivos,
   **a faixa da cópia** ao lado dela: o que vai, quanto, a velocidade e quanto falta. Em pé, as faixas
   vão para o topo e os computadores se empilham.
+
+**A placa de vídeo e os sensores** ([log 72](logs/72-gpu-e-todos-os-sensores.md)): o card **GPU**
+(uso, e a memória dedicada ou o fabricante; com duas placas, "GPU · NVIDIA" e "GPU · Intel") entra
+sozinho. O card de temperatura de cada parte mostra a mais quente e diz qual é; cada sensor tem o seu
+card em **Adicionar card → Sensores de temperatura**, que não entra sozinho.
 
 **O "i"** no processador e na memória abre a lista de processos daquele computador, ao vivo:
 ordenada pelo processador ou pela memória, conforme o "i" tocado; as linhas só trocam de lugar a cada

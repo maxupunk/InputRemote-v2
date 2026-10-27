@@ -5,7 +5,7 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-use ir_proto::message::UsageSample;
+use crate::amostra::UsageSample;
 
 use crate::detalhes::{Copia, Detalhes};
 use crate::mensagem::{Enlace, Maquina, Quadro, Rota, Situacao};
@@ -44,7 +44,8 @@ enum Par {
     Antigo(String),
     Conectado {
         nome: String,
-        amostra: Option<(Instant, UsageSample)>,
+        /// Numa caixa: a amostra com as temperaturas e as placas é a maior parte do par.
+        amostra: Option<Box<(Instant, UsageSample)>>,
         processos: Option<(Instant, Processos)>,
     },
 }
@@ -98,7 +99,7 @@ impl Mesa {
     /// A amostra que o par mandou.
     pub fn anotar_par(&mut self, agora: Instant, nova: UsageSample) {
         if let Par::Conectado { amostra, .. } = &mut self.par {
-            *amostra = Some((agora, nova));
+            *amostra = Some(Box::new((agora, nova)));
         }
     }
 
@@ -139,7 +140,7 @@ impl Mesa {
                 Some(self.enlace(agora))
             }
             Par::Conectado { nome, amostra, .. } => {
-                let situacao = recente(amostra.as_ref(), agora)
+                let situacao = recente(amostra.as_deref(), agora)
                     .map_or(Situacao::Aguardando, |a| Situacao::Amostra(a.clone()));
                 maquinas.push(maquina(nome, situacao));
                 Some(self.enlace(agora))

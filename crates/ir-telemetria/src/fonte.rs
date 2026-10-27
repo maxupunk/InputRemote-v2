@@ -2,7 +2,7 @@
 
 use std::time::Instant;
 
-use ir_proto::message::UsageSample;
+use ir_monitor::amostra::UsageSample;
 
 /// Uma fonte lê uma coisa só e escreve o campo dela na amostra.
 ///

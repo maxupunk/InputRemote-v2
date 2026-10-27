@@ -24,6 +24,7 @@ windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_System_Threading",
     "Win32_System_WindowsProgramming",
+    "Wdk_Graphics_Direct3D",
     "Wdk_System_SystemInformation",
     "Win32_System_SystemInformation",
     "Win32_System_Power",
@@ -35,6 +36,9 @@ windows-sys = { version = "0.61", features = [
 # As temperaturas: a zona térmica do ACPI e, se estiver rodando, o LibreHardwareMonitor. As duas
 # só pelo WMI; o mesmo `windows` 0.62 que o resto do workspace já usa (ADR-0018).
 wmi = { version = "0.18", default-features = false }
+# O fabricante e a memória dedicada de cada placa de vídeo, pelo DXGI — uma interface COM, que só o
+# `windows` descreve. O mesmo 0.62 que o resto do workspace já usa.
+windows = { version = "0.62", features = ["Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common"] }
 serde.workspace = true
 
 [lints]

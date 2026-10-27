@@ -165,8 +165,9 @@ lado, a tela diz para atualizar.
 ### Painel no celular
 
 Um tablet ou celular Android mostra, numa tela sempre acesa, o uso dos dois computadores —
-processador, memória, disco, rede, bateria, temperaturas — e quanto cada rota (Bluetooth e rede)
-está atrasando. Ele só olha: não digita, não copia e não recebe arquivo.
+processador, memória, placa de vídeo, disco, rede, bateria, temperaturas — e quanto cada rota
+(Bluetooth e rede) está atrasando. Cada sensor de temperatura da máquina pode ter o seu card:
+**Editar painel → Adicionar card → Sensores de temperatura**. Ele só olha: não digita, não copia e não recebe arquivo.
 
 1. Instale o **InputRemote Painel** no aparelho: o `dist/InputRemote-Painel-*.apk`, que o
    `empacotar.ps1` gera junto com os outros (`-Alvo Android` para gerar só ele).
