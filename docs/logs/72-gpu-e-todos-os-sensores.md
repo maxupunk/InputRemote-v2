@@ -69,6 +69,13 @@ só o pacote. Da placa de vídeo, nada além da temperatura.
   6,5 %), conferidas contra o `Get-Counter` do sistema. As temperaturas vêm vazias como usuário
   comum: a zona do ACPI só abre para o serviço, como `SYSTEM`.
 
+- **Linux, sem contêiner**: o Docker Desktop respondia erro 500, então o código do Linux foi
+  verificado por `cargo clippy --target x86_64-unknown-linux-gnu` a partir do Windows, com o `clang`
+  do NDK compilando o C do `ring` (`CC_x86_64_unknown_linux_gnu`, `--sysroot` do NDK; o `clippy` não
+  linka). `ir-telemetria`, `ir-monitor`, `ir-vigilancia` e `ir-transferencia`, com `--all-targets` e
+  `-D warnings`: sem aviso. A lógica que o Linux usa (`sensores`, `gpu`, `numero_do_sys`) é pura e
+  roda nos testes de qualquer sistema; ler os arquivos de uma máquina Linux de verdade falta.
+
 ## O que deu errado no caminho
 
 - **A primeira leitura de GPU custava caro.** Pelos contadores de desempenho
@@ -84,6 +91,8 @@ só o pacote. Da placa de vídeo, nada além da temperatura.
   pode ainda não ter tempo nenhum. Tirado.
 
 ## O que falta
+
+- Rodar no fedora o `--example amostra` e os testes, quando o contêiner ou a máquina estiverem à mão.
 
 - Com o serviço **instalado** (como `SYSTEM`), ver no tablet os sensores do ACPI, e os do
   LibreHardwareMonitor quando ele estiver aberto.
