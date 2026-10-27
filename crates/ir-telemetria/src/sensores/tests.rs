@@ -106,7 +106,7 @@ fn nomes_repetidos_ganham_numero() {
     assert_eq!(nomes(&escolhidas), vec!["NVMe", "NVMe 2"]);
 }
 
-/// O fedora de verdade: quatro zonas do ACPI sem rótulo, e um sensor do NVMe no zero absoluto.
+/// O fedora de verdade: quatro zonas do ACPI sem rótulo, e um sensor do `NVMe` no zero absoluto.
 #[test]
 fn quatro_iguais_viram_quatro_nomes_e_o_zero_absoluto_fica_de_fora() {
     let escolhidas = escolher([
