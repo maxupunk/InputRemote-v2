@@ -2,13 +2,18 @@
 //! quais entram na amostra. Puro, para os testes rodarem em qualquer sistema — as fontes de cada
 //! sistema só leem e chamam isto.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use ir_monitor::amostra::MAX_TEMPERATURES;
 use ir_monitor::amostra::{Sensor, Temperature};
 
 /// Uma leitura crua: a parte da máquina, o nome do sensor e os centésimos de grau.
 pub type Leitura = (Sensor, String, i16);
+
+/// A faixa de uma leitura de verdade, em centésimos: de −40 °C a 150 °C. Fora dela é o sensor
+/// dizendo que não mede — o `NVMe` que responde −273,15 °C, o zero absoluto, num sensor que não
+/// tem —, e um card com esse número seria pior que card nenhum.
+const PLAUSIVEL: core::ops::RangeInclusive<i16> = -4000..=15_000;
 
 /// Que parte da máquina um `hwmon` mede, pelo nome do driver (`/sys/class/hwmon/*/name`). Um
 /// driver que o painel não conhece é [`Sensor::Other`]: a placa de rede, a bateria — ainda é uma
@@ -34,6 +39,8 @@ pub fn nome_do_hwmon(driver: &str, rotulo: Option<&str>) -> String {
     match (do_hwmon(driver), rotulo) {
         (Sensor::Disk, Some("Composite") | None) => "NVMe".to_owned(),
         (_, Some(rotulo)) => rotulo.replace("Package id 0", "Package"),
+        // A zona térmica do ACPI não dá rótulo: o nome do driver não diz nada a ninguém.
+        (Sensor::Board, None) if driver == "acpitz" => "Zona ACPI".to_owned(),
         (_, None) => driver.to_owned(),
     }
 }
@@ -91,7 +98,10 @@ pub fn nome_do_acpi(instancia: &str) -> String {
 #[must_use]
 pub fn escolher(leituras: impl IntoIterator<Item = Leitura>) -> Vec<Temperature> {
     let mut por_parte: BTreeMap<Sensor, Vec<(String, i16)>> = BTreeMap::new();
-    for (sensor, nome, centi) in leituras {
+    for (sensor, nome, centi) in leituras
+        .into_iter()
+        .filter(|(_, _, c)| PLAUSIVEL.contains(c))
+    {
         por_parte.entry(sensor).or_default().push((nome, centi));
     }
     for grupo in por_parte.values_mut() {
@@ -145,18 +155,18 @@ fn natural(a: &str, b: &str) -> core::cmp::Ordering {
 
 /// Dois sensores com o mesmo nome na mesma parte (dois discos `NVMe`) viram `NVMe` e `NVMe 2`: o
 /// nome é a chave do card, e dois cards com a mesma chave seriam um só.
+///
+/// A conta é pelo nome original: contar pelos já renumerados fazia o terceiro "acpitz" virar outro
+/// "acpitz 2" (visto no fedora).
 fn unicos(temperaturas: &mut [Temperature]) {
-    for i in 1..temperaturas.len() {
-        let (antes, depois) = temperaturas.split_at_mut(i);
-        let Some(atual) = depois.first_mut() else {
-            continue;
-        };
-        let repetidas = antes
-            .iter()
-            .filter(|t| t.sensor == atual.sensor && t.name == atual.name)
-            .count();
-        if repetidas > 0 {
-            atual.name = format!("{} {}", atual.name, repetidas + 1);
+    let mut vistos: HashMap<(Sensor, String), usize> = HashMap::new();
+    for temperatura in temperaturas {
+        let vezes = vistos
+            .entry((temperatura.sensor, temperatura.name.clone()))
+            .or_default();
+        *vezes += 1;
+        if *vezes > 1 {
+            temperatura.name = format!("{} {vezes}", temperatura.name);
         }
     }
 }

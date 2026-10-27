@@ -76,6 +76,11 @@ só o pacote. Da placa de vídeo, nada além da temperatura.
   `-D warnings`: sem aviso. A lógica que o Linux usa (`sensores`, `gpu`, `numero_do_sys`) é pura e
   roda nos testes de qualquer sistema; ler os arquivos de uma máquina Linux de verdade falta.
 
+- **No fedora de verdade** (Fedora 44, kernel 7.2, notebook com `coretemp`, `nvme`, `acpitz` e
+  GPU Intel): o `--example amostra`, compilado no contêiner Fedora 44 e rodado lá, leu o Package e os
+  núcleos mais quentes, o NVMe, cinco zonas do ACPI e a placa Intel ("sem leitura de uso", como
+  esperado). No contêiner, `clippy` do workspace sem aviso e os testes dos crates tocados.
+
 ## O que deu errado no caminho
 
 - **A primeira leitura de GPU custava caro.** Pelos contadores de desempenho
@@ -90,9 +95,13 @@ só o pacote. Da placa de vídeo, nada além da temperatura.
 - Um teste do log 70 exigia tempo de processador maior que zero de um processo recém-criado — que
   pode ainda não ter tempo nenhum. Tirado.
 
-## O que falta
+- **Duas coisas que só a máquina real mostrou**: um sensor do NVMe respondendo −273,15 °C (o zero
+  absoluto, o jeito de o driver dizer que não mede) — agora uma leitura fora de −40 °C a 150 °C
+  fica de fora; e quatro zonas do ACPI sem rótulo viravam "acpitz", "acpitz 2", "acpitz 2",
+  "acpitz 2" — a numeração contava pelos nomes já renumerados, e três cards teriam a mesma chave.
+  Agora conta pelo nome original, e a zona sem rótulo se chama "Zona ACPI".
 
-- Rodar no fedora o `--example amostra` e os testes, quando o contêiner ou a máquina estiverem à mão.
+## O que falta
 
 - Com o serviço **instalado** (como `SYSTEM`), ver no tablet os sensores do ACPI, e os do
   LibreHardwareMonitor quando ele estiver aberto.
