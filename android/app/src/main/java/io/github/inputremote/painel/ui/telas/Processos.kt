@@ -105,12 +105,12 @@ fun ListaDeProcessos(maquina: VistaDaMaquina, ordemInicial: Ordem, aparelho: Apa
                 if (linhas == null) {
                     Medindo()
                 } else {
-                    Linhas(estavel.arrumar(linhas, ordem, System.currentTimeMillis()), ordem, aparelho)
+                    Linhas(estavel.arrumar(linhas, ordem, System.currentTimeMillis()), ordem, aparelho, maquina.nome)
                 }
             }
         }
     }
-    if (outro) AcompanharProcesso(aparelho, maquina.processos.orEmpty().map { it.nome }) { outro = false }
+    if (outro) AcompanharProcesso(aparelho, maquina.nome, maquina.processos.orEmpty().map { it.nome }) { outro = false }
 }
 
 /** Enquanto a primeira lista não chega — e, se não chega nunca, por quê. */
@@ -136,19 +136,19 @@ internal fun Medindo() {
 }
 
 @Composable
-internal fun Linhas(linhas: List<LinhaDeProcesso>, ordem: Ordem, aparelho: Aparelho) {
+internal fun Linhas(linhas: List<LinhaDeProcesso>, ordem: Ordem, aparelho: Aparelho, maquina: String) {
     if (linhas.isEmpty()) {
         Text("Nenhum processo para mostrar.", color = Cores.textoFraco, fontSize = 15.sp)
         return
     }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        items(linhas, key = { it.chave }) { linha -> Linha(linha, ordem, ordem.fracao(linha, linhas), aparelho) }
+        items(linhas, key = { it.chave }) { linha -> Linha(linha, ordem, ordem.fracao(linha, linhas), aparelho, maquina) }
     }
 }
 
 /** Uma linha: o nome e quantos são, os dois números, a barra da coluna escolhida e o botão. */
 @Composable
-internal fun Linha(linha: LinhaDeProcesso, ordem: Ordem, fracao: Float, aparelho: Aparelho) {
+internal fun Linha(linha: LinhaDeProcesso, ordem: Ordem, fracao: Float, aparelho: Aparelho, maquina: String) {
     val quantos = if (linha.instancias == 1) "1 processo" else "${linha.instancias} processos"
     Row(
         Modifier
@@ -180,14 +180,14 @@ internal fun Linha(linha: LinhaDeProcesso, ordem: Ordem, fracao: Float, aparelho
             Text(ordem.valor(linha), style = numeros, fontSize = 18.sp, color = Cores.texto, maxLines = 1)
             Text(ordem.outro(linha), style = numeros, fontSize = 12.sp, color = Cores.textoFraco, maxLines = 1)
         }
-        BotaoAcompanhar(linha.nome, linha.chave, aparelho)
+        BotaoAcompanhar(linha.nome, linha.chave, aparelho, maquina)
     }
 }
 
-/** "Acompanhar": um card do processo no painel. Já acompanhado, diz; sem lugar, também. */
+/** "Acompanhar": um card do processo no painel deste computador. Já acompanhado, diz; sem lugar, também. */
 @Composable
-private fun BotaoAcompanhar(nome: String, chave: String, aparelho: Aparelho) {
-    val arranjo = aparelho.arranjo
+private fun BotaoAcompanhar(nome: String, chave: String, aparelho: Aparelho, maquina: String) {
+    val arranjo = aparelho.arranjoDe(maquina)
     when {
         // Da altura do botão: a linha não encolhe quando o botão vira o aviso.
         arranjo.visivel(chave) -> Box(Modifier.width(LARGURA_DO_BOTAO).height(48.dp), contentAlignment = Alignment.CenterStart) {
@@ -195,7 +195,7 @@ private fun BotaoAcompanhar(nome: String, chave: String, aparelho: Aparelho) {
         }
         !aparelho.editavel -> Spacer(Modifier.width(LARGURA_DO_BOTAO))
         else -> TextButton(
-            onClick = { aparelho.editarArranjo { it.acompanhar(nome) } },
+            onClick = { aparelho.editarArranjo(maquina) { it.acompanhar(nome) } },
             enabled = arranjo.podeAcompanhar(),
             modifier = Modifier.width(LARGURA_DO_BOTAO),
         ) { Text(if (arranjo.podeAcompanhar()) "+ Acompanhar" else "4 no máximo", maxLines = 1) }
@@ -203,23 +203,23 @@ private fun BotaoAcompanhar(nome: String, chave: String, aparelho: Aparelho) {
 }
 
 /**
- * Acompanhar um processo pelo nome: um card que soma todos os processos com aquele nome — `docker`
- * pega o Docker Desktop e o motor dele; `wsl`, o WSL e a máquina virtual dele.
+ * Acompanhar um processo pelo nome, no painel de [maquina]: um card que soma todos os processos com
+ * aquele nome — `docker` pega o Docker Desktop e o motor dele; `wsl`, o WSL e a máquina virtual dele.
  *
  * @param sugestoes nomes da lista aberta, quando há, além dos atalhos.
  */
 @Composable
-fun AcompanharProcesso(aparelho: Aparelho, sugestoes: List<String>, fechar: () -> Unit) {
+fun AcompanharProcesso(aparelho: Aparelho, maquina: String, sugestoes: List<String>, fechar: () -> Unit) {
     var nome by rememberSaveable { mutableStateOf("") }
-    val arranjo = aparelho.arranjo
+    val arranjo = aparelho.arranjoDe(maquina)
     val acompanhar = { escolhido: String ->
-        aparelho.editarArranjo { it.acompanhar(escolhido) }
+        aparelho.editarArranjo(maquina) { it.acompanhar(escolhido) }
         fechar()
     }
     val atalhos = (ATALHOS + sugestoes).distinct().filterNot { arranjo.visivel(Arranjo.chaveDoProcesso(it)) }.take(8)
     AlertDialog(
         onDismissRequest = fechar,
-        title = { Text("Acompanhar processo") },
+        title = { Text("Acompanhar processo em $maquina") },
         confirmButton = {
             TextButton(onClick = { acompanhar(nome) }, enabled = nome.isNotBlank() && arranjo.podeAcompanhar()) {
                 Text("Acompanhar")
@@ -230,7 +230,7 @@ fun AcompanharProcesso(aparelho: Aparelho, sugestoes: List<String>, fechar: () -
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (!arranjo.podeAcompanhar()) {
                     Text(
-                        "Já há ${Arranjo.MAX_PROCESSOS} processos no painel. Tire um card de processo para pôr outro.",
+                        "Já há ${Arranjo.MAX_PROCESSOS} processos em $maquina. Tire um card de processo para pôr outro.",
                         color = Cores.atencao,
                         fontSize = 14.sp,
                     )

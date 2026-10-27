@@ -32,9 +32,8 @@ data class Acoes(
  * [io.github.inputremote.painel.ui.Preferencias]; o protetor de tela passa um só para ler.
  */
 data class Aparelho(
-    val arranjo: Arranjo,
-    /** Toda edição dos cards: a tela diz o que muda, por exemplo `{ it.remover(chave) }`. */
-    val editarArranjo: ((Arranjo) -> Arranjo) -> Unit,
+    /** Toda edição dos cards do painel ativo: a tela diz o que muda. */
+    val editarPainel: ((PainelPersonalizado) -> PainelPersonalizado) -> Unit,
     val escurecido: Boolean,
     val alternarEscurecer: () -> Unit,
     val sempreDeitado: Boolean,
@@ -42,7 +41,7 @@ data class Aparelho(
     /** Se dá para mexer: no protetor de tela, um toque só acorda o aparelho. */
     val editavel: Boolean = true,
     /** Painéis personalizados configurados no aparelho. */
-    val paineis: List<PainelPersonalizado> = listOf(PainelPersonalizado("painel_principal", "Painel", arranjo)),
+    val paineis: List<PainelPersonalizado> = listOf(PainelPersonalizado.PADRAO),
     val painelAtivoId: String = "painel_principal",
     val aoSelecionarPainel: (String) -> Unit = {},
     val aoCriarPainel: (String) -> Unit = {},
@@ -52,6 +51,12 @@ data class Aparelho(
 ) {
     val painelAtivo: PainelPersonalizado
         get() = paineis.firstOrNull { it.id == painelAtivoId } ?: paineis.firstOrNull() ?: PainelPersonalizado.PADRAO
+
+    /** Os cards deste computador no painel ativo; [maquina] nulo, os do painel (as faixas). */
+    fun arranjoDe(maquina: String?): Arranjo = painelAtivo.arranjoDe(maquina)
+
+    /** Muda os cards de um computador — ou os do painel, com [maquina] nulo — por exemplo `{ it.remover(chave) }`. */
+    fun editarArranjo(maquina: String?, edicao: (Arranjo) -> Arranjo) = editarPainel { it.editar(maquina, edicao) }
 }
 
 /** A tela do momento, com o deslocamento contra marca na tela. */

@@ -223,7 +223,7 @@ fun TelaDeProcessos(
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         items(ordenadas, key = { it.chave }) { linha ->
-                            Linha(linha, ordem, ordem.fracao(linha, ordenadas), aparelho)
+                            Linha(linha, ordem, ordem.fracao(linha, ordenadas), aparelho, maquina.nome)
                         }
                     }
                 }
@@ -232,6 +232,6 @@ fun TelaDeProcessos(
     }
 
     if (outro) {
-        AcompanharProcesso(aparelho, maquina.processos.orEmpty().map { it.nome }) { outro = false }
+        AcompanharProcesso(aparelho, maquina.nome, maquina.processos.orEmpty().map { it.nome }) { outro = false }
     }
 }

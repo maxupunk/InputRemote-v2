@@ -42,6 +42,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.inputremote.painel.dados.Arranjo
+import io.github.inputremote.painel.dados.PainelPersonalizado
+import io.github.inputremote.painel.dados.VistaDaMaquina
 import io.github.inputremote.painel.ui.tema.Cores
 
 /**
@@ -49,12 +51,13 @@ import io.github.inputremote.painel.ui.tema.Cores
  * que o card seja — e, embaixo, andar para antes, destacar e andar para depois, repartindo a largura
  * que houver. Fora da edição, só o card.
  *
- * [podeMover] e [podeDestacar] existem para a faixa do enlace, que não entra na grade dos cards: ela
- * só sai e volta.
+ * [maquina] é o computador dono do card; nulo, o card é do painel — as faixas de baixo. [podeMover] e
+ * [podeDestacar] existem para elas, que não entram na grade dos cards: só saem e voltam.
  */
 @Composable
 fun Editavel(
     chave: String,
+    maquina: String?,
     editando: Boolean,
     aparelho: Aparelho,
     modifier: Modifier = Modifier,
@@ -66,8 +69,8 @@ fun Editavel(
         Box(modifier) { conteudo() }
         return
     }
-    val destaque = aparelho.painelAtivo.arranjo.cards.firstOrNull { it.chave == chave }?.destaque == true
-    val editar = aparelho.editarArranjo
+    val destaque = aparelho.arranjoDe(maquina).cards.firstOrNull { it.chave == chave }?.destaque == true
+    val editar = { edicao: (Arranjo) -> Arranjo -> aparelho.editarArranjo(maquina, edicao) }
     Box(modifier.border(BorderStroke(1.dp, Cores.acao), RoundedCornerShape(12.dp))) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             // A faixa ocupa a altura que tem: o conteúdo cede lugar à linha dos controles.
@@ -127,53 +130,55 @@ private fun Tirar(modifier: Modifier, acao: () -> Unit) {
 }
 
 /**
- * O "Desfazer" da edição: cada mudança que muda algo guarda o arranjo de antes, com o painel dele.
- * Desfaz um passo por vez, só no painel à vista; ao concluir a edição, esquece tudo.
+ * O "Desfazer" da edição: cada mudança que muda algo guarda os cards de antes do painel, de todos os
+ * computadores. Desfaz um passo por vez, só no painel à vista; ao concluir a edição, esquece tudo.
  */
 class Desfazer {
-    private val antes = mutableStateListOf<Pair<String, Arranjo>>()
+    private val antes = mutableStateListOf<PainelPersonalizado>()
 
     /** O editar de fora, que só salva: desfazer não é uma mudança a desfazer. */
-    private var salvar: ((Arranjo) -> Arranjo) -> Unit = {}
+    private var salvar: ((PainelPersonalizado) -> PainelPersonalizado) -> Unit = {}
 
-    fun podeEm(painel: String): Boolean = antes.any { it.first == painel }
+    fun podeEm(painel: String): Boolean = antes.any { it.id == painel }
 
     /** O mesmo aparelho, mas cada edição passa por aqui antes. */
     fun guardando(aparelho: Aparelho): Aparelho {
-        salvar = aparelho.editarArranjo
+        salvar = aparelho.editarPainel
         return aparelho.copy(
-            editarArranjo = { edicao ->
+            editarPainel = { edicao ->
                 val painel = aparelho.painelAtivo
-                if (edicao(painel.arranjo) != painel.arranjo) antes.add(painel.id to painel.arranjo)
-                aparelho.editarArranjo(edicao)
+                if (edicao(painel) != painel) antes.add(painel)
+                aparelho.editarPainel(edicao)
             },
         )
     }
 
     fun desfazer(painel: String) {
-        val ultimo = antes.indexOfLast { it.first == painel }
+        val ultimo = antes.indexOfLast { it.id == painel }
         if (ultimo < 0) return
-        val arranjo = antes.removeAt(ultimo).second
-        salvar { arranjo }
+        val anterior = antes.removeAt(ultimo)
+        // Só os cards: um nome ou um lado trocado no meio continua como está.
+        salvar { it.copy(arranjo = anterior.arranjo, porMaquina = anterior.porMaquina) }
     }
 
     fun esquecer() = antes.clear()
 }
 
 /**
- * A barra da edição: gerenciar abas de painéis (criar, renomear, excluir),
- * inverter lados das máquinas, adicionar cards, acompanhar processos e concluir.
+ * A barra da edição: o que é do painel inteiro — abas (criar, renomear, excluir), inverter lados, pôr
+ * de volta uma faixa tirada, restaurar e concluir. Os cards de cada computador se adicionam no
+ * cabeçalho dele ([AdicionarCard]).
+ *
+ * @param faixas o nome de cada faixa que existe agora, pela chave.
  */
 @Composable
 fun BarraDeEdicao(
     aparelho: Aparelho,
-    rotulos: Map<String, String>,
+    faixas: Map<String, String>,
     aoInverterLados: (() -> Unit)? = null,
     desfazer: Desfazer? = null,
     concluir: () -> Unit,
 ) {
-    var escolhendo by remember { mutableStateOf(false) }
-    var processo by remember { mutableStateOf(false) }
     var renomeando by remember { mutableStateOf(false) }
     var criandoPainel by remember { mutableStateOf(false) }
     var confirmandoExclusao by remember { mutableStateOf(false) }
@@ -187,7 +192,7 @@ fun BarraDeEdicao(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Editando \"${painelAtual.nome}\": ◀ ▶ mudam o lugar, ★ destaca, ✕ no canto tira.",
+                text = "Editando \"${painelAtual.nome}\": cada computador tem os seus cards. ◀ ▶ mudam o lugar, ★ destaca, ✕ tira.",
                 color = Cores.textoFraco,
                 fontSize = 12.sp,
                 modifier = Modifier.weight(1f, fill = false),
@@ -224,9 +229,13 @@ fun BarraDeEdicao(
             if (aoInverterLados != null) {
                 OutlinedButton(onClick = aoInverterLados) { Text("⇄ Inverter lados") }
             }
-            OutlinedButton(onClick = { escolhendo = true }) { Text("Adicionar card") }
-            OutlinedButton(onClick = { processo = true }) { Text("Acompanhar processo") }
-            TextButton(onClick = { aparelho.editarArranjo { Arranjo.PADRAO.conhecer(it.conhecidas) } }) {
+            // Uma faixa tirada volta por aqui: ela é dos dois computadores, não de um.
+            aparelho.arranjoDe(null).disponiveis(faixas).forEach { chave ->
+                OutlinedButton(onClick = { aparelho.editarArranjo(null) { it.adicionar(chave) } }) {
+                    Text("+ ${faixas.getValue(chave)}")
+                }
+            }
+            TextButton(onClick = { aparelho.editarPainel { it.restaurado() } }) {
                 Text("Restaurar padrão")
             }
         }
@@ -273,12 +282,6 @@ fun BarraDeEdicao(
         )
     }
 
-    if (escolhendo) {
-        EscolherCard(aparelho, rotulos) { escolhendo = false }
-    }
-    if (processo) {
-        AcompanharProcesso(aparelho, sugestoes = emptyList()) { processo = false }
-    }
 }
 
 @Composable
@@ -343,42 +346,70 @@ private fun DialogoCriarPainel(
     )
 }
 
+/**
+ * "+ Adicionar card" no cabeçalho de um computador: o que ele mede e não está na tela, em grupos — os
+ * cards de sempre, os processos que ele já mede (e acompanhar outro), os sensores —, tudo no painel
+ * dele, e só dele.
+ */
 @Composable
-private fun EscolherCard(aparelho: Aparelho, rotulos: Map<String, String>, fechar: () -> Unit) {
-    val (sensores, cards) = aparelho.arranjo.disponiveis(rotulos).partition(Arranjo::ehSensor)
-    val opcao: @Composable (String) -> Unit = { chave ->
+fun AdicionarCard(maquina: VistaDaMaquina, aparelho: Aparelho) {
+    var escolhendo by remember { mutableStateOf(false) }
+    var processo by remember { mutableStateOf(false) }
+    TextButton(onClick = { escolhendo = true }) {
+        Text("+ Adicionar card", fontSize = 12.sp, color = Cores.acao)
+    }
+    if (escolhendo) {
+        EscolherCard(maquina, aparelho, acompanhar = { processo = true }) { escolhendo = false }
+    }
+    if (processo) {
+        AcompanharProcesso(aparelho, maquina.nome, maquina.processos.orEmpty().map { it.nome }) { processo = false }
+    }
+}
+
+@Composable
+private fun EscolherCard(maquina: VistaDaMaquina, aparelho: Aparelho, acompanhar: () -> Unit, fechar: () -> Unit) {
+    val rotulos = maquina.blocos.associate { it.chave to it.rotulo }
+    val (sobDemanda, cards) = aparelho.arranjoDe(maquina.nome).disponiveis(rotulos).partition(Arranjo::ehSobDemanda)
+    val (processos, sensores) = sobDemanda.partition(Arranjo::ehProcesso)
+    val opcao: @Composable (String, () -> Unit) -> Unit = { texto, acao ->
         Text(
-            rotulos.getValue(chave),
+            texto,
             fontSize = 17.sp,
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable {
-                    aparelho.editarArranjo { it.adicionar(chave) }
+                    acao()
                     fechar()
                 }
                 .padding(vertical = 12.dp),
         )
     }
+    val card: @Composable (String) -> Unit = { chave ->
+        opcao(rotulos.getValue(chave)) { aparelho.editarArranjo(maquina.nome) { it.adicionar(chave) } }
+    }
+    val secao: @Composable (String) -> Unit = { titulo ->
+        Text(titulo, color = Cores.textoFraco, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+    }
     AlertDialog(
         onDismissRequest = fechar,
         confirmButton = { TextButton(onClick = fechar) { Text("Fechar") } },
-        title = { Text("Adicionar card") },
+        title = { Text("Adicionar card em ${maquina.nome}") },
         text = {
             // Com um sensor por núcleo, a lista passa da tela: rola por dentro do diálogo.
             Column(
                 Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                if (cards.isEmpty() && sensores.isEmpty()) Text("Todos os cards desta tela já estão à vista.")
-                cards.forEach { opcao(it) }
+                if (cards.isEmpty()) {
+                    Text("Os cards de ${maquina.nome} já estão todos na tela.", color = Cores.textoFraco, fontSize = 14.sp)
+                }
+                cards.forEach { card(it) }
+                secao("Processos")
+                processos.forEach { card(it) }
+                opcao(if (processos.isEmpty()) "Acompanhar um processo…" else "Acompanhar outro processo…", acompanhar)
                 if (sensores.isNotEmpty()) {
-                    Text(
-                        "Sensores de temperatura",
-                        color = Cores.textoFraco,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                    sensores.forEach { opcao(it) }
+                    secao("Sensores de temperatura")
+                    sensores.forEach { card(it) }
                 }
             }
         },

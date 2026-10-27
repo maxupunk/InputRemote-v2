@@ -24,10 +24,6 @@ class Preferencias(contexto: Context) {
         arquivo.getString(PAINEL_ATIVO_ID, null)?.takeIf { id -> paineisAgora.value.any { it.id == id } }
             ?: paineisAgora.value.first().id
     )
-    private val arranjoAgora = MutableStateFlow(
-        paineisAgora.value.firstOrNull { it.id == painelAtivoIdAgora.value }?.arranjo
-            ?: paineisAgora.value.first().arranjo
-    )
 
     /** Se a tela fica no brilho mínimo. */
     val escurecer: StateFlow<Boolean> = escurecerAgora.asStateFlow()
@@ -41,9 +37,6 @@ class Preferencias(contexto: Context) {
     /** ID do painel atualmente selecionado. */
     val painelAtivoId: StateFlow<String> = painelAtivoIdAgora.asStateFlow()
 
-    /** Quais cards aparecem no painel ativo, em que ordem e quais em destaque. */
-    val arranjo: StateFlow<Arranjo> = arranjoAgora.asStateFlow()
-
     fun alternarEscurecer() = alternar(escurecerAgora, ESCURECER)
 
     fun alternarDeitado() = alternar(deitadoAgora, SEMPRE_DEITADO)
@@ -53,8 +46,7 @@ class Preferencias(contexto: Context) {
      */
     fun selecionarPainel(id: String) {
         val painel = paineisAgora.value.firstOrNull { it.id == id } ?: return
-        painelAtivoIdAgora.value = id
-        arranjoAgora.value = painel.arranjo
+        painelAtivoIdAgora.value = painel.id
         arquivo.edit().putString(PAINEL_ATIVO_ID, id).apply()
     }
 
@@ -117,21 +109,17 @@ class Preferencias(contexto: Context) {
     }
 
     /**
-     * Toda edição dos cards do painel ativo passa por aqui: a tela diz o que muda (`{ it.mover(chave, -1) }`),
-     * e o arranjo novo é guardado no painel ativo e persistido.
+     * Toda edição dos cards do painel ativo passa por aqui: a tela diz o que muda
+     * (`{ it.editar("fedora") { a -> a.mover(chave, -1) } }`), e o painel novo é guardado e persistido.
      */
-    fun editarArranjo(edicao: (Arranjo) -> Arranjo) {
+    fun editarPainel(edicao: (PainelPersonalizado) -> PainelPersonalizado) {
         val ativoId = painelAtivoIdAgora.value
         val atual = paineisAgora.value.firstOrNull { it.id == ativoId } ?: paineisAgora.value.first()
-        val novoArranjo = edicao(atual.arranjo)
-        if (novoArranjo != atual.arranjo) {
-            val novaLista = paineisAgora.value.map {
-                if (it.id == atual.id) it.copy(arranjo = novoArranjo) else it
-            }
+        val novo = edicao(atual)
+        if (novo != atual) {
+            val novaLista = paineisAgora.value.map { if (it.id == atual.id) novo else it }
             paineisAgora.value = novaLista
-            arranjoAgora.value = novoArranjo
             salvarPaineis(novaLista)
-            arquivo.edit().putString(ARRANJO, ArranjoJson.escrever(novoArranjo)).apply()
         }
     }
 

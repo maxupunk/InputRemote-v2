@@ -3,6 +3,7 @@ package io.github.inputremote.painel.dados
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Test
 
 class PainelPersonalizadoTest {
@@ -72,6 +73,65 @@ class PainelPersonalizadoTest {
         assertEquals("Hardware", lidos[1].nome)
         assertEquals(emptyList<String>(), lidos[1].ordemMaquinas)
         assertEquals(paineis[1].arranjo, lidos[1].arranjo)
+    }
+
+    @Test
+    fun cadaComputadorTemOsSeusCards() {
+        val painel = PainelPersonalizado(id = "p1", nome = "Painel")
+            .editar("Fedora") { it.remover("disco") }
+
+        assertEquals(false, painel.arranjoDe("fedora").visivel("disco"))
+        // O outro computador continua com o arranjo do painel, intacto.
+        assertEquals(true, painel.arranjoDe("SAMSUNG").visivel("disco"))
+        assertEquals(Arranjo.PADRAO, painel.arranjoDe(null))
+    }
+
+    @Test
+    fun editarSemMudarNadaDevolveOMesmoPainel() {
+        val painel = PainelPersonalizado(id = "p1", nome = "Painel")
+        assertSame(painel, painel.editar("fedora") { it.mover("cpu", -1) })
+    }
+
+    @Test
+    fun chaveNovaEntraNoComputadorQueAMandou() {
+        val painel = PainelPersonalizado(id = "p1", nome = "Painel")
+            .editar("fedora") { it.remover("disco") }
+            .conhecer(mapOf("fedora" to listOf("cpu", "temp-nvme"), "samsung" to listOf("bateria-2")), listOf(Arranjo.COPIA))
+
+        assertEquals(true, painel.arranjoDe("fedora").visivel("temp-nvme"))
+        assertEquals(false, painel.arranjoDe("fedora").visivel("bateria-2"))
+        // O do painel conhece todas: é o ponto de partida de quem ainda não foi arrumado.
+        assertEquals(true, painel.arranjoDe("samsung").visivel("bateria-2"))
+    }
+
+    @Test
+    fun restaurarVoltaOsDoisComputadores() {
+        val painel = PainelPersonalizado(id = "p1", nome = "Painel")
+            .editar("fedora") { it.remover("disco") }
+            .editar(null) { it.remover(Arranjo.ENLACE) }
+            .restaurado()
+
+        assertEquals(emptyMap<String, Arranjo>(), painel.porMaquina)
+        assertEquals(true, painel.arranjoDe(null).visivel(Arranjo.ENLACE))
+    }
+
+    @Test
+    fun processosDeTodosOsComputadores() {
+        val painel = PainelPersonalizado(id = "p1", nome = "Painel")
+            .editar("fedora") { it.acompanhar("docker") }
+            .editar("samsung") { it.acompanhar("chrome") }
+
+        assertEquals(setOf("docker", "chrome"), painel.processos().toSet())
+    }
+
+    @Test
+    fun osCardsDeCadaComputadorSobrevivemAoJson() {
+        val painel = PainelPersonalizado(id = "p1", nome = "Painel")
+            .editar("fedora") { it.remover("disco").alternarDestaque("rede") }
+
+        val lido = PainelPersonalizado.desserializarLista(PainelPersonalizado.serializarLista(listOf(painel)))!!.single()
+
+        assertEquals(painel, lido)
     }
 
     @Test

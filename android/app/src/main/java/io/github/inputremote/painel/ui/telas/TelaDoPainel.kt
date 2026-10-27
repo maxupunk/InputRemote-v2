@@ -134,8 +134,10 @@ fun TelaDoPainel(painel: Tela.Painel, acoes: Acoes, salvo: Aparelho) {
         }
     }
 
-    val rotulos = remember(painel.vista) { rotulosDa(painel.vista) }
-    LaunchedEffect(rotulos.keys) { aparelho.editarArranjo { it.conhecer(rotulos.keys) } }
+    val nomesDasFaixas = remember(painel.vista) { faixasDa(painel.vista) }
+    val chaves = remember(painel.vista) { painel.vista.maquinas.associate { m -> m.nome to m.blocos.map { it.chave } } }
+    // Chave nova não é edição da pessoa: vai direto, sem passar pelo "Desfazer".
+    LaunchedEffect(chaves, nomesDasFaixas.keys) { salvo.editarPainel { it.conhecer(chaves, nomesDasFaixas.keys) } }
 
     BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp)) {
         val deitado = maxWidth > maxHeight
@@ -198,7 +200,7 @@ fun TelaDoPainel(painel: Tela.Painel, acoes: Acoes, salvo: Aparelho) {
                 } else null
                 BarraDeEdicao(
                     aparelho = aparelho,
-                    rotulos = rotulos,
+                    faixas = nomesDasFaixas,
                     aoInverterLados = aoInverter,
                     desfazer = desfazer,
                     concluir = { editando = false },
@@ -317,12 +319,12 @@ private fun VisaoGeralDoPainel(
 }
 
 /**
- * O nome de cada card que existe agora, pela chave. A cópia está sempre: ela só aparece quando há
+ * O nome de cada faixa que existe agora, pela chave. A cópia está sempre: ela só aparece quando há
  * cópia, mas a pessoa precisa poder pô-la e tirá-la a qualquer hora.
  */
-private fun rotulosDa(vista: Vista): Map<String, String> {
-    val blocos = vista.maquinas.flatMap { it.blocos }.associate { it.chave to it.rotulo } + (Arranjo.COPIA to NOME_DA_COPIA)
-    return if (vista.enlace == null) blocos else blocos + (Arranjo.ENLACE to NOME_DO_ENLACE)
+private fun faixasDa(vista: Vista): Map<String, String> {
+    val copia = mapOf(Arranjo.COPIA to NOME_DA_COPIA)
+    return if (vista.enlace == null) copia else copia + (Arranjo.ENLACE to NOME_DO_ENLACE)
 }
 
 @Composable
@@ -458,7 +460,7 @@ private fun CartaoDaMaquina(
     aoTrocarLados: (() -> Unit)? = null,
 ) {
     val borda = if (maquina.nivel == Nivel.ATENCAO || maquina.nivel == Nivel.CRITICO) maquina.nivel.cor() else Cores.borda
-    val (grandes, compactos) = painelPersonalizado.arranjo.ordenar(maquina.blocos) { it.chave }.partition { it.second.destaque }
+    val (grandes, compactos) = painelPersonalizado.arranjoDe(maquina.nome).ordenar(maquina.blocos) { it.chave }.partition { it.second.destaque }
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = Cores.superficie),
@@ -482,6 +484,7 @@ private fun CartaoDaMaquina(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
+                if (editando) AdicionarCard(maquina, aparelho)
                 if (editando && aoTrocarLados != null) {
                     TextButton(
                         onClick = aoTrocarLados,
@@ -501,7 +504,7 @@ private fun CartaoDaMaquina(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 val desenhar: @Composable (Bloco, Boolean, Modifier) -> Unit = { bloco, destaque, mod ->
-                    Editavel(bloco.chave, editando, aparelho, mod) {
+                    Editavel(bloco.chave, maquina.nome, editando, aparelho, mod) {
                         val serie = series[Historico.chave(maquina.nome, bloco.chave)].orEmpty()
                         val abrir = informar?.takeIf { !editando && bloco.chave in COM_LISTA }
                         BlocoDeMetrica(bloco, serie, destaque, Modifier.fillMaxWidth(), abrir?.let { { it(bloco.chave) } })
@@ -523,7 +526,7 @@ fun FaixaDoEnlace(
     aparelho: Aparelho,
     modifier: Modifier = Modifier,
 ) {
-    Editavel(Arranjo.ENLACE, editando, aparelho, podeMover = false, podeDestacar = false, modifier = modifier) {
+    Editavel(Arranjo.ENLACE, null, editando, aparelho, podeMover = false, podeDestacar = false, modifier = modifier) {
         Card(
             modifier = Modifier.fillMaxSize(),
             colors = CardDefaults.cardColors(containerColor = Cores.superficie),
@@ -598,7 +601,7 @@ fun FaixaDaCopia(
     aparelho: Aparelho,
     modifier: Modifier = Modifier,
 ) {
-    Editavel(Arranjo.COPIA, editando, aparelho, podeMover = false, podeDestacar = false, modifier = modifier) {
+    Editavel(Arranjo.COPIA, null, editando, aparelho, podeMover = false, podeDestacar = false, modifier = modifier) {
         Card(
             modifier = Modifier.fillMaxSize(),
             colors = CardDefaults.cardColors(containerColor = Cores.superficie),

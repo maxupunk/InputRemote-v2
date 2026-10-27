@@ -52,18 +52,19 @@ class PainelDream : DreamService(), LifecycleOwner, SavedStateRegistryOwner {
         isScreenBright = !preferencias.escurecer.value
         val escopo = MainScope().also { escopo = it }
         val controlador = Controlador(fonteNativa(this), escopo).also { controlador = it }
-        controlador.acompanhar(preferencias.arranjo.value.processos())
+        controlador.acompanhar(preferencias.paineis.value.flatMap { it.processos() }.distinct())
         val nada = {}
         val acoes = Acoes(procurar = nada, parear = {}, confirmar = {}, esquecer = nada)
         // Os mesmos cards que a pessoa arrumou no aplicativo; aqui só para olhar.
         val aparelho = Aparelho(
-            arranjo = preferencias.arranjo.value,
-            editarArranjo = {},
+            editarPainel = {},
             escurecido = !isScreenBright,
             alternarEscurecer = nada,
             sempreDeitado = preferencias.sempreDeitado.value,
             alternarDeitado = nada,
             editavel = false,
+            paineis = preferencias.paineis.value,
+            painelAtivoId = preferencias.painelAtivoId.value,
         )
         setContentView(
             ComposeView(this).apply {

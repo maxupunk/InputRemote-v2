@@ -42,7 +42,6 @@ class MainActivity : ComponentActivity() {
             val tela by controlador.tela.collectAsStateWithLifecycle()
             val escuro by preferencias.escurecer.collectAsStateWithLifecycle()
             val deitado by preferencias.sempreDeitado.collectAsStateWithLifecycle()
-            val arranjo by preferencias.arranjo.collectAsStateWithLifecycle()
             val paineis by preferencias.paineis.collectAsStateWithLifecycle()
             val painelAtivoId by preferencias.painelAtivoId.collectAsStateWithLifecycle()
             LaunchedEffect(escuro) { aplicarBrilho(escuro) }
@@ -51,7 +50,7 @@ class MainActivity : ComponentActivity() {
             // Se houver vagas (até 4), inclui processos populares como chrome ou o processo pesquisado.
             var processoPesquisado by remember { mutableStateOf<String?>(null) }
             val processos = remember(paineis, processoPesquisado) {
-                val dosPaineis = paineis.flatMap { it.arranjo.processos() }.distinct()
+                val dosPaineis = paineis.flatMap { it.processos() }.distinct()
                 val pesquisa = listOfNotNull(processoPesquisado?.takeIf { it.isNotBlank() })
                 val populares = listOf("chrome", "code", "docker", "wsl")
                 (pesquisa + dosPaineis + populares).distinct().take(io.github.inputremote.painel.dados.Arranjo.MAX_PROCESSOS)
@@ -69,8 +68,7 @@ class MainActivity : ComponentActivity() {
                     pesquisarProcesso = { processoPesquisado = it },
                 ),
                 Aparelho(
-                    arranjo = arranjo,
-                    editarArranjo = preferencias::editarArranjo,
+                    editarPainel = preferencias::editarPainel,
                     escurecido = escuro,
                     alternarEscurecer = preferencias::alternarEscurecer,
                     sempreDeitado = deitado,
