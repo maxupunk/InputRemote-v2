@@ -24,6 +24,7 @@ members = [
     "crates/ir-sessao",
     "crates/ir-canais",
     "crates/ir-energia",
+    "crates/ir-religamento",
     "crates/ir-configuracao",
     "crates/ir-servico",
     "crates/ir-painel",
@@ -73,6 +74,7 @@ ir-processo = { path = "crates/ir-processo", version = "0.1.0-dev" }
 ir-sessao = { path = "crates/ir-sessao", version = "0.1.0-dev" }
 ir-canais = { path = "crates/ir-canais", version = "0.1.0-dev" }
 ir-energia = { path = "crates/ir-energia", version = "0.1.0-dev" }
+ir-religamento = { path = "crates/ir-religamento", version = "0.1.0-dev" }
 ir-configuracao = { path = "crates/ir-configuracao", version = "0.1.0-dev" }
 ir-servico = { path = "crates/ir-servico", version = "0.1.0-dev" }
 ir-painel = { path = "crates/ir-painel", version = "0.1.0-dev" }

@@ -78,8 +78,8 @@ pub use pastas::{
     ParaOAjudanteDePastas, ResumoDePasta, SituacaoDaPasta,
 };
 pub use status::{
-    AvisoDeRede, EconomiaDoWifi, Estado, Latencia, LinkState, MotivoDaQueda, MotivoDoPortador,
-    ParConhecido, Pausa, Politica, Trafego,
+    AcaoDoAviso, AvisoDeRede, BluetoothParado, EconomiaDoWifi, Estado, Latencia, LinkState,
+    MotivoDaQueda, MotivoDoPortador, ParConhecido, Pausa, Politica, Trafego,
 };
 pub use texto::TextoDoClipboard;
 pub use transferencia::{Fase, Motivo, Sentido, Transferencia};

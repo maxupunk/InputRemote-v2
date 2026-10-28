@@ -19,8 +19,28 @@ fn o_wifi_do_par_cochilando_vira_aviso_com_o_botao_apontado_para_ele() {
     estado.economia_no_par = Some(ir_ipc::EconomiaDoWifi::Ligada);
     let ui = estado_ui(&estado);
     assert!(ui.aviso.contains("outro computador"), "{}", ui.aviso);
-    assert!(ui.aviso_resolvivel);
-    assert!(ui.aviso_no_par);
+    assert_eq!(ui.aviso_botao, "Resolver");
+    assert!(ui.aviso_nota.contains("bateria"), "{}", ui.aviso_nota);
+}
+
+#[test]
+fn o_bluetooth_parado_vira_aviso_com_o_botao_de_religar_e_o_custo_dele() {
+    let mut estado = recem_instalado();
+    estado.agente_pronto = true;
+    estado.captura_pronta = true;
+    estado.bluetooth_parado = Some(ir_ipc::BluetoothParado::ComOutrosAparelhos);
+    let ui = estado_ui(&estado);
+    assert!(ui.aviso.contains("Bluetooth"), "{}", ui.aviso);
+    assert_eq!(ui.aviso_botao, "Religar o Bluetooth");
+    assert!(
+        ui.aviso_nota.contains("outros aparelhos"),
+        "{}",
+        ui.aviso_nota
+    );
+
+    // Religando, o serviço já está fazendo: a faixa avisa, sem botão.
+    estado.bluetooth_parado = Some(ir_ipc::BluetoothParado::Religando);
+    assert_eq!(estado_ui(&estado).aviso_botao, "");
 }
 
 #[test]
@@ -31,7 +51,7 @@ fn com_varios_avisos_a_tela_mostra_so_o_que_mais_impede() {
     estado.par_recusa_tela_de_bloqueio = true;
     let ui = estado_ui(&estado);
     assert_eq!(Some(ui.aviso.as_str()), estado.impedimento());
-    assert!(!ui.aviso_resolvivel);
+    assert_eq!(ui.aviso_botao, "");
 }
 
 #[test]

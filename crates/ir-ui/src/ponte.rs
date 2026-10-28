@@ -28,7 +28,7 @@ pub const SAUDE_RUIM: i32 = 3;
 pub fn estado_ui(estado: &Estado) -> EstadoUi {
     // Uma faixa só, a mais importante: quem escolhe é o contrato (`Estado::aviso_principal`).
     let aviso = estado.aviso_principal();
-    let resolver_no_par = aviso.as_ref().and_then(AvisoPrincipal::resolver_no_par);
+    let acao = aviso.as_ref().and_then(AvisoPrincipal::acao);
     EstadoUi {
         resumo: estado.resumo().into(),
         enlace: estado.frase_do_enlace().into(),
@@ -56,8 +56,8 @@ pub fn estado_ui(estado: &Estado) -> EstadoUi {
         aviso: aviso
             .as_ref()
             .map_or_else(SharedString::default, |aviso| aviso.frase().into()),
-        aviso_resolvivel: resolver_no_par.is_some(),
-        aviso_no_par: resolver_no_par.unwrap_or(false),
+        aviso_botao: acao.map_or_else(SharedString::default, |acao| acao.rotulo().into()),
+        aviso_nota: acao.map_or_else(SharedString::default, |acao| acao.nota().into()),
         pausado: estado.pausa == Some(ir_ipc::Pausa::Aqui),
         pausado_no_par: estado.pausa == Some(ir_ipc::Pausa::NoPar),
         sobre_o_bloqueio: estado.sobre_a_tela_de_bloqueio().into(),

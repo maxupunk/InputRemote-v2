@@ -176,6 +176,7 @@ impl Daemon {
             suprimindo: false,
             dormindo: false,
             economia_pedida_em: None,
+            religamento: ir_religamento::Vigia::default(),
             pareamento_aberto_ate: None,
             abertura_anunciada: None,
             voltas: ir_painel::Voltas::default(),

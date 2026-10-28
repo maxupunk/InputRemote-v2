@@ -93,6 +93,8 @@ pub struct Retrato<'a> {
     pub trafego: ir_ipc::Trafego,
     /// Se copiar e colar está ligado.
     pub copiar_e_colar: bool,
+    /// Se o Bluetooth parou com a rede de pé, e o que se faz a respeito.
+    pub bluetooth_parado: Option<ir_ipc::BluetoothParado>,
 }
 
 /// O estado, no vocabulário publicado da interface.
@@ -130,6 +132,7 @@ pub fn estado(r: &Retrato<'_>) -> Estado {
         captura_pronta: r.entrada.agente_pronto || r.entrada.captura_direto,
         trafego: r.trafego,
         copiar_e_colar: r.copiar_e_colar,
+        bluetooth_parado: r.bluetooth_parado,
     }
 }
 

@@ -84,6 +84,8 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ),
     // A economia de energia do Wi-Fi: ler e desligar. Não conhece nada do produto.
     ("ir-energia", &["ir-processo"]),
+    // O Bluetooth que parou com a rede de pé: quando religar o rádio, e o aviso da janela.
+    ("ir-religamento", &["ir-ipc", "ir-processo"]),
     // A amostra de uso para o painel: lê o sistema e escreve no formato do protocolo e no dos
     // processos do painel, e só.
     ("ir-telemetria", &["ir-proto", "ir-monitor"]),
@@ -129,6 +131,7 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "ir-configuracao",
             "ir-canais",
             "ir-energia",
+            "ir-religamento",
             "ir-servico",
             "ir-painel",
             "ir-vigilancia",

@@ -1,5 +1,5 @@
-//! O que a tela avisa além do estado da sessão: a pausa, a economia de energia do Wi-Fi, a tela de
-//! bloqueio do par e a borda que mudou sozinha.
+//! O que a tela avisa além do estado da sessão: a pausa, a economia de energia do Wi-Fi, o
+//! Bluetooth que parou, a tela de bloqueio do par e a borda que mudou sozinha.
 //!
 //! Separado de [`super`] por tamanho: são avisos com frase própria, e não o estado do enlace. E
 //! moram aqui, e não na janela, para a escolha de **qual** aviso mostrar ter um lugar só e teste.
@@ -7,6 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::Estado;
+use crate::ui::Pedido;
 use crate::vocabulario::Borda;
 
 /// O que dizer quando o outro computador está na tela de bloqueio e recusa o que se digita daqui.
@@ -21,7 +22,8 @@ pub const AVISO_DO_BLOQUEIO_DO_PAR: &str = "O outro computador está na tela de 
 ///
 /// Mostrar três faixas empilhadas é o mesmo que não mostrar nenhuma. A ordem é a de quanto cada
 /// uma impede: o que não deixa o produto funcionar vem antes do teclado recusado na tela de
-/// bloqueio do outro, que vem antes do mouse que trava em rajadas pela rede.
+/// bloqueio do outro, que vem antes do mouse que trava em rajadas pela rede, que vem antes do
+/// Bluetooth parado — com ele parado, a rede ainda leva tudo.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AvisoPrincipal {
     /// O que impede o produto de funcionar ([`Estado::impedimento`]).
@@ -30,6 +32,8 @@ pub enum AvisoPrincipal {
     BloqueioDoPar,
     /// O Wi-Fi de uma das máquinas cochila, com o botão que resolve.
     Rede(AvisoDeRede),
+    /// O Bluetooth com o outro computador parou, e a conexão segue só pela rede.
+    Bluetooth(BluetoothParado),
 }
 
 impl AvisoPrincipal {
@@ -40,16 +44,119 @@ impl AvisoPrincipal {
             Self::Impedimento(frase) => frase,
             Self::BloqueioDoPar => AVISO_DO_BLOQUEIO_DO_PAR,
             Self::Rede(aviso) => aviso.frase,
+            Self::Bluetooth(parado) => parado.frase(),
         }
     }
 
-    /// Se a faixa tem o botão "Resolver", e se ele pede ao par (`Some(true)`) ou a esta máquina.
+    /// O botão da faixa, quando há o que resolver com um clique.
     #[must_use]
-    pub const fn resolver_no_par(&self) -> Option<bool> {
+    pub const fn acao(&self) -> Option<AcaoDoAviso> {
         match self {
-            Self::Rede(aviso) => Some(aviso.no_par),
-            Self::Impedimento(_) | Self::BloqueioDoPar => None,
+            Self::Rede(aviso) => Some(AcaoDoAviso::DesligarEconomia {
+                no_par: aviso.no_par,
+            }),
+            Self::Bluetooth(parado) if parado.religavel() => Some(AcaoDoAviso::ReligarBluetooth),
+            Self::Impedimento(_) | Self::BloqueioDoPar | Self::Bluetooth(_) => None,
         }
+    }
+}
+
+/// O que o botão de uma faixa faz.
+///
+/// A janela não decide nada: manda [`Self::pedido`] e mostra [`Self::rotulo`] e [`Self::nota`].
+/// Um aviso novo com botão entra aqui, e não em mais um `callback` no arquivo de layout.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AcaoDoAviso {
+    /// Desligar a economia de energia do Wi-Fi, daqui ou do par.
+    DesligarEconomia {
+        /// `true` para pedir ao outro computador.
+        no_par: bool,
+    },
+    /// Religar o rádio Bluetooth deste computador.
+    ReligarBluetooth,
+}
+
+impl AcaoDoAviso {
+    /// O pedido que o clique manda ao serviço.
+    #[must_use]
+    pub const fn pedido(self) -> Pedido {
+        match self {
+            Self::DesligarEconomia { no_par } => Pedido::DesligarEconomiaDeEnergia { no_par },
+            Self::ReligarBluetooth => Pedido::ReligarBluetooth,
+        }
+    }
+
+    /// O texto do botão.
+    #[must_use]
+    pub const fn rotulo(self) -> &'static str {
+        match self {
+            Self::DesligarEconomia { .. } => "Resolver",
+            Self::ReligarBluetooth => "Religar o Bluetooth",
+        }
+    }
+
+    /// O custo da escolha, dito antes do clique.
+    #[must_use]
+    pub const fn nota(self) -> &'static str {
+        match self {
+            Self::DesligarEconomia { .. } => {
+                "A placa fica sempre acordada: gasta um pouco mais de bateria."
+            }
+            Self::ReligarBluetooth => {
+                "Os outros aparelhos Bluetooth deste computador se desconectam por alguns segundos."
+            }
+        }
+    }
+}
+
+/// O Bluetooth com o outro computador parou, e a conexão segue só pela rede.
+///
+/// Existe porque a controladora do rádio pode travar sem cair: o enlace para de escoar, o rádio
+/// deixa de alcançar o par, e só desligar e ligar o rádio o traz de volta (log 76). Sem este aviso,
+/// a única frase era "verifique se o InputRemote está em execução no outro computador" — falsa,
+/// porque a rede provava que ele estava.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BluetoothParado {
+    /// O serviço está religando o rádio deste computador.
+    Religando,
+    /// Religar derrubaria por alguns segundos outros aparelhos Bluetooth daqui: quem decide é a
+    /// pessoa, pelo botão.
+    ComOutrosAparelhos,
+    /// O rádio daqui foi religado, e o Bluetooth não voltou: o defeito pode ser do outro lado.
+    NaoResolveu,
+    /// Este computador não sabe religar o rádio sozinho: o caminho é o do sistema.
+    SemReligar,
+}
+
+impl BluetoothParado {
+    /// A frase da faixa.
+    #[must_use]
+    pub const fn frase(self) -> &'static str {
+        match self {
+            Self::Religando => {
+                "O Bluetooth parou de alcançar o outro computador, e a conexão segue pela rede. \
+                 Religando o rádio deste computador."
+            }
+            Self::ComOutrosAparelhos => {
+                "O Bluetooth parou de alcançar o outro computador, e a conexão segue pela rede. \
+                 Religar o rádio deste computador costuma resolver."
+            }
+            Self::NaoResolveu => {
+                "O Bluetooth segue sem alcançar o outro computador, mesmo com o rádio daqui \
+                 religado; a conexão segue pela rede. Desligue e ligue o Bluetooth do outro \
+                 computador."
+            }
+            Self::SemReligar => {
+                "O Bluetooth parou de alcançar o outro computador, e a conexão segue pela rede. \
+                 Desligue e ligue o Bluetooth nas configurações do sistema."
+            }
+        }
+    }
+
+    /// Se a faixa oferece religar o rádio daqui.
+    #[must_use]
+    pub const fn religavel(self) -> bool {
+        matches!(self, Self::ComOutrosAparelhos | Self::NaoResolveu)
     }
 }
 
@@ -103,7 +210,9 @@ impl Estado {
         if self.par_recusa_tela_de_bloqueio {
             return Some(AvisoPrincipal::BloqueioDoPar);
         }
-        self.aviso_de_rede().map(AvisoPrincipal::Rede)
+        self.aviso_de_rede()
+            .map(AvisoPrincipal::Rede)
+            .or(self.bluetooth_parado.map(AvisoPrincipal::Bluetooth))
     }
 
     /// O aviso sobre a economia de energia do Wi-Fi, se alguma das duas máquinas estiver cochilando.

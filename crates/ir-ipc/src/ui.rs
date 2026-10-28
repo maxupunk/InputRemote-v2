@@ -178,6 +178,10 @@ pub enum Pedido {
     Paineis,
     /// Um pedido sobre os painéis no Android.
     Painel(crate::paineis::ComandoDePainel),
+    /// Religue o rádio Bluetooth deste computador: o botão do aviso de Bluetooth parado
+    /// ([`crate::BluetoothParado`]). No fim do enum, porque o `postcard` grava a variante pelo
+    /// índice.
+    ReligarBluetooth,
 }
 
 impl Pedido {
@@ -221,8 +225,9 @@ impl Pedido {
             | Self::LimparRecebidos
             | Self::OferecerTexto(_)
             // Muda a configuração de energia da máquina, e mais nada: o mesmo nível de esvaziar
-            // os recebidos, e não o de decidir quem digita.
-            | Self::DesligarEconomiaDeEnergia { .. } => Autoridade::Configurar,
+            // os recebidos, e não o de decidir quem digita. Religar o rádio, idem.
+            | Self::DesligarEconomiaDeEnergia { .. }
+            | Self::ReligarBluetooth => Autoridade::Configurar,
             // Tudo que decide **quem pode digitar** nesta máquina exige elevação.
             Self::IniciarPareamento { .. }
             | Self::ConfirmarPareamento { .. }

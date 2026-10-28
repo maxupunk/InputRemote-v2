@@ -2819,6 +2819,7 @@ dependencies = [
  "ir-ipc",
  "ir-painel",
  "ir-proto",
+ "ir-religamento",
  "ir-servico",
  "ir-sessao",
  "ir-session",
@@ -2997,6 +2998,15 @@ dependencies = [
  "windows-registry",
  "windows-sys 0.61.2",
  "zbus",
+]
+
+[[package]]
+name = "ir-religamento"
+version = "0.1.0-dev"
+dependencies = [
+ "ir-ipc",
+ "ir-processo",
+ "tracing",
 ]
 
 [[package]]

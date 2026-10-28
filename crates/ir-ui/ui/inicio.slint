@@ -64,19 +64,18 @@ export component Inicio inherits VerticalLayout {
         }
 
         // Uma faixa só, a que mais importa: o que impede o produto, o teclado recusado na tela de
-        // bloqueio do outro computador (proteção, e não defeito), ou o Wi-Fi que cochila e faz o
-        // mouse pela rede travar em rajadas. Esta última vem com o botão que resolve: sem ele, a
-        // pessoa teria de achar sozinha a configuração de energia da placa — e, quando a placa é a
-        // do outro computador, ir até ele.
+        // bloqueio do outro computador (proteção, e não defeito), o Wi-Fi que cochila e faz o
+        // mouse pela rede travar em rajadas, ou o Bluetooth parado. Os dois últimos vêm com o
+        // botão que resolve, e com o custo dele dito antes do clique: sem o botão, a pessoa teria
+        // de achar sozinha a configuração da placa ou do rádio.
         if Dados.estado.aviso != "": Faixa {
             texto: Dados.estado.aviso;
             cor: Tema.atencao;
             cor-de-fundo: Tema.atencao-suave;
-            botao: Dados.estado.aviso-resolvivel ? "Resolver" : "";
-            // O custo da escolha, dito antes do clique: a placa acordada gasta mais.
-            nota: "A placa fica sempre acordada: gasta um pouco mais de bateria.";
+            botao: Dados.estado.aviso-botao;
+            nota: Dados.estado.aviso-nota;
             acionado => {
-                Acoes.resolver-economia(Dados.estado.aviso-no-par);
+                Acoes.resolver-aviso();
             }
         }
 

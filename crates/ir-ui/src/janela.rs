@@ -55,6 +55,8 @@ struct Contexto {
     trafego: RefCell<crate::trafego::MedidorDeTrafego>,
     /// Onde os recebidos ficam, pelo último estado, para o botão "Abrir a pasta".
     pasta_de_recebidos: RefCell<String>,
+    /// O que o botão da faixa de aviso faz, pelo último estado.
+    acao_do_aviso: Cell<Option<ir_ipc::AcaoDoAviso>>,
     /// Se o último estado tinha sessão de pé, para perceber a queda.
     conectado_antes: Cell<bool>,
     /// As últimas medianas de atraso, para o gráfico.
@@ -66,6 +68,28 @@ struct Contexto {
 }
 
 impl Contexto {
+    /// O contexto de uma janela recém-criada, com o serviço na situação de agora.
+    fn novo(janela: &Janela, servico: Rc<dyn Servico>, situacao: Situacao) -> Rc<Self> {
+        Rc::new(Self {
+            janela: janela.as_weak(),
+            servico,
+            candidatos: RefCell::new(Vec::new()),
+            par: RefCell::new(None),
+            situacao: Cell::new(situacao),
+            recados: RefCell::new(crate::recados::Recados::novos()),
+            velocimetro: RefCell::default(),
+            copia_medida: RefCell::default(),
+            historico: RefCell::default(),
+            trafego: RefCell::default(),
+            pasta_de_recebidos: RefCell::default(),
+            acao_do_aviso: Cell::default(),
+            conectado_antes: Cell::new(false),
+            atrasos: RefCell::default(),
+            pastas: pastas::EstadoDasPastas::default(),
+            paineis: paineis::ListaDePaineis::default(),
+        })
+    }
+
     fn com_janela(&self, acao: impl FnOnce(&Janela)) {
         if let Some(janela) = self.janela.upgrade() {
             acao(&janela);
@@ -76,6 +100,8 @@ impl Contexto {
         *self.par.borrow_mut() = estado.par.as_ref().map(|par| par.maquina);
         self.pasta_de_recebidos
             .replace(estado.pasta_de_recebidos.clone());
+        self.acao_do_aviso
+            .set(estado.aviso_principal().and_then(|aviso| aviso.acao()));
         let conectado = estado.enlace.conectado();
         if self.conectado_antes.replace(conectado) && !conectado {
             self.avisar_queda(estado);
@@ -303,23 +329,7 @@ pub fn abrir(
     let janela = Janela::new()?;
     integrar_com_a_mesa(&janela);
     let situacao = servico.situacao();
-    let contexto = Rc::new(Contexto {
-        janela: janela.as_weak(),
-        servico,
-        candidatos: RefCell::new(Vec::new()),
-        par: RefCell::new(None),
-        situacao: Cell::new(situacao),
-        recados: RefCell::new(crate::recados::Recados::novos()),
-        velocimetro: RefCell::default(),
-        copia_medida: RefCell::default(),
-        historico: RefCell::default(),
-        trafego: RefCell::default(),
-        pasta_de_recebidos: RefCell::default(),
-        conectado_antes: Cell::new(false),
-        atrasos: RefCell::default(),
-        pastas: pastas::EstadoDasPastas::default(),
-        paineis: paineis::ListaDePaineis::default(),
-    });
+    let contexto = Contexto::novo(&janela, servico, situacao);
 
     {
         let dados = janela.global::<Dados>();

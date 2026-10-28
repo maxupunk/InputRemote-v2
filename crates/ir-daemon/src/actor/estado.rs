@@ -116,8 +116,9 @@ impl Daemon {
             bloqueio_permitido: self.protegido_permitido(),
             ultima_queda: self.ultima_queda,
             recebidos_bytes: self.arquivos.recebidos().espaco(),
-            economia_aqui: self.economia_aqui_na_tela(),
-            economia_no_par: self.economia_no_par_na_tela(),
+            // Na janela, só quando atrapalha.
+            economia_aqui: ir_painel::economia_na_tela(self.economia_no_protocolo()),
+            economia_no_par: ir_painel::economia_na_tela(self.economia_no_par),
             pausa: self.pausa,
             par_recusa_protegido: self.par_recusa_protegido,
             pasta_de_recebidos,
@@ -125,6 +126,7 @@ impl Daemon {
             bloquear_juntos: self.config.bloquear_juntos,
             trafego: self.arquivos.trafego(),
             copiar_e_colar: self.config.copiar_e_colar,
+            bluetooth_parado: self.religamento.situacao(),
         }
     }
 }

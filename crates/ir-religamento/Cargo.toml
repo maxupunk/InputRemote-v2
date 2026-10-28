@@ -1,0 +1,17 @@
+[package]
+name = "ir-religamento"
+description = "O Bluetooth que parou de alcançar o par com a rede de pé: perceber, religar o rádio, e dizer à janela."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ir-ipc.workspace = true
+ir-processo.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

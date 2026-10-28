@@ -84,10 +84,12 @@ pub(super) fn ligar_sessao(janela: &Janela, contexto: &Rc<Contexto>) {
     });
 
     let alvo = Rc::clone(contexto);
-    acoes.on_resolver_economia(move |no_par| {
-        // A correção roda fora do compasso do serviço; o aviso some quando a verificação seguinte
-        // chegar pelo aviso de estado — do outro computador, quando é a placa dele.
-        alvo.enviar(Pedido::DesligarEconomiaDeEnergia { no_par });
+    acoes.on_resolver_aviso(move || {
+        // A correção roda fora do compasso do serviço; o aviso some quando o estado seguinte
+        // chegar — do outro computador, quando é a placa dele.
+        if let Some(acao) = alvo.acao_do_aviso.get() {
+            alvo.enviar(acao.pedido());
+        }
     });
 
     let alvo = Rc::clone(contexto);

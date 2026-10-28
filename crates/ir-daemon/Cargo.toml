@@ -34,6 +34,7 @@ ir-configuracao.workspace = true
 ir-canais.workspace = true
 # A economia de energia do Wi-Fi: o aviso e o botão que a desliga.
 ir-energia.workspace = true
+ir-religamento.workspace = true
 ir-ipc.workspace = true
 tokio = { workspace = true, features = ["signal"] }
 tracing.workspace = true

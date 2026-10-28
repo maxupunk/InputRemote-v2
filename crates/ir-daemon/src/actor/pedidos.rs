@@ -120,6 +120,7 @@ impl Daemon {
             // conferir de permissão, só se há par para receber.
             Pedido::OferecerTexto(texto) => self.oferecer_texto(texto),
             Pedido::DesligarEconomiaDeEnergia { no_par } => self.desligar_economia(no_par),
+            Pedido::ReligarBluetooth => self.religamento.religar_agora(),
             Pedido::PermitirTelaDeBloqueio { permitir, .. } => {
                 self.permitir_tela_de_bloqueio(permitir)
             }

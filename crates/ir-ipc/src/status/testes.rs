@@ -234,18 +234,48 @@ fn a_tela_mostra_um_aviso_so_o_que_mais_impede() {
     let mut estado = pronto();
     assert_eq!(estado.aviso_principal(), None);
 
+    estado.bluetooth_parado = Some(BluetoothParado::ComOutrosAparelhos);
+    let bluetooth = estado.aviso_principal().expect("há aviso");
+    assert_eq!(bluetooth.acao(), Some(AcaoDoAviso::ReligarBluetooth));
+
+    // Com o Wi-Fi cochilando, o mouse trava mesmo com o Bluetooth de volta: ele vem antes.
     estado.economia_no_par = Some(EconomiaDoWifi::Ligada);
     let rede = estado.aviso_principal().expect("há aviso");
-    assert_eq!(rede.resolver_no_par(), Some(true), "o de rede tem o botão");
+    assert_eq!(
+        rede.acao(),
+        Some(AcaoDoAviso::DesligarEconomia { no_par: true }),
+        "o de rede tem o botão"
+    );
 
     estado.par_recusa_tela_de_bloqueio = true;
     let bloqueio = estado.aviso_principal().expect("há aviso");
     assert_eq!(bloqueio, AvisoPrincipal::BloqueioDoPar);
-    assert_eq!(bloqueio.resolver_no_par(), None);
+    assert_eq!(bloqueio.acao(), None);
 
     estado.captura_pronta = false;
     let impedimento = estado.aviso_principal().expect("há aviso");
     assert_eq!(Some(impedimento.frase()), estado.impedimento());
+}
+
+#[test]
+fn o_bluetooth_parado_so_oferece_o_botao_quando_ha_o_que_o_clique_resolva() {
+    // Religando, o serviço já está fazendo; sem saber religar, o botão não faria nada.
+    let com_botao = [
+        (BluetoothParado::Religando, false),
+        (BluetoothParado::ComOutrosAparelhos, true),
+        (BluetoothParado::NaoResolveu, true),
+        (BluetoothParado::SemReligar, false),
+    ];
+    for (parado, botao) in com_botao {
+        let aviso = AvisoPrincipal::Bluetooth(parado);
+        assert_eq!(aviso.acao().is_some(), botao, "{parado:?}");
+        assert!(!aviso.frase().contains("  "), "{}", aviso.frase());
+        assert!(aviso.frase().contains("rede"), "diz que a conexão segue");
+    }
+    assert_eq!(
+        AcaoDoAviso::ReligarBluetooth.pedido(),
+        crate::Pedido::ReligarBluetooth
+    );
 }
 
 #[test]

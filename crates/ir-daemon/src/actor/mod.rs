@@ -98,6 +98,8 @@ pub(crate) struct Daemon {
     pub(crate) economia_no_par: Option<ir_proto::message::NetworkPowerSaving>,
     /// Quando o par pediu pela última vez para desligar a economia daqui ([`energia`]).
     pub(crate) economia_pedida_em: Option<Instant>,
+    /// O Bluetooth fora com a rede de pé: quando religar o rádio, e o aviso ([`ir_religamento`]).
+    pub(crate) religamento: ir_religamento::Vigia,
     /// Por onde as tarefas de fundo devolvem o resultado ([`DeFundo`]).
     pub(crate) de_fundo: tokio::sync::mpsc::UnboundedSender<DeFundo>,
     /// Contador de batidas, para espaçar as tentativas de reconexão.
@@ -254,10 +256,12 @@ impl Daemon {
         }
     }
 
-    /// Avisa as interfaces se a fase da sessão mudou desde o último aviso.
+    /// Avisa as interfaces se a fase da sessão, ou o aviso do Bluetooth parado, mudou desde o
+    /// último aviso.
     pub(crate) fn notar_estado(&mut self) {
         let fase = self.session.phase();
-        if fase != self.last_phase {
+        let radio_mudou = self.vigiar_o_radio();
+        if fase != self.last_phase || radio_mudou {
             self.last_phase = fase;
             self.avisar_estado();
         }

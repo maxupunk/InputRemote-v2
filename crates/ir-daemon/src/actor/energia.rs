@@ -9,7 +9,7 @@
 //! bloqueio, e o resultado volta ao ator como [`DeFundo::Economia`](super::DeFundo).
 
 use ir_energia::Economia;
-use ir_ipc::{Aviso, EconomiaDoWifi, Falha, Resposta};
+use ir_ipc::{Aviso, Falha, Resposta};
 use ir_proto::message::NetworkPowerSaving;
 use ir_session::Input;
 use tracing::{info, warn};
@@ -118,16 +118,6 @@ impl Daemon {
             Economia::Desligada => Some(NetworkPowerSaving::Off),
             Economia::Desconhecida => None,
         }
-    }
-
-    /// A economia daqui, no vocabulário da janela — só quando atrapalha.
-    pub(crate) const fn economia_aqui_na_tela(&self) -> Option<EconomiaDoWifi> {
-        ir_painel::economia_na_tela(self.economia_no_protocolo())
-    }
-
-    /// A economia do par, no vocabulário da janela — só quando atrapalha.
-    pub(crate) const fn economia_no_par_na_tela(&self) -> Option<EconomiaDoWifi> {
-        ir_painel::economia_na_tela(self.economia_no_par)
     }
 }
 

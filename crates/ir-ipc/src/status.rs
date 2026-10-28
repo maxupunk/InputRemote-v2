@@ -281,6 +281,10 @@ pub struct Estado {
     /// Se copiar e colar está ligado neste computador (Preferências).
     #[serde(default = "ligado")]
     pub copiar_e_colar: bool,
+    /// Se o Bluetooth com o outro computador parou, com a rede ainda de pé, e o que se faz a
+    /// respeito ([`BluetoothParado`]).
+    #[serde(default)]
+    pub bluetooth_parado: Option<BluetoothParado>,
 }
 
 /// O padrão do que nasce ligado.
@@ -346,6 +350,7 @@ impl Estado {
             captura_pronta: false,
             trafego: Trafego::default(),
             copiar_e_colar: true,
+            bluetooth_parado: None,
         }
     }
 }
@@ -355,8 +360,8 @@ mod frases;
 mod queda;
 
 pub use avisos::{
-    AVISO_DO_BLOQUEIO_DO_PAR, AvisoDeRede, AvisoPrincipal, EconomiaDoWifi, Pausa,
-    frase_da_borda_ajustada,
+    AVISO_DO_BLOQUEIO_DO_PAR, AcaoDoAviso, AvisoDeRede, AvisoPrincipal, BluetoothParado,
+    EconomiaDoWifi, Pausa, frase_da_borda_ajustada,
 };
 pub use queda::{Gravidade, MotivoDaQueda};
 

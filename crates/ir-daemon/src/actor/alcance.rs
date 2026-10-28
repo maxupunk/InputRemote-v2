@@ -148,6 +148,21 @@ impl Daemon {
         }
     }
 
+    /// Conta ao vigia do rádio como estão os enlaces; devolve se o aviso da janela mudou.
+    ///
+    /// O Bluetooth fora com a rede de pé é o rádio travado (log 76): a rede prova que o par está
+    /// ligado e com o serviço no ar. Quem decide religar é o [`ir_religamento::Vigia`].
+    pub(crate) fn vigiar_o_radio(&mut self) -> bool {
+        let enlaces = ir_religamento::Enlaces {
+            radio_esperado: self.radio.is_some()
+                && self.alcance.endereco(Carrier::Rfcomm).is_some()
+                && self.config.fixado() != Some(Carrier::Udp),
+            radio: self.alcance.de_pe(Carrier::Rfcomm),
+            rede: self.alcance.de_pe(Carrier::Udp),
+        };
+        self.religamento.vigiar(enlaces, Instant::now())
+    }
+
     /// Derruba o enlace por todos os portadores.
     pub(crate) fn desconectar_todos(&mut self) {
         for portador in [Carrier::Rfcomm, Carrier::Udp] {

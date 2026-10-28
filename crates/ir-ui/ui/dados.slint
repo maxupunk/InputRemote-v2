@@ -57,12 +57,13 @@ export struct EstadoUi {
     /// Se a digitação na tela de bloqueio está permitida para o par.
     bloqueio-permitido: bool,
     /// O único aviso que importa agora, ou vazio: o que impede o produto, a tela de bloqueio do
-    /// outro computador ou o Wi-Fi que cochila — quem escolhe é `Estado::aviso_principal`.
+    /// outro computador, o Wi-Fi que cochila ou o Bluetooth parado — quem escolhe é
+    /// `Estado::aviso_principal`.
     aviso: string,
-    /// Se o aviso vem com o botão "Resolver" (o do Wi-Fi que cochila).
-    aviso-resolvivel: bool,
-    /// Se o botão do aviso pede ao outro computador (`true`) ou a este.
-    aviso-no-par: bool,
+    /// O texto do botão que resolve o aviso, ou vazio quando não há o que resolver com um clique.
+    aviso-botao: string,
+    /// O custo do botão, dito antes do clique.
+    aviso-nota: string,
     /// Se o compartilhamento está pausado aqui: o botão vira "Retomar".
     pausado: bool,
     /// Se foi pausado no outro computador.
@@ -264,8 +265,8 @@ export global Acoes {
 
     /// Esvaziar a pasta de recebidos, a pedido de quem está olhando o tamanho dela.
     callback limpar-recebidos();
-    /// Desligar a economia de energia do Wi-Fi — do outro computador (`true`) ou deste.
-    callback resolver-economia(bool);
+    /// O botão da faixa de aviso: o que ele faz vem do aviso (`AcaoDoAviso`), não da tela.
+    callback resolver-aviso();
     /// Descartar o recado.
     callback descartar-recado();
     /// Ligar o serviço e dar acesso a este usuário, com a senha de administrador.
