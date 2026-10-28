@@ -285,6 +285,10 @@ pub struct Estado {
     /// respeito ([`BluetoothParado`]).
     #[serde(default)]
     pub bluetooth_parado: Option<BluetoothParado>,
+    /// Se o que se copia aqui espera o cursor atravessar para ir ao par (Preferências; ligado por
+    /// padrão). Desligado, sai na hora, e só a cópia grande espera.
+    #[serde(default = "ligado")]
+    pub copia_na_travessia: bool,
 }
 
 /// O padrão do que nasce ligado.
@@ -351,6 +355,7 @@ impl Estado {
             trafego: Trafego::default(),
             copiar_e_colar: true,
             bluetooth_parado: None,
+            copia_na_travessia: true,
         }
     }
 }

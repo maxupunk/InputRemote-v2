@@ -48,6 +48,24 @@ fn um_arquivo_de_antes_do_controle_simetrico_sobe_com_os_dois_controlando() {
 }
 
 #[test]
+fn a_copia_espera_o_cursor_tambem_num_arquivo_de_antes_e_na_hora_fica_gravado() {
+    let antigo = "peer_edge = \"left\"\nport = 52525\nscreen_width = 1920\n\
+                  screen_height = 1080\npeers = []\n";
+    let config: Config = toml::from_str(antigo).unwrap();
+    assert!(config.copia_na_travessia);
+
+    let na_hora = Config {
+        copia_na_travessia: false,
+        ..Config::default()
+    };
+    let relida: Config = toml::from_str(&toml::to_string_pretty(&na_hora).unwrap()).unwrap();
+    assert!(
+        !relida.copia_na_travessia,
+        "a escolha de sair na hora não se perde"
+    );
+}
+
+#[test]
 fn a_tela_de_bloqueio_vem_permitida_mesmo_num_arquivo_de_antes() {
     // Log 53: antes gravava-se a permissão, desligada por padrão. O campo velho é ignorado, e o
     // par pareado passa a poder — os dois controlam um ao outro também na tela de bloqueio.

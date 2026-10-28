@@ -138,6 +138,26 @@ export component Preferencias inherits VerticalLayout {
                 }
             }
         }
+
+        // Quando sai, e não se sai: vale só para o que se copia aqui, por isso some com tudo
+        // desligado. "Na hora" deixa pronto antes de a pessoa chegar lá; "ao passar o cursor" não
+        // gasta rede nem disco do outro com o que se copiou para colar aqui mesmo.
+        if Dados.estado.copiar-e-colar: Grupo {
+            titulo: "QUANDO ENVIAR O QUE SE COPIA AQUI";
+            nota: Dados.estado.copia-na-travessia
+                ? "Nada sai deste computador ao copiar: vai quando o cursor passar para o outro. "
+                    + "Copiar para colar aqui mesmo não ocupa a rede nem o outro computador."
+                : "Sai ao copiar, para já estar pronto quando você chegar ao outro computador. "
+                    + "Arquivos acima de 100 MB esperam o cursor passar para o outro.";
+
+            Alternativas {
+                opcoes: ["Na hora", "Ao passar o cursor"];
+                escolhida: Dados.estado.copia-na-travessia ? 1 : 0;
+                escolher(indice) => {
+                    Acoes.copia-na-travessia(indice == 1);
+                }
+            }
+        }
     }
 
     // Só no GNOME, e só quando falta algo: com o ícone já aparecendo, o cartão não existe.

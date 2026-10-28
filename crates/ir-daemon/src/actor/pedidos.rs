@@ -68,10 +68,11 @@ impl Daemon {
                 self.avisar_estado();
                 Resposta::Feito
             }
-            Pedido::BloquearJuntos(juntos) => {
-                self.definir_preferencia(|config| config.bloquear_juntos = juntos)
-            }
+            Pedido::BloquearJuntos(sim) => self.definir_preferencia(|c| c.bloquear_juntos = sim),
             Pedido::CopiarEColar(ligado) => self.definir_copiar_e_colar(ligado),
+            Pedido::CopiaNaTravessia(sim) => {
+                self.definir_preferencia(|c| c.copia_na_travessia = sim)
+            }
             Pedido::EsquecerPar { .. } => self.esquecer_par(),
             Pedido::FixarPortador(portador) => self.fixar_portador(portador),
             // As duas trocas valem na hora (`super::papel`): a de papel refaz a sessão, e a de borda

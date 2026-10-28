@@ -198,24 +198,29 @@ fn atender(partes: Partes<'_>) -> Fim {
     } = partes;
     // As pastas compartilhadas daqui: o serviço manda a lista na conexão e a cada mudança.
     let mut pastas = pasta::Pastas::default();
-    // Copiar e colar, das Preferências: quem decide é o serviço; aqui só se evita o trabalho de ler
-    // e preparar o que não vai sair — trazer uma pasta de rede para perto pode levar minutos.
-    let mut ligado = true;
+    // Copiar e colar, e quando enviar, das Preferências: quem decide se sai é o serviço; aqui só se
+    // evita o trabalho de ler e preparar o que não vai sair agora — trazer uma pasta de rede para
+    // perto pode levar minutos.
+    let mut escolhas = grande::Escolhas::default();
     while let Ok(evento) = eventos.recv() {
         // O que a pessoa vê fora da janela é do notificador; daqui para baixo, só o clipboard.
         if let Evento::Aviso(aviso) = &evento {
             notificador.aviso(aviso);
         }
         match evento {
-            Evento::Mudou if ligado => oferecer(escrita, clip, eco, &pastas, Gatilho::Copia),
-            Evento::Aviso(Aviso::LerClipboard) if ligado => {
+            Evento::Mudou if escolhas.le(Gatilho::Copia) => {
+                oferecer(escrita, clip, eco, &pastas, Gatilho::Copia);
+            }
+            Evento::Aviso(Aviso::LerClipboard) if escolhas.le(Gatilho::Travessia) => {
                 oferecer(escrita, clip, eco, &pastas, Gatilho::Travessia);
             }
             // Quem decide se há o que parar é o serviço; a resposta, se não havia, é ignorada.
             Evento::Agir(acao) => {
                 let _ = servico::pedir(escrita, &acao.pedido());
             }
-            Evento::Aviso(Aviso::EstadoMudou(estado)) => ligado = estado.copiar_e_colar,
+            Evento::Aviso(Aviso::EstadoMudou(estado)) => {
+                escolhas = grande::Escolhas::do_estado(&estado);
+            }
             Evento::Aviso(Aviso::PastasMudaram(lista)) => pastas.atualizar(&lista),
             // O outro computador copiou da pasta: os mesmos arquivos daqui, no clipboard.
             Evento::Aviso(Aviso::ArquivosDaPasta(caminhos)) => {
@@ -231,7 +236,8 @@ fn atender(partes: Partes<'_>) -> Fim {
             Evento::Recusado => eco.oferta_falhou(),
             Evento::Caiu => return Fim::Caiu,
             Evento::Incompativel => return Fim::Incompativel,
-            // Desligado, nem se lê o clipboard; e os avisos que não são daqui.
+            // Desligado, ou esperando a travessia, nem se lê o clipboard; e os avisos que não são
+            // daqui.
             Evento::Mudou | Evento::Aviso(_) => {}
         }
     }
@@ -239,7 +245,7 @@ fn atender(partes: Partes<'_>) -> Fim {
 }
 
 /// Lê o clipboard e, se ele mudou de verdade, oferece ao par — a cópia grande, só na travessia
-/// ([`grande`]).
+/// ([`grande`]). Com "ao passar o cursor" nas Preferências, só a travessia chega aqui.
 fn oferecer(
     escrita: &mut dyn Write,
     clip: &mut dyn Clipboard,

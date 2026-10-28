@@ -31,6 +31,7 @@ fn todos_os_pedidos() -> Vec<Pedido> {
         Pedido::TravarBorda(true),
         Pedido::BloquearJuntos(false),
         Pedido::CopiarEColar(false),
+        Pedido::CopiaNaTravessia(true),
     ]
 }
 

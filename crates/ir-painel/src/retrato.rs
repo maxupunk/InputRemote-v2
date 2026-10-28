@@ -1,5 +1,6 @@
 //! O retrato do serviço, e o [`Estado`] que a janela desenha a partir dele.
 
+use ir_configuracao::Config;
 use ir_ipc::{
     EconomiaDoWifi, Estado, Latencia, Maquina, MotivoDaQueda, MotivoDoPortador, Nivel, Nome,
     ParConhecido, Pausa, Portador, Recursos,
@@ -61,8 +62,6 @@ pub struct Retrato<'a> {
     pub par: Option<ParGravado<'a>>,
     /// O portador que a sessão usa agora.
     pub portador: Option<Carrier>,
-    /// O portador fixado nas preferências.
-    pub portador_fixado: Option<Portador>,
     /// Se a rota é dupla: Bluetooth e rede ao mesmo tempo.
     pub rota_dupla: bool,
     /// A latência da última janela.
@@ -87,14 +86,12 @@ pub struct Retrato<'a> {
     pub pasta_de_recebidos: String,
     /// Se a borda está travada.
     pub borda_travada: bool,
-    /// Se o par bloqueia junto.
-    pub bloquear_juntos: bool,
     /// O que o canal de dados moveu.
     pub trafego: ir_ipc::Trafego,
-    /// Se copiar e colar está ligado.
-    pub copiar_e_colar: bool,
     /// Se o Bluetooth parou com a rede de pé, e o que se faz a respeito.
     pub bluetooth_parado: Option<ir_ipc::BluetoothParado>,
+    /// A configuração gravada: as Preferências que a janela mostra como estão.
+    pub config: &'a Config,
 }
 
 /// O estado, no vocabulário publicado da interface.
@@ -110,7 +107,7 @@ pub fn estado(r: &Retrato<'_>) -> Estado {
         este_nome: r.nome.clone(),
         par: r.par.map(|par| par_conhecido(&par)),
         portador: r.portador.map(Portador::from),
-        portador_fixado: r.portador_fixado,
+        portador_fixado: r.config.fixado().map(Portador::from),
         motivo_do_portador: motivo_do_portador(r),
         latencia: r.latencia.filter(|_| estabelecida),
         nivel_privilegiado: nivel(&r.entrada),
@@ -127,12 +124,13 @@ pub fn estado(r: &Retrato<'_>) -> Estado {
         par_recusa_tela_de_bloqueio: r.par_recusa_protegido && estabelecida,
         pasta_de_recebidos: r.pasta_de_recebidos.clone(),
         borda_travada: r.borda_travada,
-        bloquear_juntos: r.bloquear_juntos,
+        bloquear_juntos: r.config.bloquear_juntos,
         // Ler o teclado daqui: no Windows é o agente que captura; no Linux, o serviço.
         captura_pronta: r.entrada.agente_pronto || r.entrada.captura_direto,
         trafego: r.trafego,
-        copiar_e_colar: r.copiar_e_colar,
+        copiar_e_colar: r.config.copiar_e_colar,
         bluetooth_parado: r.bluetooth_parado,
+        copia_na_travessia: r.config.copia_na_travessia,
     }
 }
 
@@ -168,7 +166,7 @@ pub fn nivel(entrada: &Entrada) -> Nivel {
 /// sessão; aqui só se conta qual foi.
 fn motivo_do_portador(r: &Retrato<'_>) -> Option<MotivoDoPortador> {
     let portador = r.portador?;
-    Some(if r.portador_fixado.is_some() {
+    Some(if r.config.fixado().is_some() {
         MotivoDoPortador::FixadoPeloUsuario
     } else if r.rota_dupla {
         MotivoDoPortador::Redundancia

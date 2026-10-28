@@ -113,7 +113,11 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // produto; o ator só recebe dele os avisos do sistema.
     ("ir-servico", &["ir-acesso", "ir-sessao", "ir-processo"]),
     // O que a janela vê: o retrato do serviço traduzido no vocabulário publicado da interface.
-    ("ir-painel", &["ir-proto", "ir-session", "ir-ipc"]),
+    // As Preferências, ele as lê da configuração gravada, em vez de o serviço copiá-las uma a uma.
+    (
+        "ir-painel",
+        &["ir-proto", "ir-session", "ir-ipc", "ir-configuracao"],
+    ),
     (
         "ir-daemon",
         &[

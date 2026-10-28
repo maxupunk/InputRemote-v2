@@ -76,6 +76,8 @@ export struct EstadoUi {
     bloquear-juntos: bool,
     /// Se copiar e colar entre os dois está ligado neste computador.
     copiar-e-colar: bool,
+    /// Se o que se copia aqui só vai ao outro quando o cursor atravessa.
+    copia-na-travessia: bool,
 }
 
 /// Em que ponto o pareamento está.
@@ -258,6 +260,8 @@ export global Acoes {
     callback bloquear-juntos(bool);
     /// Ligar, ou desligar, copiar e colar entre os dois.
     callback copiar-e-colar(bool);
+    /// Mandar o que se copia só quando o cursor atravessar, ou na hora.
+    callback copia-na-travessia(bool);
     /// Ligar a extensão do GNOME que mostra o ícone na barra superior.
     callback ligar-bandeja-do-gnome();
     /// Montar o diagnóstico e mostrá-lo para o usuário copiar.

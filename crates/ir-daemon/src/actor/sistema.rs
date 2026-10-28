@@ -117,6 +117,20 @@ mod tests {
     }
 
     #[test]
+    fn a_copia_nasce_esperando_o_cursor_e_sair_na_hora_fica_gravado() {
+        let mut bancada = Bancada::nova();
+        assert!(bancada.daemon.estado().copia_na_travessia);
+        let resposta = bancada.daemon.tratar(
+            ir_ipc::Pedido::CopiaNaTravessia(false),
+            ir_transferencia::Leitor::Proprio,
+        );
+        assert_eq!(resposta, ir_ipc::Resposta::Feito);
+        assert!(!bancada.daemon.estado().copia_na_travessia);
+        let relida = crate::config::load_config(&bancada.dir).expect("relê");
+        assert!(!relida.copia_na_travessia);
+    }
+
+    #[test]
     fn copiar_e_colar_desligado_fica_gravado_e_o_clipboard_nao_sai() {
         let mut bancada = Bancada::nova();
         assert!(bancada.daemon.estado().copiar_e_colar);

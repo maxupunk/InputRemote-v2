@@ -2952,6 +2952,7 @@ dependencies = [
 name = "ir-painel"
 version = "0.1.0-dev"
 dependencies = [
+ "ir-configuracao",
  "ir-ipc",
  "ir-proto",
  "ir-session",

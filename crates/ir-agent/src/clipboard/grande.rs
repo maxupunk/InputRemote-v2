@@ -11,6 +11,9 @@
 //! como oferecido, e a travessia o leva. Se nem assim era para ir, a notificação e a bandeja têm
 //! "Cancelar".
 //!
+//! Isto vale para quem escolheu "Na hora" nas Preferências. O padrão é "Ao passar o cursor"
+//! ([`Escolhas`]): nada sai antes da travessia, e o ajudante nem lê o clipboard no aviso de cópia.
+//!
 //! [ADR-0011]: ../../../../docs/adr/0011-clipboard-na-travessia.md
 //! [ADR-0017]: ../../../../docs/adr/0017-clipboard-do-gnome-pelo-portal.md
 
@@ -33,6 +36,40 @@ pub(super) enum Gatilho {
     Copia,
     /// O cursor saiu para o outro computador: o que está copiado vai junto.
     Travessia,
+}
+
+/// O que as Preferências dizem sobre a cópia que sai daqui.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Escolhas {
+    /// Copiar e colar ligado.
+    ligado: bool,
+    /// "Ao passar o cursor": nada sai no aviso de cópia.
+    na_travessia: bool,
+}
+
+impl Default for Escolhas {
+    /// As do serviço recém-instalado, até o estado chegar.
+    fn default() -> Self {
+        Self {
+            ligado: true,
+            na_travessia: true,
+        }
+    }
+}
+
+impl Escolhas {
+    /// As escolhas, como o serviço as contou.
+    pub(super) const fn do_estado(estado: &ir_ipc::Estado) -> Self {
+        Self {
+            ligado: estado.copiar_e_colar,
+            na_travessia: estado.copia_na_travessia,
+        }
+    }
+
+    /// Se este gatilho lê o clipboard.
+    pub(super) fn le(self, gatilho: Gatilho) -> bool {
+        self.ligado && (gatilho == Gatilho::Travessia || !self.na_travessia)
+    }
 }
 
 /// Se este pedido, por este gatilho, deve esperar a travessia.
@@ -99,6 +136,24 @@ mod tests {
         Pedido::EnviarArquivos {
             caminhos: vec![caminho.to_string_lossy().into_owned()],
         }
+    }
+
+    #[test]
+    fn ao_passar_o_cursor_so_a_travessia_le_e_desligado_nada_le() {
+        let mut estado = ir_ipc::Estado::recem_instalado(
+            ir_ipc::Maquina([0; 16]),
+            ir_ipc::Nome::coagido("bancada"),
+        );
+        let le = |estado: &ir_ipc::Estado, gatilho| Escolhas::do_estado(estado).le(gatilho);
+        assert_eq!(Escolhas::do_estado(&estado), Escolhas::default());
+        assert!(!le(&estado, Gatilho::Copia), "o padrão é esperar o cursor");
+        assert!(le(&estado, Gatilho::Travessia));
+
+        estado.copia_na_travessia = false;
+        assert!(le(&estado, Gatilho::Copia) && le(&estado, Gatilho::Travessia));
+
+        estado.copiar_e_colar = false;
+        assert!(!le(&estado, Gatilho::Copia) && !le(&estado, Gatilho::Travessia));
     }
 
     #[test]

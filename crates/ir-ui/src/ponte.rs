@@ -64,6 +64,7 @@ pub fn estado_ui(estado: &Estado) -> EstadoUi {
         borda_travada: estado.borda_travada,
         bloquear_juntos: estado.bloquear_juntos,
         copiar_e_colar: estado.copiar_e_colar,
+        copia_na_travessia: estado.copia_na_travessia,
     }
 }
 

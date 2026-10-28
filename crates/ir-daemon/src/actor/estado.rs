@@ -109,7 +109,6 @@ impl Daemon {
                 conectado: self.linked(),
             }),
             portador: self.session.carrier(),
-            portador_fixado: self.config.fixado().map(ir_ipc::Portador::from),
             rota_dupla,
             latencia: self.voltas.latencia(std::time::Instant::now()),
             entrada: self.entrada(),
@@ -123,10 +122,9 @@ impl Daemon {
             par_recusa_protegido: self.par_recusa_protegido,
             pasta_de_recebidos,
             borda_travada: self.borda_travada,
-            bloquear_juntos: self.config.bloquear_juntos,
             trafego: self.arquivos.trafego(),
-            copiar_e_colar: self.config.copiar_e_colar,
             bluetooth_parado: self.religamento.situacao(),
+            config: &self.config,
         }
     }
 }

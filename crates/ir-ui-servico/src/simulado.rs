@@ -223,6 +223,7 @@ impl Interno {
                 }
             }
             Pedido::CopiarEColar(ligado) => self.estado.copiar_e_colar = ligado,
+            Pedido::CopiaNaTravessia(sim) => self.estado.copia_na_travessia = sim,
             Pedido::PermitirTelaDeBloqueio { permitir, .. } => {
                 self.estado.bloqueio_permitido = permitir;
             }

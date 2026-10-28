@@ -101,3 +101,4 @@ quê. Um registro que se reescreve não é registro.
 | 74 | 2026-10-27 | [Editar os cards sem perder o ✕](docs/logs/74-editar-cards-sem-perder-o-x.md) |
 | 75 | 2026-10-27 | [Cada computador com os seus cards](docs/logs/75-cada-computador-com-os-seus-cards.md) |
 | 76 | 2026-10-28 | [O Bluetooth que travou](docs/logs/76-o-bluetooth-que-travou.md) |
+| 77 | 2026-10-28 | [A cópia que espera o cursor, e o ajudante do Fedora que não subia](docs/logs/77-a-copia-que-espera-o-cursor.md) |

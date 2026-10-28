@@ -48,6 +48,9 @@ fn ligar_preferencias(acoes: &Acoes<'_>, contexto: &Rc<Contexto>) {
 
     let alvo = Rc::clone(contexto);
     acoes.on_copiar_e_colar(move |ligado| alvo.enviar(Pedido::CopiarEColar(ligado)));
+
+    let alvo = Rc::clone(contexto);
+    acoes.on_copia_na_travessia(move |sim| alvo.enviar(Pedido::CopiaNaTravessia(sim)));
 }
 
 pub(super) fn ligar_sessao(janela: &Janela, contexto: &Rc<Contexto>) {

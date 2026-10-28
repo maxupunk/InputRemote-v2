@@ -182,6 +182,8 @@ pub enum Pedido {
     /// ([`crate::BluetoothParado`]). No fim do enum, porque o `postcard` grava a variante pelo
     /// índice.
     ReligarBluetooth,
+    /// Mande o que se copia aqui só quando o cursor atravessar (`true`), ou na hora (`false`).
+    CopiaNaTravessia(bool),
 }
 
 impl Pedido {
@@ -208,6 +210,7 @@ impl Pedido {
             | Self::TravarBorda(_)
             | Self::BloquearJuntos(_)
             | Self::CopiarEColar(_)
+            | Self::CopiaNaTravessia(_)
             // O painel só lê: carga, temperatura e latência, nada de entrada nem de conteúdo. Parear
             // um é decisão da pessoa sobre a própria máquina, e não sobre quem digita nela.
             | Self::Painel(_)
