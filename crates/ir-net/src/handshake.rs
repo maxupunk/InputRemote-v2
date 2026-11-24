@@ -147,14 +147,20 @@ async fn receber_reenviando(
 }
 
 /// Recebe um datagrama do par, ignorando o que vier de outros endereços.
+///
+/// O prazo é **um só** para a chamada inteira, por mais datagramas que se descartem no caminho.
+/// Antes cada datagrama descartado começava uma espera nova: com o par mandando quadros de dados
+/// mais rápido que o prazo — o cursor andando do outro lado —, a espera nunca vencia, e o endpoint
+/// ficava preso aqui para sempre, sem enviar nada e sem avisar queda nenhuma.
 async fn recv_from_peer(
     socket: &UdpSocket,
     peer: SocketAddr,
     buf: &mut [u8],
     espera: Duration,
 ) -> Result<Vec<u8>> {
+    let limite = tokio::time::Instant::now() + espera;
     loop {
-        let recv = tokio::time::timeout(espera, socket.recv_from(buf))
+        let recv = tokio::time::timeout_at(limite, socket.recv_from(buf))
             .await
             .map_err(|_| NetError::HandshakeTimeout)?;
         let (len, from) = match recv {

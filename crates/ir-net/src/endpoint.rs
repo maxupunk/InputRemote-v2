@@ -42,6 +42,8 @@ enum State {
         link: SecureLink,
         /// Quem está do outro lado. Um reinício do enlace só é aceito com a mesma chave.
         peer_static: PublicKey,
+        /// As outras chaves que ainda abrem o que chega, durante uma troca ([`rechave`]).
+        reserva: Option<Box<rechave::Reserva>>,
     },
 }
 
@@ -57,6 +59,8 @@ pub struct Endpoint {
     aceitar_pareamento: bool,
     /// Quando saiu a última tentativa de trocar as chaves ([`rechave`]).
     rechave_tentada: Option<std::time::Instant>,
+    /// A troca de chaves que este lado pediu e cuja resposta ainda não chegou ([`rechave`]).
+    rechave: Option<rechave::Pendente>,
 }
 
 impl core::fmt::Debug for Endpoint {
@@ -88,6 +92,7 @@ impl Endpoint {
             rodadas: Rodadas::default(),
             aceitar_pareamento: true,
             rechave_tentada: None,
+            rechave: None,
         };
         tokio::spawn(endpoint.run(cmd_rx));
         EndpointHandle {
@@ -180,7 +185,10 @@ impl Endpoint {
     /// Só troca de enlace se o handshake novo terminar **com a mesma chave**: um datagrama forjado
     /// com o endereço do par, de outra identidade, não derruba o enlace que funciona.
     async fn maybe_restart(&mut self, from: SocketAddr, datagram: &[u8]) {
-        let State::Established { link, peer_static } = &self.state else {
+        let State::Established {
+            link, peer_static, ..
+        } = &self.state
+        else {
             return;
         };
         let reinicio = matches!(wire::parse_handshake(datagram), Some((Mode::Reconnect, _)));
@@ -227,6 +235,8 @@ impl Endpoint {
         let link = SecureLink::new(Arc::clone(&self.socket), peer, established.transport);
         let peer_static = established.peer_static;
         self.rodadas.zerar();
+        // Um pedido de troca de chaves do enlace anterior não vale para este.
+        self.rechave = None;
         if let Some(code) = established.code {
             // Pareamento: mostra o código e espera a confirmação dos dois lados antes de
             // deixar qualquer quadro de sessão passar.
@@ -245,21 +255,26 @@ impl Endpoint {
             let _ = self
                 .events
                 .send(NetEvent::Established { peer_static, peer });
-            self.state = State::Established { link, peer_static };
+            self.state = State::Established {
+                link,
+                peer_static,
+                reserva: None,
+            };
         }
     }
 
     /// Abre um datagrama de dados e age conforme a espécie. `false` se ele não abriu.
     fn on_data_datagram(&mut self, datagram: &[u8]) -> bool {
         let opened = match &mut self.state {
-            State::AwaitingConfirm { link, .. } | State::Established { link, .. } => {
-                link.open(datagram)
+            State::AwaitingConfirm { link, .. } => link.open(datagram).ok(),
+            State::Established { link, reserva, .. } => {
+                rechave::abrir_com_reserva(link, reserva, datagram)
             }
             State::Idle => return false,
         };
         // Um datagrama que não abre é lixo, repetição, ou de outra sessão. Ignorado: derrubar
         // por um pacote solto abriria uma negação de serviço trivial.
-        let Ok((kind, payload)) = opened else {
+        let Some((kind, payload)) = opened else {
             return false;
         };
         match kind {
@@ -323,7 +338,11 @@ impl Endpoint {
                     let _ = self
                         .events
                         .send(NetEvent::Established { peer_static, peer });
-                    self.state = State::Established { link, peer_static };
+                    self.state = State::Established {
+                        link,
+                        peer_static,
+                        reserva: None,
+                    };
                 }
             }
         }

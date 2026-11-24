@@ -96,6 +96,7 @@ impl Daemon {
             Notice::Connected { peer, .. } => {
                 // A sessão de pé é o par compartilhando: uma pausa dele que ficou marcada acabou.
                 self.par_retomou();
+                self.alcance.sessao_subiu();
                 self.lembrar_nome_do_par(peer.as_str());
             }
             Notice::PeerCannotSecureAttention => self.ctrl_alt_del_nao_saiu(),

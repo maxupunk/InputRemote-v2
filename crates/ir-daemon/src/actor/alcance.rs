@@ -141,7 +141,14 @@ impl Daemon {
 
     /// Recomeça a sessão sobre os enlaces de pé: o primeiro `CarrierUp` começa o aperto de mão, o
     /// outro entra na rota quando a sessão ficar de pé. Antes, recomeçar dizia sempre "rede".
+    ///
+    /// Se ela já não subiu por eles [rodadas seguidas](ir_transporte::RETOMADAS_ANTES_DE_REDISCAR),
+    /// os enlaces dizem estar de pé mas nada passa: derruba-os, para a discagem desta mesma rodada
+    /// refazer o handshake do zero.
     pub(crate) fn retomar_sessao(&mut self) {
+        if self.alcance.retomar() {
+            return self.desconectar_todos();
+        }
         let de_pe: Vec<Carrier> = self.alcance.de_pe_agora().collect();
         for portador in de_pe {
             self.drive(Input::CarrierUp(portador));
@@ -165,12 +172,9 @@ impl Daemon {
 
     /// Derruba o enlace por todos os portadores.
     pub(crate) fn desconectar_todos(&mut self) {
-        for portador in [Carrier::Rfcomm, Carrier::Udp] {
-            if self.alcance.de_pe(portador)
-                && let Some(transporte) = self.transporte(portador)
-            {
-                transporte.desconectar();
-            }
+        let de_pe = self.alcance.de_pe_agora();
+        for transporte in de_pe.filter_map(|portador| self.transporte(portador)) {
+            transporte.desconectar();
         }
         self.alcance.derrubar_todos();
     }

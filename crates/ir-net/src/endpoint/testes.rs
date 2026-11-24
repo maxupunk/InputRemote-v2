@@ -47,6 +47,7 @@ async fn aguardando_com_envio_quebrado() -> (Endpoint, mpsc::UnboundedReceiver<N
         rodadas: Rodadas::default(),
         aceitar_pareamento: true,
         rechave_tentada: None,
+        rechave: None,
     };
     (endpoint, recebidos)
 }

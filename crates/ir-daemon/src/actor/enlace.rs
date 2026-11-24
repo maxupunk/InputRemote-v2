@@ -214,6 +214,7 @@ impl Daemon {
         if self.linked() && self.session.phase() == Phase::Offline {
             // O enlace seguro está de pé, mas a sessão caiu (silêncio do par). Reinicia a sessão
             // sobre os mesmos enlaces: um `Hello` novo, que o par absorve se já estiver de pé.
+            // Se isso já falhou rodadas seguidas, os enlaces não servem: redisca do zero.
             self.retomar_sessao();
         }
         // Todo portador sem enlace e com endereço conhecido é discado — também com a sessão de pé

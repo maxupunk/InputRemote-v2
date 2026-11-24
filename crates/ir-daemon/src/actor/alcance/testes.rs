@@ -76,6 +76,33 @@ fn o_radio_contado_pelo_par_e_discado_e_gravado() {
 }
 
 #[test]
+fn o_enlace_de_pe_por_onde_a_sessao_nao_sobe_e_derrubado_e_rediscado() {
+    // A bancada de 2026-11-24: a rede "de pé" com as chaves desalinhadas, e a sessão refeita sobre
+    // ela a cada rodada, por horas, sem nunca discar de novo.
+    let mut bancada = pareado_pela_rede();
+    estabeleceu(&mut bancada, Carrier::Udp, rede());
+    let _ = bancada.rede.feitos();
+
+    for _ in 1..ir_transporte::RETOMADAS_ANTES_DE_REDISCAR {
+        bancada.daemon.retomar_sessao();
+    }
+    assert!(
+        !bancada.rede.feitos().contains(&Feito::Desconectou),
+        "umas rodadas sem sessão são só o par demorando"
+    );
+
+    bancada.daemon.retomar_sessao();
+    bancada.daemon.discar_o_que_falta();
+    let feitos = bancada.rede.feitos();
+    assert!(feitos.contains(&Feito::Desconectou), "{feitos:?}");
+    assert_eq!(
+        discagens(&feitos),
+        vec![rede()],
+        "e disca de novo na mesma rodada"
+    );
+}
+
+#[test]
 fn a_rodada_disca_so_o_portador_que_falta() {
     let mut bancada = pareado_pela_rede();
     bancada.daemon.alcance.anotar(Endereco::do_radio(RADIO));

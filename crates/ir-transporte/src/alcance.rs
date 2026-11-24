@@ -26,6 +26,15 @@ pub const PRAZO_DA_DISCAGEM: Duration = Duration::from_secs(10);
 /// A busca é um *broadcast* de 2 s; repetida a cada rodada, viraria ruído na rede de todo mundo.
 pub const INTERVALO_DA_BUSCA: Duration = Duration::from_secs(30);
 
+/// Quantas vezes seguidas a sessão é refeita sobre enlaces de pé, sem subir, antes de derrubá-los
+/// e discar do zero.
+///
+/// Um enlace pode dizer que está de pé sem que nada passe por ele: na bancada, o da rede ficou
+/// assim por horas — as chaves dos dois lados desalinhadas por uma troca que se perdeu no meio —,
+/// e o serviço refazia a sessão sobre ele a cada rodada, sem nunca discar de novo. Discar refaz o
+/// handshake inteiro, e o par troca o enlace dele pelo novo. Cinco rodadas são uns quinze segundos.
+pub const RETOMADAS_ANTES_DE_REDISCAR: u32 = 5;
+
 /// Um portador visto daqui: se o enlace está de pé, e desde quando há discagem sem resposta.
 #[derive(Debug, Clone, Copy, Default)]
 struct Via {
@@ -45,6 +54,8 @@ pub struct Alcance {
     via_radio: Via,
     /// Quando saiu a última busca do par na rede.
     buscou: Option<Instant>,
+    /// Quantas vezes seguidas a sessão foi refeita sobre os enlaces de pé sem subir.
+    retomadas: u32,
 }
 
 impl Alcance {
@@ -153,6 +164,26 @@ impl Alcance {
     pub const fn derrubar_todos(&mut self) {
         self.caiu(Carrier::Rfcomm);
         self.caiu(Carrier::Udp);
+        self.retomadas = 0;
+    }
+
+    /// A sessão vai ser refeita sobre os enlaces de pé. Devolve `true` quando já foram
+    /// [`RETOMADAS_ANTES_DE_REDISCAR`] seguidas sem ela subir: os enlaces dizem estar de pé, mas
+    /// nada passa por eles, e é hora de derrubá-los e discar do zero.
+    pub fn retomar(&mut self) -> bool {
+        self.retomadas = self.retomadas.saturating_add(1);
+        let rediscar = self.retomadas >= RETOMADAS_ANTES_DE_REDISCAR;
+        if rediscar {
+            tracing::warn!(
+                "a sessão não sobe pelos enlaces que dizem estar de pé; derrubando-os para discar de novo"
+            );
+        }
+        rediscar
+    }
+
+    /// A sessão subiu: os enlaces provaram que funcionam.
+    pub const fn sessao_subiu(&mut self) {
+        self.retomadas = 0;
     }
 
     /// Se vale discar por este portador agora: sem enlace, e sem discagem recente esperando.
@@ -221,6 +252,22 @@ mod tests {
 
     fn ler(texto: &str) -> Endereco {
         Endereco::ler(texto).expect("endereço válido")
+    }
+
+    #[test]
+    fn so_rodadas_seguidas_sem_sessao_mandam_rediscar() {
+        let mut alcance = Alcance::novo(None, [ler(REDE)]);
+        alcance.subiu(Carrier::Udp);
+        for _ in 1..RETOMADAS_ANTES_DE_REDISCAR {
+            assert!(!alcance.retomar());
+        }
+        alcance.sessao_subiu();
+        for _ in 1..RETOMADAS_ANTES_DE_REDISCAR {
+            assert!(!alcance.retomar(), "a sessão que subiu zera a conta");
+        }
+        assert!(alcance.retomar());
+        alcance.derrubar_todos();
+        assert!(!alcance.retomar(), "derrubar também zera");
     }
 
     #[test]
