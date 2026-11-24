@@ -339,15 +339,18 @@ function Empacotar-Linux {
     # mata um rustc e a construcao falha com motivo, que e melhor que um computador parado.
     # O teto de CPUs precisa respeitar o total do daemon do Docker (no Docker Desktop / WSL2 costuma
     # ser menor que o do host Windows). Passar mais CPUs do que o Docker tem causa erro de daemon.
+    # Num terminal interativo o Docker Desktop pode perguntar o alvo ("[L] Local [R] Remote") antes
+    # de responder, e a pergunta sai junto na saida: por isso vale a ultima linha so com digitos, e
+    # nao a saida inteira. Sem resposta legivel, 2 CPUs -- nunca o total do Windows, que costuma
+    # passar do que a VM do Docker tem e derrubava o `docker run`.
     $cpusDocker = 0
     try {
-        $saidaCpus = (& docker info --format '{{.NCPU}}' 2>$null) | Out-String
-        if ($saidaCpus.Trim() -match '^\d+$') {
-            $cpusDocker = [int]$matches[0]
-        }
+        $linhasCpus = @(& docker info --format '{{.NCPU}}' 2>$null) |
+            ForEach-Object { "$_".Trim() } | Where-Object { $_ -match '^\d+$' }
+        if ($linhasCpus) { $cpusDocker = [int]($linhasCpus | Select-Object -Last 1) }
     } catch { }
 
-    $cpusDisponiveis = if ($cpusDocker -gt 0) { $cpusDocker } else { [Environment]::ProcessorCount }
+    $cpusDisponiveis = if ($cpusDocker -gt 0) { $cpusDocker } else { 2 }
     $nucleos = [Math]::Max(1, [Math]::Min($cpusDisponiveis, [Math]::Max(2, [Math]::Floor($cpusDisponiveis / 2))))
     & docker run --rm `
         --cpus $nucleos `
