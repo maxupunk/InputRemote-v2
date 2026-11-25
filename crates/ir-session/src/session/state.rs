@@ -1,6 +1,7 @@
 //! Os pedaços de estado que a sessão guarda, cada um com sua responsabilidade.
 
 use ir_proto::carrier::Carrier;
+pub use ir_proto::carrier::PerInputCarrier;
 use ir_proto::ids::MachineId;
 use ir_proto::peer::{Capabilities, MachineName};
 use ir_proto::version::ProtocolVersion;
@@ -30,51 +31,6 @@ pub struct PeerInfo {
     pub capabilities: Capabilities,
     /// A versão acordada.
     pub version: ProtocolVersion,
-}
-
-/// Um valor por portador de entrada.
-///
-/// Um campo por portador, e não um vetor: são dois, o conjunto nunca cresce, e um campo nomeado
-/// não tem caminho de indexação inválida. O TCP não tem campo — ele não leva entrada, e a sessão
-/// não fala por ele —, e perguntar por ele devolve `None` em vez de cair no campo de outro.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct PerInputCarrier<T> {
-    /// O do Bluetooth.
-    pub rfcomm: T,
-    /// O da rede.
-    pub udp: T,
-}
-
-impl<T> PerInputCarrier<T> {
-    /// O mesmo valor nos dois.
-    pub const fn both(value: T) -> Self
-    where
-        T: Copy,
-    {
-        Self {
-            rfcomm: value,
-            udp: value,
-        }
-    }
-
-    /// O valor deste portador; `None` para o TCP.
-    #[must_use]
-    pub const fn get(&self, carrier: Carrier) -> Option<&T> {
-        match carrier {
-            Carrier::Rfcomm => Some(&self.rfcomm),
-            Carrier::Udp => Some(&self.udp),
-            Carrier::Tcp => None,
-        }
-    }
-
-    /// O valor deste portador, para mudar; `None` para o TCP.
-    pub const fn get_mut(&mut self, carrier: Carrier) -> Option<&mut T> {
-        match carrier {
-            Carrier::Rfcomm => Some(&mut self.rfcomm),
-            Carrier::Udp => Some(&mut self.udp),
-            Carrier::Tcp => None,
-        }
-    }
 }
 
 /// Quais portadores de entrada estão disponíveis agora.

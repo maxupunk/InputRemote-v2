@@ -76,8 +76,9 @@ pub struct Timings {
 
     /// Tempo mínimo entre duas amostras de ponteiro enviadas.
     ///
-    /// Origem: `docs/01-visao-e-escopo.md` §6 — pelo menos 125 Hz úteis, que é uma amostra a
-    /// cada 8 ms. As amostras que chegarem no meio são coalescidas, não descartadas.
+    /// Origem: `docs/01-visao-e-escopo.md` §6 — pelo menos 125 Hz úteis. Com 8 ms, o intervalo do
+    /// próprio mouse de 125 Hz, metade dos eventos ficava para o seguinte (log 79); com 4 ms todo
+    /// evento dele sai na hora. O que chega no meio é somado, não descartado.
     pub pointer_interval: Millis,
 
     /// Quanto esperar por confirmação antes de retransmitir, no piso.
@@ -107,7 +108,7 @@ impl Timings {
         heartbeat: Millis(200),
         link_timeout: Millis(1000),
         snapshot_interval: Millis(250),
-        pointer_interval: Millis(8),
+        pointer_interval: Millis(4),
         min_retransmit: Millis(20),
         reclaim_grace: Millis(150),
         reclaim_window: Millis(300),
@@ -287,10 +288,12 @@ mod tests {
     }
 
     #[test]
-    fn the_pointer_interval_allows_at_least_125_hz() {
+    fn the_pointer_interval_lets_a_125_hz_mouse_through_untouched() {
+        // Um mouse de 125 Hz manda a cada ~8 ms, com variação; um intervalo de 8 ms segurava
+        // metade dos eventos para o seguinte.
         assert!(
-            Timings::DEFAULT.pointer_interval.get() <= 8,
-            "125 Hz é uma amostra a cada 8 ms"
+            Timings::DEFAULT.pointer_interval.get() * 2 <= 8,
+            "metade do intervalo de um mouse de 125 Hz"
         );
     }
 

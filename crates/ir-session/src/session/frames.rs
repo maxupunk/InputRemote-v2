@@ -4,13 +4,14 @@ use ir_geometry::Desktop;
 use ir_proto::carrier::Carrier;
 use ir_proto::channel::ChannelId;
 use ir_proto::frame::{Frame, Sequence};
-use ir_proto::message::{Control, Feedback, Message};
+use ir_proto::message::{Control, Feedback, Message, PointerMessage};
 
 use crate::event::{Command, CommandBatch, Notice};
 use crate::phase::Phase;
 use crate::reliability::{Delivery, ReliableChannels};
 use crate::session::Session;
 use crate::time::Timestamp;
+use ir_confiabilidade::pointer::Arrival;
 
 impl Session {
     pub(super) fn on_frame(
@@ -60,12 +61,12 @@ impl Session {
             return;
         }
 
-        // O canal do ponteiro não tem confirmação, mas tem ordem: o mais recente vence, e o que
-        // chega igual ou atrasado é descartado (`docs/03-protocolo.md` §4.2). Na rota dupla toda
-        // amostra chega duas vezes; aplicar as duas moveria o cursor o dobro.
+        // O canal do ponteiro não tem confirmação: cada amostra vale uma vez, chegue quando chegar
+        // (`ir_confiabilidade::pointer`). Na rota dupla toda amostra chega duas vezes; aplicar as duas moveria
+        // o cursor o dobro, e descartar a atrasada perdia o movimento que a outra cópia salvaria.
         let channel = frame.channel();
         if !ReliableChannels::covers(channel) {
-            if channel == ChannelId::Pointer && !self.admit_pointer(frame.seq) {
+            if channel == ChannelId::Pointer && !self.admit_pointer(frame.seq, &frame.message) {
                 return;
             }
             self.wins.count(carrier);
@@ -111,16 +112,16 @@ impl Session {
         }
     }
 
-    /// Se esta amostra de ponteiro é mais nova que a última aplicada — e, sendo, passa a ser ela.
-    fn admit_pointer(&mut self, seq: Sequence) -> bool {
-        if self
-            .last_pointer_rx
-            .is_some_and(|last| !seq.is_newer_than(last))
-        {
-            return false;
+    /// Se esta amostra de ponteiro deve ser aplicada.
+    ///
+    /// Atrasada, só o movimento relativo: deslocamentos somam em qualquer ordem, mas uma posição
+    /// absoluta velha poria o ponteiro onde ele já não está.
+    fn admit_pointer(&mut self, seq: Sequence, message: &Message) -> bool {
+        match self.pointer_rx.admit(seq) {
+            Arrival::Newest => true,
+            Arrival::Late => matches!(message, Message::Pointer(PointerMessage::Motion { .. })),
+            Arrival::Repeated => false,
         }
-        self.last_pointer_rx = Some(seq);
-        true
     }
 
     fn on_control(&mut self, now: Timestamp, control: Control, out: &mut CommandBatch) {

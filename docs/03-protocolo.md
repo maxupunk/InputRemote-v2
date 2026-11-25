@@ -43,6 +43,12 @@ Por isso o descarte é da sessão, e não do portador
 Um portador entrar ou sair da rota não refaz a sessão nem solta teclas. Só a queda do último
 encerra a sessão, e o prazo de queda conta a rota inteira.
 
+Um portador da rota **calado** por três prazos de queda enquanto o outro fala sai da rota, sem que
+o enlace dele caia: é o par que fixou o outro portador (ele aceita o enlace e nunca manda por ele),
+ou um enlace que diz estar de pé e não leva nada. A cada *heartbeat*, quem não fixou portador manda
+um `AckOnly` sem sequência por todo portador de pé que esteja fora da rota; o primeiro quadro que
+chega por ele o devolve à rota. Quem fixou não sonda ([log 80](logs/80-o-meio-fixado-de-um-lado-so.md)).
+
 O endereço de rádio do par, que a rede não tem como descobrir, vem em `Reach` (§6), que cada ponta
 manda ao estabelecer a sessão.
 
@@ -152,13 +158,19 @@ houver algo pendente.
 
 ### 4.2. Canal 2, ponteiro
 
-Sem confirmação e sem retransmissão. Carrega `seq: u32`; o receptor descarta qualquer
-mensagem com sequência igual ou anterior à última aceita. Perder amostras de movimento é
-invisível; atrasá-las não é.
+Sem confirmação e sem retransmissão. Carrega `seq: u32`, e **cada sequência vale uma vez**: o
+receptor guarda uma janela das 64 últimas aplicadas e descarta só a repetida, ou a velha demais
+para a janela. Uma amostra atrasada que nunca foi vista é aplicada, se for movimento relativo;
+uma posição absoluta atrasada é descartada, porque já não diz onde o ponteiro está.
 
-O movimento é **relativo**: aplicar a mesma amostra duas vezes move o cursor o dobro. O filtro
-não é opcional — na rota dupla toda amostra chega duas vezes, e até a versão 2 ele estava na
-especificação e faltava no código.
+O movimento é **relativo**: aplicar a mesma amostra duas vezes move o cursor o dobro, e deixar de
+aplicar uma faz o cursor andar menos do que a mão. O filtro não é opcional — na rota dupla toda
+amostra chega duas vezes, e até a versão 2 ele estava na especificação e faltava no código. Até o
+log 79 ele aceitava só a mais nova que a última aplicada: perdida a cópia da rede, a do Bluetooth
+chegava depois da amostra seguinte e era descartada, e o movimento se perdia justamente onde a
+redundância devia salvá-lo. Somar deslocamentos fora de ordem leva ao mesmo lugar.
+
+Quem envia junta o movimento e manda no máximo uma amostra a cada 4 ms (`Timings::pointer_interval`).
 
 ### 4.3. Encarnações de sessão
 

@@ -65,6 +65,23 @@ impl Session {
         self.route?.uses(carrier).then(|| now.since(*last))
     }
 
+    /// O portador da rota dupla calado há três prazos de queda enquanto o outro fala — o par manda
+    /// um *heartbeat* a cada 200 ms por toda a rota dele. Na bancada, o Windows com a rede fixada
+    /// aceitava o Bluetooth do Linux e nunca mandava por ele (log 80).
+    #[must_use]
+    pub fn mute_carrier(&self, now: Timestamp) -> Option<Carrier> {
+        let route = self.route.filter(|route| route.is_dual())?;
+        let timeout = self.config.timings.link_timeout;
+        let silence = |carrier| self.carrier_silence(carrier, now).map_or(0, Millis::get);
+        let mute = route
+            .carriers()
+            .find(|&carrier| silence(carrier) >= timeout.times(3).get())?;
+        route
+            .carriers()
+            .any(|carrier| carrier != mute && silence(carrier) < timeout.get())
+            .then_some(mute)
+    }
+
     /// O par, depois do handshake.
     #[must_use]
     pub const fn peer(&self) -> Option<&PeerInfo> {

@@ -33,34 +33,6 @@ pub(crate) fn abrir(
     pedidos
 }
 
-/// O arquivo que guarda a versão que o par negociou na última sessão, com a chave dele.
-const VERSAO_DO_PAR: &str = "versao-do-par";
-
-/// A versão que o par pareado negociou da última vez, se a chave guardada é a dele.
-///
-/// É o que deixa as pastas andarem logo depois de o serviço subir, antes de a sessão de entrada
-/// voltar — e mesmo se ela não voltar: as pastas não dependem do teclado e do mouse. Com a chave
-/// junto, um par novo nunca herda a versão do anterior.
-pub(crate) fn versao_guardada(
-    dir: &std::path::Path,
-    chave: &str,
-) -> Option<ir_proto::version::ProtocolVersion> {
-    let texto = std::fs::read_to_string(dir.join(VERSAO_DO_PAR)).ok()?;
-    let (de_quem, versao) = texto.trim().split_once(' ')?;
-    (de_quem == chave)
-        .then(|| versao.parse().ok().map(ir_proto::version::ProtocolVersion))
-        .flatten()
-}
-
-/// Guarda a versão que o par negociou agora.
-pub(crate) fn guardar_versao(
-    dir: &std::path::Path,
-    chave: &str,
-    versao: ir_proto::version::ProtocolVersion,
-) {
-    let _ = std::fs::write(dir.join(VERSAO_DO_PAR), format!("{chave} {}", versao.get()));
-}
-
 /// Sobe o canal do ajudante das pastas compartilhadas, ligado à faixa do canal de arquivos.
 ///
 /// Sem ele o serviço segue: as pastas ficam indisponíveis, e a janela diz que o ajudante não está.
@@ -70,7 +42,7 @@ pub(crate) fn abrir_pastas(
     (cfg, dir): (&config::Config, &std::path::Path),
 ) -> Option<ir_canais::Pastas> {
     if let Some(par) = cfg.peers.first()
-        && let Some(versao) = versao_guardada(dir, &par.pubkey)
+        && let Some(versao) = ir_configuracao::versao_do_par::guardada(dir, &par.pubkey)
     {
         arquivos.informar_par(Some(versao), par.nome.as_deref().unwrap_or_default());
     }

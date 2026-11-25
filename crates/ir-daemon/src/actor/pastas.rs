@@ -25,7 +25,7 @@ impl Daemon {
     /// pasta em curso, com o canal de arquivos de pé (visto na prova de ponta a ponta, log 59).
     ///
     /// A versão vai para o disco quando muda, com a chave do par: na próxima subida ela já é sabida
-    /// antes de a sessão de entrada voltar ([`crate::arquivos::versao_guardada`]).
+    /// antes de a sessão de entrada voltar ([`ir_configuracao::versao_do_par`]).
     pub(super) fn informar_par_as_pastas(&self) {
         let Some(par) = self.session.peer() else {
             return;
@@ -36,7 +36,7 @@ impl Daemon {
         if GUARDADA.swap(versao, Ordering::Relaxed) != versao
             && let Some(pareado) = self.config.peers.first()
         {
-            crate::arquivos::guardar_versao(&self.data_dir, &pareado.pubkey, par.version);
+            ir_configuracao::versao_do_par::guardar(&self.data_dir, &pareado.pubkey, par.version);
         }
     }
 

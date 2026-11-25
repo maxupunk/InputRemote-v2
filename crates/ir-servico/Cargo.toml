@@ -23,5 +23,10 @@ ir-acesso.workspace = true
 # Marcar que este processo é o serviço, na sessão 0.
 ir-sessao.workspace = true
 
+# O relógio de 1 ms (`relogio`): sem ele, a batida de 5 ms do serviço sai a cada 13 ms.
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.62"
+features = ["Win32_Media"]
+
 [lints]
 workspace = true

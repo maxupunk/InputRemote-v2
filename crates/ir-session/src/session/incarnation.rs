@@ -57,7 +57,7 @@ impl Session {
         } else {
             // No meio do nosso aperto de mão: o que o par mandou até aqui era de outra sessão dele.
             self.reliability.reset_receivers();
-            self.last_pointer_rx = None;
+            self.pointer_rx = ir_confiabilidade::pointer::PointerFilter::default();
         }
         self.incarnations.follow_peer(epoch);
     }

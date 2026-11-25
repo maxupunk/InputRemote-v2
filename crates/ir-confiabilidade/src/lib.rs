@@ -40,6 +40,7 @@
 
 mod channels;
 pub mod incarnation;
+pub mod pointer;
 mod receiver;
 mod sender;
 pub mod sequences;

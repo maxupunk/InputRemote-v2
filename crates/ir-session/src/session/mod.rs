@@ -24,7 +24,7 @@ mod usage;
 
 use ir_geometry::{Desktop, Point};
 use ir_proto::carrier::Carrier;
-use ir_proto::frame::{Frame, Sequence};
+use ir_proto::frame::Frame;
 use ir_proto::ids::RadioAddress;
 use ir_proto::input::{InputState, PointerDelta};
 use ir_proto::message::Message;
@@ -113,12 +113,10 @@ pub struct Session {
     /// O endereço do rádio desta máquina, para contar ao par ([`reach`]).
     pub(super) local_radio: Option<RadioAddress>,
 
-    /// A sequência da última amostra de ponteiro aplicada.
-    ///
-    /// O canal 2 não tem confirmação, mas tem ordem: amostra com sequência igual ou anterior é
-    /// descartada (`docs/03-protocolo.md` §4.2). Na rota dupla toda amostra chega duas vezes, e o
-    /// movimento é relativo — sem este filtro, o cursor andaria o dobro.
-    pub(super) last_pointer_rx: Option<Sequence>,
+    /// As amostras de ponteiro já aplicadas: cada uma vale uma vez, mesmo atrasada
+    /// ([`ir_confiabilidade::pointer`]). Na rota dupla toda amostra chega duas vezes, e o movimento é
+    /// relativo — sem o filtro o cursor andaria o dobro; descartando a atrasada, andava menos.
+    pub(super) pointer_rx: ir_confiabilidade::pointer::PointerFilter,
 
     /// Por qual portador cada quadro novo chegou primeiro — o placar da rota dupla.
     pub(super) wins: CarrierWins,
@@ -161,7 +159,7 @@ impl Session {
             edge_locked: false,
             area: ir_area::Area::default(),
             local_radio: None,
-            last_pointer_rx: None,
+            pointer_rx: ir_confiabilidade::pointer::PointerFilter::default(),
             wins: CarrierWins::default(),
             local_power: None,
             reclaim_watch: direction::ReclaimWatch::default(),

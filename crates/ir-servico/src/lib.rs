@@ -5,6 +5,7 @@
 //! - [`scm`], no Windows: o laço do Gerenciador de Serviços — registrar, responder a "parar", aos
 //!   avisos de energia e de sessão, e sair com o código que dispara o reinício automático;
 //! - [`registro`]: para onde vão as linhas de registro, sem nunca bloquear quem registra;
+//! - [`relogio`]: o relógio de 1 ms que o Windows só dá a quem pede;
 //! - [`EventoDoSistema`]: suspender, acordar, trocar de sessão, bloquear — de onde quer que venham;
 //! - no Linux, o gancho de suspensão do `systemd` (sinais) e o `logind` (tela bloqueada).
 //!
@@ -16,6 +17,7 @@
 #[cfg(target_os = "linux")]
 pub mod logind;
 pub mod registro;
+pub mod relogio;
 #[cfg(windows)]
 pub mod scm;
 #[cfg(unix)]

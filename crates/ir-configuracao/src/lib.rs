@@ -24,6 +24,7 @@ mod gravador;
 mod identidade;
 pub mod paineis;
 mod politica;
+pub mod versao_do_par;
 
 pub use gravador::Gravador;
 pub use identidade::{decode_key, encode_key, load_identity};

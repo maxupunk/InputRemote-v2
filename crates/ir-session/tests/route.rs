@@ -147,7 +147,7 @@ fn a_silent_bluetooth_does_not_cost_the_session() {
     pair.set_carrier_delivery(Carrier::Rfcomm, false);
     let before = pair.client.carrier_wins();
 
-    for _ in 0..12 {
+    for _ in 0..8 {
         pair.advance(250);
     }
     pair.key(Side::Server, TECLA, true);
@@ -156,7 +156,7 @@ fn a_silent_bluetooth_does_not_cost_the_session() {
     assert_eq!(
         pair.server.phase(),
         Phase::Sending,
-        "3 s sem Bluetooth, e nada caiu"
+        "2 s sem Bluetooth, e nada caiu"
     );
     assert_eq!(key_injections(&pair), 2);
     let after = pair.client.carrier_wins();
@@ -167,7 +167,7 @@ fn a_silent_bluetooth_does_not_cost_the_session() {
         .carrier_silence(Carrier::Rfcomm, pair.now())
         .expect("o rádio ainda está na rota");
     assert!(
-        silence.get() >= 3000,
+        silence.get() >= 2000,
         "o silêncio do rádio é visível: {silence:?}"
     );
 }

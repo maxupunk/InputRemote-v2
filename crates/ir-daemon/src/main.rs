@@ -49,6 +49,8 @@ fn executar_bloqueante(
     parada: watch::Receiver<bool>,
     sistema: mpsc::UnboundedReceiver<ir_servico::EventoDoSistema>,
 ) -> Result<()> {
+    // Pela vida do serviço: no Windows a batida de 5 ms do ator sairia a cada 13 ms.
+    let _relogio = ir_servico::relogio::fino();
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()

@@ -124,7 +124,7 @@ impl Session {
         self.peer = None;
         self.refusals.peer = false;
         self.peer_screens = None;
-        self.last_pointer_rx = None;
+        self.pointer_rx = ir_confiabilidade::pointer::PointerFilter::default();
         self.pending_pointer = ir_proto::input::PointerDelta::ZERO;
         self.seqs.reset();
         self.reliability.reset();
@@ -291,7 +291,9 @@ impl Session {
                 }),
                 out,
             );
+            self.probe_off_route(out);
         }
+        self.drop_mute_carrier(now, out);
 
         if self.phase == Phase::Sending {
             self.flush_pointer_if_due(now, out);

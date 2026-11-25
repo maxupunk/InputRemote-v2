@@ -103,3 +103,5 @@ quê. Um registro que se reescreve não é registro.
 | 76 | 2026-10-28 | [O Bluetooth que travou](docs/logs/76-o-bluetooth-que-travou.md) |
 | 77 | 2026-10-28 | [A cópia que espera o cursor, e o ajudante do Fedora que não subia](docs/logs/77-a-copia-que-espera-o-cursor.md) |
 | 78 | 2026-11-24 | [A troca de chaves que travava a rede](docs/logs/78-a-troca-de-chaves-que-travava-a-rede.md) |
+| 79 | 2026-11-25 | [O mouse que andava menos, e o relógio que o Windows não dava](docs/logs/79-o-mouse-que-andava-menos.md) |
+| 80 | 2026-11-25 | [O meio fixado de um lado só, e o rádio que ninguém religou](docs/logs/80-o-meio-fixado-de-um-lado-so.md) |

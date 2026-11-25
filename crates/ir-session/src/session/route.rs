@@ -23,7 +23,7 @@
 
 use ir_proto::carrier::Carrier;
 use ir_proto::frame::{ChannelAck, Frame, Sequence};
-use ir_proto::message::Message;
+use ir_proto::message::{Control, Message};
 
 pub use ir_proto::route::Route;
 
@@ -37,15 +37,6 @@ use crate::session::state::PerInputCarrier;
 /// o Bluetooth está ali de reserva; se as vitórias se dividem, cada um está cobrindo os picos do
 /// outro. Conta só quadros **novos** — a cópia que chega depois já perdeu, e é descartada.
 pub type CarrierWins = PerInputCarrier<u64>;
-
-impl CarrierWins {
-    /// Conta uma vitória deste portador.
-    pub(super) const fn count(&mut self, carrier: Carrier) {
-        if let Some(wins) = self.get_mut(carrier) {
-            *wins = wins.saturating_add(1);
-        }
-    }
-}
 
 /// Um retrato da rota, para o registro e o diagnóstico: por onde, quem chegou primeiro, e há quanto
 /// tempo não se ouve cada portador da rota.
@@ -186,6 +177,34 @@ impl Session {
                     why,
                 }));
                 true
+            }
+        }
+    }
+
+    /// Tira da rota dupla o portador calado ([`Self::mute_carrier`]), sem derrubar o enlace: o
+    /// primeiro quadro que chegar por ele o devolve à rota, no despacho.
+    pub(super) fn drop_mute_carrier(
+        &mut self,
+        now: crate::time::Timestamp,
+        out: &mut CommandBatch,
+    ) {
+        if let Some(mute) = self.mute_carrier(now) {
+            self.narrow_route(mute, out);
+        }
+    }
+
+    /// Sonda com uma confirmação pura cada portador de pé fora da rota: sem isto, depois de
+    /// [`Self::drop_mute_carrier`] ninguém mandaria mais nada por ele, e três segundos sem Wi-Fi
+    /// deixariam a sessão no Bluetooth até ela recomeçar. Quem fixou um portador não sonda o outro.
+    pub(super) fn probe_off_route(&self, out: &mut CommandBatch) {
+        let Some(route) = self.route.filter(|_| self.may_widen_route()) else {
+            return;
+        };
+        for carrier in Route::INPUT {
+            if self.available.has(carrier) && !route.uses(carrier) {
+                let frame = Frame::new(Message::Control(Control::AckOnly), Sequence::ZERO)
+                    .in_epoch(self.incarnations.local());
+                out.push(Command::Send { carrier, frame });
             }
         }
     }
